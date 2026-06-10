@@ -1,0 +1,302 @@
+"""AgentOrchestrator 端到端测试(PydanticAI 驱动)。
+
+覆盖三条路径:
+1. 默认 mock agent 的知识问答:自主检索 -> 流式作答,断言完整事件序列与落库。
+2. 注入会调用 calculator 的流式 FunctionModel:验证工具事件映射与真实工具执行。
+3. run_repo 全程抛错:验证仓储故障被隔离,仍返回答案并落库。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any
+
+import pytest
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
+from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+from app.bus.event_bus import InMemoryEventBus, channel_for
+from app.core.config import get_settings
+from app.core.enums import MessageRole, RunStatus
+from app.core.events import EventType
+from app.runtime.agent_factory import build_agent, build_mock_model
+from app.runtime.deps import RuntimeDeps
+from app.runtime.orchestrator import AgentOrchestrator
+
+
+class _FakeRetriever:
+    """返回固定文档片段的内存检索器。"""
+
+    def __init__(self, docs: list[dict[str, Any]]) -> None:
+        self._docs = docs
+
+    async def retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
+        return self._docs[:top_k]
+
+
+class _FakeToolRouter:
+    """记录被调用工具名的内存工具路由。"""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def route(
+        self, query: str, tool_name: str | None = None
+    ) -> dict[str, Any]:
+        self.calls.append(tool_name or "noop")
+        return {
+            "tool_name": tool_name or "noop",
+            "result": {"echo": query},
+            "status": "DONE",
+        }
+
+
+class _FakeMessageRepo:
+    """内存消息仓储:记录写入的 assistant 消息。"""
+
+    def __init__(self) -> None:
+        self.added: list[dict[str, Any]] = []
+
+    async def list_by_conversation(
+        self, conversation_id: str, limit: int
+    ) -> list[Any]:
+        return []
+
+    async def add(
+        self,
+        conversation_id: str,
+        role: Any,
+        content: str,
+        token_count: int = 0,
+        meta: dict[str, Any] | None = None,
+    ) -> Any:
+        record = {
+            "conversation_id": conversation_id,
+            "role": role,
+            "content": content,
+            "token_count": token_count,
+        }
+        self.added.append(record)
+        return record
+
+
+class _FakeRunRepo:
+    """内存运行仓储:记录状态转换。"""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def mark_running(
+        self, agent_run_id: str, intent: Any | None = None
+    ) -> None:
+        self.calls.append(("mark_running", (agent_run_id, intent)))
+
+    async def set_plan(self, agent_run_id: str, plan: dict[str, Any]) -> None:
+        self.calls.append(("set_plan", (agent_run_id, plan)))
+
+    async def mark_succeeded(self, agent_run_id: str) -> None:
+        self.calls.append(("mark_succeeded", (agent_run_id,)))
+
+    async def mark_failed(self, agent_run_id: str, error: str) -> None:
+        self.calls.append(("mark_failed", (agent_run_id, error)))
+
+
+@pytest.fixture()
+def deps() -> tuple[
+    RuntimeDeps, InMemoryEventBus, _FakeMessageRepo, _FakeRunRepo
+]:
+    bus = InMemoryEventBus()
+    message_repo = _FakeMessageRepo()
+    run_repo = _FakeRunRepo()
+    runtime = RuntimeDeps(
+        retriever=_FakeRetriever(
+            [{"id": "d1", "text": "向量库用于近邻检索", "score": 0.9}]
+        ),
+        tool_router=_FakeToolRouter(),
+        event_bus=bus,
+        message_repo=message_repo,
+        run_repo=run_repo,
+        settings=get_settings(),
+    )
+    return runtime, bus, message_repo, run_repo
+
+
+def _has_tool_result(messages: list[Any]) -> bool:
+    """历史中是否已有工具返回(ToolReturnPart)。"""
+    return any(
+        isinstance(part, ToolReturnPart)
+        for msg in messages
+        if isinstance(msg, ModelRequest)
+        for part in msg.parts
+    )
+
+
+def _make_tool_then_answer_model(
+    tool_name: str, tool_args: dict[str, Any], answer: str
+) -> FunctionModel:
+    """构造流式 FunctionModel:首轮调一次指定工具,拿到结果后流式作答。"""
+
+    async def stream_fn(messages, info):
+        if not _has_tool_result(messages):
+            yield {
+                0: DeltaToolCall(
+                    name=tool_name,
+                    json_args=json.dumps(tool_args, ensure_ascii=False),
+                )
+            }
+            return
+        for i in range(0, len(answer), 6):
+            yield answer[i : i + 6]
+
+    return FunctionModel(stream_function=stream_fn)
+
+
+async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):
+    """订阅 channel,收集事件直到 RUN_COMPLETED 或超时。"""
+    collected = []
+    agen = bus.subscribe(channel).__aiter__()
+    pending = asyncio.ensure_future(agen.__anext__())
+    await asyncio.sleep(0)  # 驱动生成器执行到 queue.get(),完成队列注册
+    ready_evt.set()
+    try:
+        first = await asyncio.wait_for(pending, timeout=5.0)
+        collected.append(first)
+        if first.type is not EventType.RUN_COMPLETED:
+            while True:
+                event = await asyncio.wait_for(agen.__anext__(), timeout=5.0)
+                collected.append(event)
+                if event.type is EventType.RUN_COMPLETED:
+                    break
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        await agen.aclose()
+    return collected
+
+
+async def test_knowledge_qa_run_emits_full_event_sequence_and_persists(deps):
+    # Arrange:默认 mock agent 会自主调用 search_knowledge 后作答
+    runtime, bus, message_repo, run_repo = deps
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(build_mock_model())
+    )
+    agent_run_id = "run-e2e-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    # Act
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-1",
+        trace_id="trace-e2e",
+        user_message="什么是向量数据库",
+    )
+    events = await collector
+
+    # Assert:返回非空答案
+    assert isinstance(answer, str) and answer.strip()
+
+    # Assert:事件序列以 RUN_STARTED 开头、RUN_COMPLETED(成功)结尾
+    types = [e.type for e in events]
+    assert types[0] is EventType.RUN_STARTED
+    assert types[-1] is EventType.RUN_COMPLETED
+    assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
+
+    # Assert:agentic 知识问答应包含自主检索与生成阶段事件
+    assert EventType.RETRIEVAL_STARTED in types
+    assert EventType.RETRIEVAL_FINISHED in types
+    assert EventType.LLM_GENERATING in types
+    assert EventType.TOKEN in types
+    assert EventType.RESULT_COMPOSED in types
+    assert EventType.ERROR not in types
+
+    # Assert:seq 在该 run 内单调递增且唯一
+    seqs = [e.seq for e in events]
+    assert seqs == sorted(seqs)
+    assert len(set(seqs)) == len(seqs)
+
+    # Assert:最终 assistant 消息落库
+    assert len(message_repo.added) == 1
+    persisted = message_repo.added[0]
+    assert persisted["role"] is MessageRole.ASSISTANT
+    assert persisted["content"] == answer
+    assert persisted["conversation_id"] == "conv-1"
+
+    # Assert:运行状态收敛为成功
+    methods = [name for name, _ in run_repo.calls]
+    assert "mark_running" in methods
+    assert "mark_succeeded" in methods
+    assert "mark_failed" not in methods
+
+
+async def test_tool_use_run_maps_tool_events_and_executes_real_tool(deps):
+    # Arrange:注入会调用 calculator 的流式模型 + 真实 ToolRouterAdapter
+    from app.runtime.adapters import ToolRouterAdapter
+
+    runtime, bus, _message_repo, _run_repo = deps
+    runtime.tool_router = ToolRouterAdapter()
+    model = _make_tool_then_answer_model(
+        "calculator", {"expression": "(2+3)*4"}, "计算结果是 20。"
+    )
+    orchestrator = AgentOrchestrator(runtime, agent=build_agent(model))
+    agent_run_id = "run-tool-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    # Act
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-tool",
+        trace_id="trace-tool",
+        user_message="请计算 (2+3)*4 等于多少",
+    )
+    events = await collector
+
+    # Assert:产生了工具调用事件,且无错误
+    types = [e.type for e in events]
+    assert EventType.TOOL_CALL_STARTED in types
+    assert EventType.TOOL_CALL_FINISHED in types
+    assert EventType.ERROR not in types
+    assert isinstance(answer, str) and answer.strip()
+    assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
+
+    # Assert:工具事件携带 calculator 工具名
+    started = [e for e in events if e.type is EventType.TOOL_CALL_STARTED]
+    assert started[0].data.get("tool_name") == "calculator"
+
+
+async def test_run_returns_answer_even_when_run_repo_fails(deps):
+    # Arrange:run_repo 全部抛错,验证 orchestrator 仍能收敛并返回答案
+    runtime, _bus, message_repo, _ = deps
+
+    class _BrokenRunRepo(_FakeRunRepo):
+        async def mark_running(self, *a, **k):
+            raise RuntimeError("db down")
+
+        async def mark_succeeded(self, *a, **k):
+            raise RuntimeError("db down")
+
+        async def set_plan(self, *a, **k):
+            raise RuntimeError("db down")
+
+    runtime.run_repo = _BrokenRunRepo()
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(build_mock_model())
+    )
+
+    # Act
+    answer = await orchestrator.run(
+        agent_run_id="run-e2e-2",
+        conversation_id="conv-2",
+        trace_id="trace-2",
+        user_message="什么是检索增强生成",
+    )
+
+    # Assert:仓储故障被隔离,仍返回有效答案且消息落库
+    assert isinstance(answer, str) and answer.strip()
+    assert len(message_repo.added) == 1

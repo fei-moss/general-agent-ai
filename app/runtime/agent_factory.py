@@ -1,0 +1,270 @@
+"""PydanticAI Agent 工厂。
+
+把本平台的运行时内核切换为 PydanticAI 驱动的 agentic loop:由 LLM 自主决定
+是否检索知识库、调用哪个工具、何时收尾。这里负责三件事:
+
+1. build_model(settings):按 settings.llm_provider 选择 PydanticAI 原生 model
+   (mock / openai / qwen / anthropic / gemini),其中 mock 用 FunctionModel
+   实现零 key、确定性、可演示一次「检索->回答」的离线行为。
+2. AgentDeps:通过依赖注入把检索器与工具路由传给各 @agent.tool,工具实现
+   仅做薄转发,复用既有 RetrieverAdapter / ToolRouterAdapter 契约。
+3. build_agent(model):构造 Agent 并注册 4 个工具(知识检索 + 计算/时钟/搜索)。
+
+设计原则:Agent 自身无可变状态、可复用;运行所需的协作者经 deps 在每次
+run 时注入,便于 task 装配与测试替身。
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Any
+
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
+from pydantic_ai.models import Model
+from pydantic_ai.models.function import (
+    AgentInfo,
+    DeltaToolCall,
+    DeltaToolCalls,
+    FunctionModel,
+)
+
+from app.core.config import Settings, get_settings
+
+# mock 流式回答的分片长度(按字符切分,模拟逐 token 产出)
+_MOCK_CHUNK_SIZE = 12
+
+# 知识检索工具名(mock 模型据此判断是否先检索一轮)
+TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
+
+# Agent 的系统提示词
+_SYSTEM_PROMPT = (
+    "你是一个严谨的中文智能助手。优先理解用户意图,按需自主调用工具:"
+    "需要外部资料时调用 search_knowledge 检索知识库;需要数学计算时调用 "
+    "calculator;需要当前时间时调用 clock;需要联网信息时调用 web_search。"
+    "拿到工具结果后据实作答,无法确定时如实说明,不要编造。"
+)
+
+
+@dataclass
+class AgentDeps:
+    """注入给各 @agent.tool 的运行期依赖。
+
+    字段:
+        retriever: 满足 retrieve(query, top_k) -> list[dict] 契约的检索器。
+        tool_router: 满足 route(query, tool_name) -> dict 契约的工具路由。
+        retrieval_top_k: 检索返回条数上限。
+    """
+
+    retriever: Any
+    tool_router: Any
+    retrieval_top_k: int = 5
+
+
+def build_agent(model: Model) -> Agent[AgentDeps, str]:
+    """构造并返回注册好工具的 Agent。
+
+    参数:
+        model: PydanticAI model 实例(由 build_model 产出或测试注入)。
+    """
+    agent: Agent[AgentDeps, str] = Agent(
+        model,
+        deps_type=AgentDeps,
+        output_type=str,
+        system_prompt=_SYSTEM_PROMPT,
+    )
+
+    @agent.tool
+    async def search_knowledge(
+        ctx: RunContext[AgentDeps], query: str
+    ) -> list[dict[str, Any]]:
+        """检索知识库,返回与查询最相关的若干文档片段。
+
+        参数:
+            query: 检索关键词或问题。
+        """
+        return await ctx.deps.retriever.retrieve(query, ctx.deps.retrieval_top_k)
+
+    @agent.tool
+    async def calculator(
+        ctx: RunContext[AgentDeps], expression: str
+    ) -> dict[str, Any]:
+        """对数学表达式求值,支持加减乘除、取模、整除、幂与括号。
+
+        参数:
+            expression: 待求值的数学表达式,如 '2 * (3 + 4)'。
+        """
+        return await ctx.deps.tool_router.route(expression, "calculator")
+
+    @agent.tool
+    async def clock(ctx: RunContext[AgentDeps]) -> dict[str, Any]:
+        """返回当前的 UTC 与本地时间(ISO 8601 与 Unix 时间戳)。"""
+        return await ctx.deps.tool_router.route("", "clock")
+
+    @agent.tool
+    async def web_search(
+        ctx: RunContext[AgentDeps], query: str
+    ) -> dict[str, Any]:
+        """联网搜索,返回与查询相关的结果列表(当前为离线确定性实现)。
+
+        参数:
+            query: 搜索关键词。
+        """
+        return await ctx.deps.tool_router.route(query, "web_search")
+
+    return agent
+
+
+def build_model(settings: Settings | None = None) -> Model:
+    """按配置选择 PydanticAI 原生 model;未知或 mock 时回退到离线 FunctionModel。"""
+    settings = settings or get_settings()
+    provider = (settings.llm_provider or "mock").strip().lower()
+    if provider == "openai":
+        return _openai_model(
+            settings.openai_model,
+            settings.openai_base_url,
+            settings.openai_api_key,
+        )
+    if provider == "qwen":
+        return _openai_model(
+            settings.qwen_model,
+            settings.qwen_base_url,
+            settings.dashscope_api_key,
+        )
+    if provider == "anthropic":
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+
+        return AnthropicModel(
+            settings.anthropic_model,
+            provider=AnthropicProvider(api_key=settings.anthropic_api_key),
+        )
+    if provider == "gemini":
+        from pydantic_ai.models.google import GoogleModel
+        from pydantic_ai.providers.google import GoogleProvider
+
+        return GoogleModel(
+            settings.gemini_model,
+            provider=GoogleProvider(api_key=settings.gemini_api_key),
+        )
+    return build_mock_model()
+
+
+def _openai_model(model: str, base_url: str, api_key: str) -> Model:
+    """构造 OpenAI 兼容 model(OpenAI 官方端点与 DashScope/Qwen 共用)。"""
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    return OpenAIChatModel(
+        model,
+        provider=OpenAIProvider(base_url=base_url, api_key=api_key or "not-set"),
+    )
+
+
+def build_mock_model() -> FunctionModel:
+    """离线 mock model:零 key、确定性,演示一次「检索 -> 中文回答」的 agentic 流程。
+
+    行为:首轮在知识检索工具可用且尚无工具结果时,主动调用一次
+    search_knowledge;拿到结果后(或工具不可用时)产出基于问题的确定性中文
+    回答。保证整个平台在无任何外部模型 / API key 时仍可端到端跑通。
+
+    同时提供非流式 function 与流式 stream_function:orchestrator 走逐 token
+    流式路径(stream_function),run_sync 等非流式调用走 function。
+    """
+    return FunctionModel(
+        _mock_model_function, stream_function=_mock_stream_function
+    )
+
+
+def _mock_model_function(
+    messages: list[ModelMessage], info: AgentInfo
+) -> ModelResponse:
+    """FunctionModel 非流式回调:据消息历史决定先检索还是直接作答。"""
+    question = _last_user_text(messages)
+    if _should_mock_retrieve(messages, info):
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name=TOOL_SEARCH_KNOWLEDGE,
+                    args={"query": question or ""},
+                )
+            ]
+        )
+    return ModelResponse(parts=[TextPart(content=_mock_answer(question))])
+
+
+async def _mock_stream_function(
+    messages: list[ModelMessage], info: AgentInfo
+) -> AsyncIterator[str | DeltaToolCalls]:
+    """FunctionModel 流式回调:首轮按需流式发起一次检索工具调用,否则流式出文本。"""
+    question = _last_user_text(messages)
+    if _should_mock_retrieve(messages, info):
+        yield {
+            0: DeltaToolCall(
+                name=TOOL_SEARCH_KNOWLEDGE,
+                json_args=json.dumps(
+                    {"query": question or ""}, ensure_ascii=False
+                ),
+            )
+        }
+        return
+    answer = _mock_answer(question)
+    for i in range(0, len(answer), _MOCK_CHUNK_SIZE):
+        yield answer[i : i + _MOCK_CHUNK_SIZE]
+
+
+def _should_mock_retrieve(
+    messages: list[ModelMessage], info: AgentInfo
+) -> bool:
+    """mock 是否应在本轮发起检索:工具已注册且历史中尚无任何工具返回。"""
+    has_search = any(
+        getattr(t, "name", None) == TOOL_SEARCH_KNOWLEDGE
+        for t in info.function_tools
+    )
+    if not has_search:
+        return False
+    return not _has_tool_result(messages)
+
+
+def _has_tool_result(messages: list[ModelMessage]) -> bool:
+    """历史消息中是否已存在工具返回(ToolReturnPart)。"""
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    return True
+    return False
+
+
+def _last_user_text(messages: list[ModelMessage]) -> str:
+    """提取最后一条用户输入文本(UserPromptPart),取不到返回空串。"""
+    from pydantic_ai.messages import UserPromptPart
+
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    content = part.content
+                    if isinstance(content, str):
+                        return content.strip()
+                    return str(content).strip()
+    return ""
+
+
+def _mock_answer(question: str) -> str:
+    """生成确定性中文回答(供离线演示)。"""
+    if not question:
+        return "你好,我是内置的离线助手(mock),请告诉我你的问题。"
+    return (
+        f"你问的是「{question}」。这是内置 mock 模型的确定性离线回答,"
+        "用于在无外部模型与 API key 时演示完整的 agentic 链路。"
+    )

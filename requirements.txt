@@ -1,0 +1,36 @@
+# Web 框架与服务
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sse-starlette==2.2.1
+
+# 配置与校验(pydantic 2.13+ 由 pydantic-ai 依赖,统一版本)
+pydantic==2.13.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# 数据库(SQLAlchemy 2.0 异步 + asyncpg)
+SQLAlchemy==2.0.36
+asyncpg==0.30.0
+# SQLAlchemy 异步引擎强依赖 greenlet,缺失会导致 async DB 调用直接报错
+greenlet==3.1.1
+
+# 任务队列与缓存/事件总线
+celery==5.4.0
+redis==5.2.1
+
+# LLM provider 调用
+httpx==0.28.1
+
+# Agent 运行时:PydanticAI 驱动 agentic loop + 原生多 provider(claude/openai/qwen/gemini)
+# extras: anthropic(AnthropicModel) / openai(OpenAIChatModel,Qwen 走 DashScope 兼容) / google(GoogleModel)
+pydantic-ai-slim[anthropic,openai,google]==1.106.0
+
+# 向量检索(默认 numpy 内存余弦)
+numpy==2.2.1
+
+# 结构化日志(可选,核心已用标准库实现回退)
+structlog==24.4.0
+
+# 测试
+pytest==8.3.4
+pytest-asyncio==0.25.1

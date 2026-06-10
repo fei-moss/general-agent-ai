@@ -1,0 +1,37 @@
+# 本地依赖中间件:Postgres + Redis
+# 端口避开本机已占用的 5432/6379,使用 55432/55379。
+services:
+  postgres:
+    image: postgres:16
+    container_name: agent_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agent
+    ports:
+      - "55432:5432"
+    volumes:
+      - agent_pg_data:/var/lib/postgresql/data
+      - ./app/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: agent_redis
+    ports:
+      - "55379:6379"
+    volumes:
+      - agent_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agent_pg_data:
+  agent_redis_data:
