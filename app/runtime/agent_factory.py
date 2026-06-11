@@ -39,6 +39,7 @@ from pydantic_ai.models.function import (
 )
 
 from app.core.config import Settings, get_settings
+from app.core.secrets import SecretProvider, build_secret_provider, is_mock_provider
 
 # mock 流式回答的分片长度(按字符切分,模拟逐 token 产出)
 _MOCK_CHUNK_SIZE = 12
@@ -62,11 +63,13 @@ class AgentDeps:
     字段:
         retriever: 满足 retrieve(query, top_k) -> list[dict] 契约的检索器。
         tool_router: 满足 route(query, tool_name) -> dict 契约的工具路由。
+        agent_run_id: 当前 run id,用于工具审计。
         retrieval_top_k: 检索返回条数上限。
     """
 
     retriever: Any
     tool_router: Any
+    agent_run_id: str = ""
     retrieval_top_k: int = 5
 
 
@@ -103,12 +106,16 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         参数:
             expression: 待求值的数学表达式,如 '2 * (3 + 4)'。
         """
-        return await ctx.deps.tool_router.route(expression, "calculator")
+        return await ctx.deps.tool_router.route(
+            expression, "calculator", agent_run_id=ctx.deps.agent_run_id
+        )
 
     @agent.tool
     async def clock(ctx: RunContext[AgentDeps]) -> dict[str, Any]:
         """返回当前的 UTC 与本地时间(ISO 8601 与 Unix 时间戳)。"""
-        return await ctx.deps.tool_router.route("", "clock")
+        return await ctx.deps.tool_router.route(
+            "", "clock", agent_run_id=ctx.deps.agent_run_id
+        )
 
     @agent.tool
     async def web_search(
@@ -119,42 +126,58 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         参数:
             query: 搜索关键词。
         """
-        return await ctx.deps.tool_router.route(query, "web_search")
+        return await ctx.deps.tool_router.route(
+            query, "web_search", agent_run_id=ctx.deps.agent_run_id
+        )
 
     return agent
 
 
-def build_model(settings: Settings | None = None) -> Model:
+def build_model(
+    settings: Settings | None = None,
+    secret_provider: SecretProvider | None = None,
+) -> Model:
     """按配置选择 PydanticAI 原生 model;未知或 mock 时回退到离线 FunctionModel。"""
     settings = settings or get_settings()
+    secret_provider = secret_provider or build_secret_provider(settings)
     provider = (settings.llm_provider or "mock").strip().lower()
+    if is_mock_provider(provider):
+        return build_mock_model()
     if provider == "openai":
+        secret_provider.validate_required("openai", settings.openai_model)
+        api_key = secret_provider.get_secret("openai_api_key")
         return _openai_model(
             settings.openai_model,
             settings.openai_base_url,
-            settings.openai_api_key,
+            api_key.reveal() if api_key else "",
         )
     if provider == "qwen":
+        secret_provider.validate_required("qwen", settings.qwen_model)
+        api_key = secret_provider.get_secret("dashscope_api_key")
         return _openai_model(
             settings.qwen_model,
             settings.qwen_base_url,
-            settings.dashscope_api_key,
+            api_key.reveal() if api_key else "",
         )
     if provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
 
+        secret_provider.validate_required("anthropic", settings.anthropic_model)
+        api_key = secret_provider.get_secret("anthropic_api_key")
         return AnthropicModel(
             settings.anthropic_model,
-            provider=AnthropicProvider(api_key=settings.anthropic_api_key),
+            provider=AnthropicProvider(api_key=api_key.reveal() if api_key else ""),
         )
     if provider == "gemini":
         from pydantic_ai.models.google import GoogleModel
         from pydantic_ai.providers.google import GoogleProvider
 
+        secret_provider.validate_required("gemini", settings.gemini_model)
+        api_key = secret_provider.get_secret("gemini_api_key")
         return GoogleModel(
             settings.gemini_model,
-            provider=GoogleProvider(api_key=settings.gemini_api_key),
+            provider=GoogleProvider(api_key=api_key.reveal() if api_key else ""),
         )
     return build_mock_model()
 
@@ -164,9 +187,11 @@ def _openai_model(model: str, base_url: str, api_key: str) -> Model:
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
+    if not api_key:
+        raise RuntimeError("PROVIDER_SECRET_MISSING provider=openai-compatible")
     return OpenAIChatModel(
         model,
-        provider=OpenAIProvider(base_url=base_url, api_key=api_key or "not-set"),
+        provider=OpenAIProvider(base_url=base_url, api_key=api_key),
     )
 
 

@@ -10,12 +10,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.enums import MessageRole, RunStatus, TaskStatus
 from app.core.ids import _new_id, new_conversation_id
-from app.core.models import AgentRun, Conversation, Message, TaskState
+from app.core.models import (
+    AgentRun,
+    Conversation,
+    IdempotencyRecord,
+    Message,
+    TaskState,
+)
 
 
 class Repos:
@@ -87,11 +94,13 @@ class Repos:
         role: MessageRole,
         content: str,
         token_count: int = 0,
+        agent_run_id: str | None = None,
     ) -> Message:
         """向会话追加一条消息。"""
         msg = Message(
             id=_new_id("msg_"),
             conversation_id=conversation_id,
+            agent_run_id=agent_run_id,
             role=role,
             content=content,
             token_count=token_count,
@@ -104,7 +113,11 @@ class Repos:
     # --- AgentRun / TaskState ---
 
     async def create_run(
-        self, run_id: str, conversation_id: str, trace_id: str
+        self,
+        run_id: str,
+        conversation_id: str,
+        trace_id: str,
+        plan: dict | None = None,
     ) -> AgentRun:
         """以 PENDING 状态创建一次 Agent 运行记录。"""
         run = AgentRun(
@@ -112,10 +125,80 @@ class Repos:
             conversation_id=conversation_id,
             trace_id=trace_id,
             status=RunStatus.PENDING,
+            plan=plan,
         )
         self._session.add(run)
         await self._session.flush()
         return run
+
+    async def get_idempotency_record(
+        self, user_id: str, idempotency_key: str
+    ) -> IdempotencyRecord | None:
+        """读取用户维度的幂等记录。"""
+        stmt = select(IdempotencyRecord).where(
+            IdempotencyRecord.user_id == user_id,
+            IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_idempotency_record(
+        self,
+        *,
+        record_id: str,
+        user_id: str,
+        idempotency_key: str,
+        agent_run_id: str,
+        request_hash: str,
+        response: dict,
+    ) -> IdempotencyRecord:
+        """创建幂等记录。"""
+        record = IdempotencyRecord(
+            id=record_id,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            agent_run_id=agent_run_id,
+            request_hash=request_hash,
+            response=response,
+        )
+        self._session.add(record)
+        await self._session.flush()
+        return record
+
+    async def claim_idempotency_record(
+        self,
+        *,
+        record_id: str,
+        user_id: str,
+        idempotency_key: str,
+        agent_run_id: str,
+        request_hash: str,
+        response: dict,
+    ) -> tuple[IdempotencyRecord, bool]:
+        """INSERT-first idempotency claim.
+
+        The insert is intentionally flushed before acquiring a conversation lock.
+        Concurrent requests with the same key block on the unique index and then
+        replay the committed record instead of racing into CONVERSATION_BUSY.
+        """
+        record = IdempotencyRecord(
+            id=record_id,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            agent_run_id=agent_run_id,
+            request_hash=request_hash,
+            response=response,
+        )
+        self._session.add(record)
+        try:
+            await self._session.flush()
+            return record, True
+        except IntegrityError:
+            await self._session.rollback()
+            existing = await self.get_idempotency_record(user_id, idempotency_key)
+            if existing is None:
+                raise
+            return existing, False
 
     async def get_run(self, run_id: str) -> AgentRun | None:
         """按主键获取运行记录,不存在返回 None。"""

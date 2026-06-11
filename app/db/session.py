@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,17 +17,45 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import get_settings
+from app.core.metrics import Metrics
+
+_metrics = Metrics()
 
 
 def _create_engine() -> AsyncEngine:
     """根据配置创建异步引擎。"""
     settings = get_settings()
-    return create_async_engine(
+    engine = create_async_engine(
         settings.db_url,
         echo=False,
-        pool_pre_ping=True,
         future=True,
+        **_engine_options_from_settings(settings),
     )
+    _install_pool_metrics(engine)
+    return engine
+
+
+def _engine_options_from_settings(settings) -> dict[str, object]:
+    """Return explicit SQLAlchemy pool options from settings."""
+    return {
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+        "pool_pre_ping": settings.db_pool_pre_ping,
+        "pool_recycle": settings.db_pool_recycle_s,
+    }
+
+
+def _install_pool_metrics(engine: AsyncEngine) -> None:
+    """Install no-op safe pool metric hooks."""
+
+    @event.listens_for(engine.sync_engine, "checkout")
+    def _checkout(dbapi_connection, connection_record, connection_proxy) -> None:
+        _metrics.inc_counter("db_pool_checkouts_total")
+        _metrics.observe_histogram("db_pool_checkout_seconds", 0.0)
+
+    @event.listens_for(engine.sync_engine, "checkin")
+    def _checkin(dbapi_connection, connection_record) -> None:
+        _metrics.set_gauge("db_streaming_phase_connections", 0)
 
 
 # 进程级单例

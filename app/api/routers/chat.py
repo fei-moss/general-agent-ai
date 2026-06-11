@@ -13,23 +13,39 @@ API 层无状态:不在内存保存会话,全部经 DB/Redis。
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from app.api.deps import CurrentUser, EventBusDep, ReposDep
+from app.api.idempotency import chat_request_hash
 from app.api.runner_gateway import (
     RunnerUnavailableError,
     await_completion,
     enqueue_run,
 )
+from app.core.config import get_settings
 from app.core.enums import MessageRole, RunStatus
 from app.core.events import EventType
-from app.core.ids import _new_id, new_run_id, new_trace_id
+from app.core.ids import _new_id, new_conversation_id, new_run_id, new_trace_id
 from app.core.logging import get_logger, log_with_fields
 from app.core.schemas import ChatAccepted, ChatRequest
+from app.runtime.locks import ConversationLock
+from app.runtime.provider_limits import (
+    ProviderLimitRequest,
+    estimate_input_tokens,
+    provider_identity_from_settings,
+)
+from app.runtime.runner import (
+    RealtimeCapacitySlot,
+    RealtimeRunRequest,
+    RealtimeRunner,
+    now_seconds,
+)
 
 logger = get_logger(__name__)
 
@@ -37,6 +53,17 @@ router = APIRouter(tags=["chat"])
 
 # 投递任务的子任务类型(对应 task_state.task_type)
 _RUN_TASK_TYPE = "run"
+_BATCH_TASK_TYPES = {
+    "file",
+    "file_analysis",
+    "long",
+    "long_rag",
+    "slow",
+    "slow_tool",
+    "batch",
+}
+
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
 @router.post("/chat", status_code=status.HTTP_202_ACCEPTED)
@@ -49,30 +76,208 @@ async def create_chat(
 ) -> Any:
     """受理一次对话/任务请求。"""
     _validate_message(body.message)
+    settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
-
-    conversation = await repos.ensure_conversation(body.conversation_id, user)
-    await repos.add_message(
-        conversation_id=conversation.id,
-        role=MessageRole.USER,
-        content=body.message,
+    conversation_id = body.conversation_id or new_conversation_id()
+    route_type = select_route_type(
+        body.metadata,
+        runtime_mode=settings.chat_runtime_mode,
     )
-    await repos.create_run(run_id, conversation.id, trace_id)
-    payload = _build_payload(run_id, conversation.id, trace_id, body)
-    await repos.create_queued_task(
-        task_id=_new_id("task_"),
-        agent_run_id=run_id,
-        task_type=_RUN_TASK_TYPE,
-        payload=payload,
+    idempotency_key = request.headers.get("idempotency-key")
+    request_hash = chat_request_hash(
+        message=body.message,
+        conversation_id=body.conversation_id,
+        metadata=body.metadata,
     )
-    await repos.commit()
+    if idempotency_key:
+        replay = await _try_idempotency_replay(
+            repos, user, idempotency_key, request_hash
+        )
+        if replay is not None:
+            return replay
 
-    _dispatch(payload)
+    route_type = await _apply_provider_preflight(
+        body,
+        request,
+        route_type,
+        settings=settings,
+        user_id=user,
+    )
+    accepted = _accepted(conversation_id, run_id, trace_id, route_type=route_type)
+    if idempotency_key:
+        replay = await _claim_idempotency_or_replay(
+            repos,
+            user_id=user,
+            idempotency_key=idempotency_key,
+            run_id=run_id,
+            request_hash=request_hash,
+            accepted=accepted,
+        )
+        if replay is not None:
+            return replay
 
-    if not body.stream:
-        return await _wait_sync(bus, run_id, conversation.id, trace_id)
-    return _accepted(conversation.id, run_id, trace_id)
+    conversation_lease = None
+    capacity_slot: RealtimeCapacitySlot | None = None
+    try:
+        if route_type == "realtime":
+            if body.conversation_id:
+                existing_conversation = await repos.get_conversation(body.conversation_id)
+                if existing_conversation is not None and existing_conversation.user_id != user:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="无权访问该会话",
+                    )
+            runner = _get_realtime_runner(request)
+            capacity_slot = runner.try_acquire_capacity()
+            if capacity_slot is None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="REALTIME_RUNNER_BUSY",
+                )
+            lock = getattr(request.app.state, "conversation_lock", None) or ConversationLock()
+            lock_key = body.conversation_id or f"new:{user}:{request_hash}"
+            conversation_lease = await lock.acquire(lock_key, run_id, ttl_s=120)
+            if conversation_lease is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="CONVERSATION_BUSY",
+                )
+
+        conversation = await repos.ensure_conversation(conversation_id, user)
+        await repos.add_message(
+            conversation_id=conversation.id,
+            role=MessageRole.USER,
+            content=body.message,
+        )
+        await repos.create_run(
+            run_id,
+            conversation.id,
+            trace_id,
+            plan={"route_type": route_type, "metadata": body.metadata},
+        )
+        payload = _build_payload(run_id, conversation.id, trace_id, body)
+        payload["route_type"] = route_type
+        if route_type == "batch":
+            await repos.create_queued_task(
+                task_id=_new_id("task_"),
+                agent_run_id=run_id,
+                task_type=_RUN_TASK_TYPE,
+                payload=payload,
+            )
+        await repos.commit()
+
+        if route_type == "batch":
+            _dispatch(payload)
+        else:
+            _dispatch_realtime(
+                request,
+                payload,
+                user,
+                conversation_lease,
+                capacity_slot=capacity_slot,
+            )
+            conversation_lease = None
+            capacity_slot = None
+
+        if not body.stream:
+            return await _wait_sync(bus, run_id, conversation.id, trace_id)
+        return accepted
+    finally:
+        if capacity_slot is not None:
+            await capacity_slot.release()
+        if conversation_lease is not None:
+            await conversation_lease.release()
+
+
+def select_route_type(
+    metadata: dict[str, Any] | None,
+    *,
+    runtime_mode: str = "auto",
+) -> str:
+    """Return realtime or batch for a chat request."""
+    metadata = metadata or {}
+    forced_runtime = runtime_mode.lower()
+    requested = str(metadata.get("mode") or "auto").lower()
+    task_type = str(metadata.get("task_type") or "chat").lower()
+
+    if forced_runtime == "celery":
+        return "batch"
+    if forced_runtime == "realtime":
+        return "realtime"
+    if requested == "batch":
+        return "batch"
+    if requested == "realtime":
+        return "realtime"
+    if task_type in _BATCH_TASK_TYPES or any(
+        marker in task_type for marker in ("file", "long", "slow", "batch")
+    ):
+        return "batch"
+    return "realtime"
+
+
+async def _apply_provider_preflight(
+    body: ChatRequest,
+    request: Request,
+    route_type: str,
+    *,
+    settings: Any,
+    user_id: str,
+) -> str:
+    """Advisory provider check before realtime run creation."""
+    if route_type != "realtime":
+        return route_type
+    identity = provider_identity_from_settings(settings)
+    if identity.mock:
+        return route_type
+    limiter = getattr(request.app.state, "provider_limiter", None)
+    if limiter is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PROVIDER_LIMITER_UNAVAILABLE",
+        )
+    req = ProviderLimitRequest(
+        provider=identity.provider,
+        model=identity.model,
+        estimated_input_tokens=estimate_input_tokens(body.message),
+        max_output_tokens=settings.provider_default_max_output_tokens,
+        route_type="realtime",
+        user_id=user_id,
+    )
+    try:
+        decision = await asyncio.wait_for(
+            limiter.check(req),
+            timeout=settings.provider_realtime_preflight_timeout_ms / 1000,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PROVIDER_LIMITER_UNAVAILABLE",
+        ) from exc
+    if decision.allowed:
+        return route_type
+    requested = str((body.metadata or {}).get("mode") or "auto").lower()
+    if requested != "realtime" and settings.provider_realtime_degrade_to_batch:
+        body.metadata = {
+            **(body.metadata or {}),
+            "degraded": True,
+            "degraded_reason": "provider_rate_limited",
+            "retry_after_ms": decision.retry_after_ms,
+        }
+        return "batch"
+    headers = {}
+    if decision.retry_after_ms is not None:
+        headers["Retry-After"] = str(max(1, math.ceil(decision.retry_after_ms / 1000)))
+    status_code = (
+        status.HTTP_503_SERVICE_UNAVAILABLE
+        if decision.reason == "UNAVAILABLE"
+        else status.HTTP_429_TOO_MANY_REQUESTS
+    )
+    raise HTTPException(
+        status_code=status_code,
+        detail=decision.reason if decision.reason != "UNAVAILABLE" else "PROVIDER_LIMITER_UNAVAILABLE",
+        headers=headers,
+    )
 
 
 def _validate_message(message: str) -> None:
@@ -115,7 +320,115 @@ def _dispatch(payload: dict[str, Any]) -> None:
         ) from exc
 
 
-def _accepted(conversation_id: str, run_id: str, trace_id: str) -> ChatAccepted:
+def _dispatch_realtime(
+    request: Request,
+    payload: dict[str, Any],
+    user_id: str,
+    conversation_lease: Any | None,
+    *,
+    capacity_slot: RealtimeCapacitySlot | None = None,
+) -> asyncio.Task[Any]:
+    """Dispatch realtime run in the resident event loop."""
+    runner = _get_realtime_runner(request)
+    realtime_request = RealtimeRunRequest(
+        agent_run_id=payload["agent_run_id"],
+        conversation_id=payload["conversation_id"],
+        user_id=user_id,
+        trace_id=payload["trace_id"],
+        message=payload["message"],
+        metadata=payload.get("metadata") or {},
+        accepted_at=now_seconds(),
+        route_type=str(payload.get("route_type") or "realtime"),
+    )
+    task = asyncio.create_task(
+        runner.run_chat(
+            realtime_request,
+            conversation_lease=conversation_lease,
+            capacity_slot=capacity_slot,
+        )
+    )
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
+
+def _get_realtime_runner(request: Request) -> RealtimeRunner:
+    runner = getattr(request.app.state, "realtime_runner", None)
+    if runner is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="REALTIME_RUNNER_NOT_READY",
+        )
+    return runner
+
+
+async def _try_idempotency_replay(
+    repos: ReposDep,
+    user_id: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> ChatAccepted | None:
+    record = await repos.get_idempotency_record(user_id, idempotency_key)
+    if record is None:
+        return None
+    if record.request_hash != request_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="IDEMPOTENCY_CONFLICT",
+        )
+    response = dict(record.response)
+    run = await repos.get_run(record.agent_run_id)
+    if run is not None:
+        response["status"] = run.status
+    return ChatAccepted.model_validate(response)
+
+
+async def _claim_idempotency_or_replay(
+    repos: ReposDep,
+    *,
+    user_id: str,
+    idempotency_key: str,
+    run_id: str,
+    request_hash: str,
+    accepted: ChatAccepted,
+) -> ChatAccepted | None:
+    record, created = await repos.claim_idempotency_record(
+        record_id=_new_id("idem_"),
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        agent_run_id=run_id,
+        request_hash=request_hash,
+        response=accepted.model_dump(mode="json"),
+    )
+    if created:
+        return None
+    return await _replay_idempotency_record(repos, record, request_hash)
+
+
+async def _replay_idempotency_record(
+    repos: ReposDep,
+    record: Any,
+    request_hash: str,
+) -> ChatAccepted:
+    if record.request_hash != request_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="IDEMPOTENCY_CONFLICT",
+        )
+    response = dict(record.response)
+    run = await repos.get_run(record.agent_run_id)
+    if run is not None:
+        response["status"] = run.status
+    return ChatAccepted.model_validate(response)
+
+
+def _accepted(
+    conversation_id: str,
+    run_id: str,
+    trace_id: str,
+    *,
+    route_type: str | None = None,
+) -> ChatAccepted:
     """构造 202 受理响应。"""
     return ChatAccepted(
         conversation_id=conversation_id,
@@ -124,6 +437,7 @@ def _accepted(conversation_id: str, run_id: str, trace_id: str) -> ChatAccepted:
         status=RunStatus.PENDING,
         stream_url=f"/stream/{run_id}",
         ws_url=f"/ws/{run_id}",
+        route_type=route_type,
     )
 
 

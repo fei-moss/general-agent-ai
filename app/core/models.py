@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    UniqueConstraint,
     String,
     Text,
     func,
@@ -64,6 +65,9 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(
         ForeignKey("conversation.id", ondelete="CASCADE"), index=True
     )
+    agent_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_run.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     role: Mapped[MessageRole] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -105,6 +109,37 @@ class AgentRun(Base):
     )
 
 
+class IdempotencyRecord(Base):
+    """按用户隔离的幂等键记录。"""
+
+    __tablename__ = "idempotency_record"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_idempotency_record_user_key",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    agent_run_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "agent_run.id",
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        index=True,
+    )
+    request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    response: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class TaskState(Base):
     """运行内某个子任务(intent/rag/tool/llm)的状态。"""
 
@@ -138,8 +173,15 @@ class ToolCallLog(Base):
     tool_name: Mapped[str] = mapped_column(String(128))
     arguments: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[TaskStatus] = mapped_column(String(16), default=TaskStatus.DONE)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

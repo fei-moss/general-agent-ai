@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+import asyncio
 from typing import Any
 
 from pydantic_ai import (
@@ -44,6 +45,15 @@ from app.runtime.agent_factory import (
     build_model,
 )
 from app.runtime.deps import RuntimeDeps
+from app.runtime.provider_limits import (
+    ProviderLimitDecision,
+    ProviderLimitRequest,
+    ProviderRateLimitError,
+    ProviderUsageSettlement,
+    estimate_input_tokens,
+    provider_identity_from_settings,
+)
+from app.runtime.token_stream import TokenAggregator
 
 logger = get_logger(__name__)
 
@@ -60,25 +70,38 @@ _TOOL_NAMES = (TOOL_SEARCH_KNOWLEDGE, "calculator", "clock", "web_search")
 class _EventEmitter:
     """单次运行内的事件发射器,负责 seq 自增与 channel 拼装。"""
 
-    def __init__(self, bus: Any, agent_run_id: str, trace_id: str) -> None:
+    def __init__(
+        self,
+        bus: Any,
+        agent_run_id: str,
+        trace_id: str,
+        *,
+        metrics: Any = None,
+        accepted_at: float | None = None,
+    ) -> None:
         self._bus = bus
         self._agent_run_id = agent_run_id
         self._trace_id = trace_id
         self._channel = f"{_CHANNEL_PREFIX}{agent_run_id}"
         self._seq = 0
+        self._metrics = metrics
+        self._accepted_at = accepted_at
+        self._first_token_observed = False
 
     async def emit(
         self, type_: EventType, data: dict[str, Any] | None = None
     ) -> None:
         """构造并发布一条事件;发布失败仅记录,不中断主流程。"""
         self._seq += 1
+        data = data or {}
+        self._observe_event(type_, data)
         event = AgentEvent(
             agent_run_id=self._agent_run_id,
             trace_id=self._trace_id,
             type=type_,
             seq=self._seq,
             ts=time.time(),
-            data=data or {},
+            data=data,
         )
         try:
             await self._bus.publish(self._channel, event)
@@ -89,6 +112,20 @@ class _EventEmitter:
                 "event publish failed",
                 event_type=type_.value,
                 error=str(exc),
+            )
+
+    def _observe_event(self, type_: EventType, data: dict[str, Any]) -> None:
+        if self._metrics is None:
+            return
+        labels = {"agent_run_id": self._agent_run_id}
+        if type_ is EventType.TOKEN and not self._first_token_observed:
+            self._first_token_observed = True
+            if self._accepted_at is not None:
+                self._metrics.observe_ttft(time.time() - self._accepted_at, labels)
+        if type_ is EventType.ERROR:
+            self._metrics.inc_counter(
+                "provider_errors_total",
+                {"stage": str(data.get("stage", "unknown"))},
             )
 
 
@@ -116,6 +153,7 @@ async def run_orchestration(
         conversation_id=conversation_id,
         trace_id=trace_id,
         user_message=user_message,
+        route_type="batch",
     )
     return {"content": answer, "intent": None}
 
@@ -133,7 +171,9 @@ class AgentOrchestrator:
             agent: 可选注入的 PydanticAI Agent(测试用);缺省按配置构建。
         """
         self._deps = deps
-        self._agent = agent or build_agent(build_model(deps.settings))
+        self._agent = agent or build_agent(
+            build_model(deps.settings, deps.secret_provider)
+        )
 
     async def run(
         self,
@@ -141,15 +181,26 @@ class AgentOrchestrator:
         conversation_id: str,
         trace_id: str,
         user_message: str,
+        accepted_at: float | None = None,
+        route_type: str = "realtime",
     ) -> str:
         """执行一次完整运行,返回最终 assistant 文本。"""
         set_trace_id(trace_id)
-        emitter = _EventEmitter(self._deps.event_bus, agent_run_id, trace_id)
+        emitter = _EventEmitter(
+            self._deps.event_bus,
+            agent_run_id,
+            trace_id,
+            metrics=self._deps.metrics,
+            accepted_at=accepted_at,
+        )
         await emitter.emit(EventType.RUN_STARTED, {"message": user_message})
         try:
             return await self._execute(
-                agent_run_id, conversation_id, user_message, emitter
+                agent_run_id, conversation_id, user_message, emitter, route_type
             )
+        except ProviderRateLimitError as exc:
+            await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
+            raise
         except Exception as exc:  # 顶层兜底,保证状态收敛为 FAILED
             return await self._handle_fatal(agent_run_id, emitter, exc)
 
@@ -159,18 +210,33 @@ class AgentOrchestrator:
         conversation_id: str,
         user_message: str,
         emitter: _EventEmitter,
+        route_type: str,
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
-        await self._safe_run_repo("mark_running", agent_run_id, None)
-        await self._persist_plan(agent_run_id)
+        await self._safe_run_repo(
+            "mark_running_with_plan",
+            agent_run_id,
+            None,
+            self._plan_snapshot(),
+        )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
-        answer = await self._run_agent(user_message, history, emitter)
+        answer = await self._run_agent(
+            agent_run_id, user_message, history, emitter, route_type
+        )
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
-        await self._persist_answer(conversation_id, answer)
-        await self._safe_run_repo("mark_succeeded", agent_run_id)
+        completed = await self._try_run_repo(
+            "mark_succeeded_with_answer",
+            agent_run_id,
+            conversation_id,
+            answer,
+            len(answer),
+        )
+        if not completed:
+            await self._persist_answer(conversation_id, agent_run_id, answer)
+            await self._safe_run_repo("mark_succeeded", agent_run_id)
         # 终止事件携带 status 与答案内容,供同步等待路径(stream=False)直接取用。
         await emitter.emit(
             EventType.RUN_COMPLETED,
@@ -180,9 +246,11 @@ class AgentOrchestrator:
 
     async def _run_agent(
         self,
+        agent_run_id: str,
         user_message: str,
         history: list[dict[str, Any]],
         emitter: _EventEmitter,
+        route_type: str,
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
@@ -192,12 +260,16 @@ class AgentOrchestrator:
         deps = AgentDeps(
             retriever=self._deps.retriever,
             tool_router=self._deps.tool_router,
+            agent_run_id=agent_run_id,
             retrieval_top_k=self._deps.settings.retrieval_top_k,
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
         tokens: list[str] = []
         llm_started = False
+        quota_decision = await self._acquire_provider_quota(
+            agent_run_id, user_message, route_type
+        )
         try:
             async with self._agent.iter(
                 user_message,
@@ -212,13 +284,107 @@ class AgentOrchestrator:
                         )
                     elif Agent.is_call_tools_node(node):
                         await self._handle_tool_calls(node, run, emitter)
+            await self._settle_provider_usage(quota_decision, run, route_type)
             answer = (run.result.output if run.result else "") or "".join(
                 tokens
             )
             return answer.strip() or self._empty_answer(user_message)
+        except ProviderRateLimitError:
+            raise
         except Exception as exc:
+            provider_error = await self._record_provider_exception(exc)
+            if provider_error is not None:
+                reason = (
+                    "RATE_LIMITED"
+                    if provider_error.status_code == 429
+                    else "BACKING_OFF"
+                )
+                raise ProviderRateLimitError(
+                    reason, retry_after_ms=provider_error.retry_after_ms
+                ) from exc
             await self._emit_error(emitter, "agent", exc)
             return "".join(tokens).strip() or self._empty_answer(user_message)
+
+    async def _acquire_provider_quota(
+        self, agent_run_id: str, user_message: str, route_type: str
+    ) -> ProviderLimitDecision | None:
+        """Gate real provider calls before entering the Pydantic AI loop."""
+        identity = provider_identity_from_settings(self._deps.settings)
+        limiter = self._deps.provider_limiter
+        if identity.mock or limiter is None:
+            return None
+        request = ProviderLimitRequest(
+            provider=identity.provider,
+            model=identity.model,
+            estimated_input_tokens=estimate_input_tokens(user_message),
+            max_output_tokens=self._deps.settings.provider_default_max_output_tokens,
+            route_type=route_type,
+            agent_run_id=agent_run_id,
+        )
+        try:
+            decision = await limiter.acquire(request)
+        except Exception as exc:
+            raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
+        if decision.allowed:
+            return decision
+        budget_ms = self._deps.settings.provider_realtime_gate_wait_budget_ms
+        if (
+            route_type == "realtime"
+            and decision.retry_after_ms is not None
+            and decision.retry_after_ms <= budget_ms
+        ):
+            await asyncio.sleep(decision.retry_after_ms / 1000)
+            try:
+                decision = await limiter.acquire(request)
+            except Exception as exc:
+                raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
+            if decision.allowed:
+                return decision
+        raise ProviderRateLimitError(
+            decision.reason, retry_after_ms=decision.retry_after_ms
+        )
+
+    async def _settle_provider_usage(
+        self,
+        decision: ProviderLimitDecision | None,
+        run: Any,
+        route_type: str,
+    ) -> None:
+        """Settle actual provider usage after output usage becomes available."""
+        if decision is None or self._deps.provider_limiter is None:
+            return
+        identity = provider_identity_from_settings(self._deps.settings)
+        usage = _extract_usage(run)
+        try:
+            await self._deps.provider_limiter.settle_usage(
+                ProviderUsageSettlement(
+                    provider=identity.provider,
+                    model=identity.model,
+                    reserved_tokens=decision.reserved_tokens,
+                    actual_input_tokens=usage.get("input_tokens"),
+                    actual_output_tokens=usage.get("output_tokens"),
+                    route_type=route_type,
+                )
+            )
+        except Exception as exc:
+            raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
+
+    async def _record_provider_exception(self, exc: Exception) -> Any | None:
+        from app.llm.providers import map_provider_error
+
+        info = map_provider_error(exc)
+        if info is None or self._deps.provider_limiter is None:
+            return info
+        identity = provider_identity_from_settings(self._deps.settings)
+        if identity.mock:
+            return info
+        await self._deps.provider_limiter.record_provider_error(
+            identity.provider,
+            identity.model,
+            info.status_code,
+            info.retry_after_ms,
+        )
+        return info
 
     async def _handle_model_request(
         self,
@@ -229,6 +395,7 @@ class AgentOrchestrator:
         llm_started: bool,
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
+        aggregator = TokenAggregator()
         if not llm_started:
             await emitter.emit(EventType.LLM_GENERATING, {})
             llm_started = True
@@ -242,7 +409,12 @@ class AgentOrchestrator:
                 async for token in request_stream.stream_text(delta=True):
                     if token:
                         tokens.append(token)
-                        await emitter.emit(EventType.TOKEN, {"token": token})
+                        chunk = aggregator.push(token)
+                        if chunk:
+                            await emitter.emit(EventType.TOKEN, {"token": chunk})
+                tail = aggregator.flush()
+                if tail:
+                    await emitter.emit(EventType.TOKEN, {"token": tail})
         return llm_started
 
     async def _handle_tool_calls(
@@ -322,13 +494,13 @@ class AgentOrchestrator:
             "content": getattr(row, "content", ""),
         }
 
-    async def _persist_plan(self, agent_run_id: str) -> None:
-        """落库一份引擎快照(替代旧的规则计划),失败不阻断。"""
-        plan = {"engine": "pydantic-ai", "tools": list(_TOOL_NAMES)}
-        await self._safe_run_repo("set_plan", agent_run_id, plan)
+    @staticmethod
+    def _plan_snapshot() -> dict[str, Any]:
+        """Return an engine snapshot for run audit/debugging."""
+        return {"engine": "pydantic-ai", "tools": list(_TOOL_NAMES)}
 
     async def _persist_answer(
-        self, conversation_id: str, answer: str
+        self, conversation_id: str, agent_run_id: str, answer: str
     ) -> None:
         """把 assistant 回答落库(失败仅记录,不影响返回)。"""
         try:
@@ -337,6 +509,7 @@ class AgentOrchestrator:
                 role=MessageRole.ASSISTANT,
                 content=answer,
                 token_count=len(answer),
+                agent_run_id=agent_run_id,
             )
         except Exception as exc:
             log_with_fields(
@@ -358,6 +531,25 @@ class AgentOrchestrator:
         )
         return _FATAL_ANSWER
 
+    async def _handle_provider_rate_limit(
+        self,
+        agent_run_id: str,
+        emitter: _EventEmitter,
+        exc: ProviderRateLimitError,
+    ) -> None:
+        """Provider quota denial after run acceptance: fail fast and converge."""
+        data: dict[str, Any] = {
+            "stage": "provider_rate_limit",
+            "error": exc.reason,
+        }
+        if exc.retry_after_ms is not None:
+            data["retry_after_ms"] = exc.retry_after_ms
+        await emitter.emit(EventType.ERROR, data)
+        await self._safe_run_repo("mark_failed", agent_run_id, exc.reason)
+        await emitter.emit(
+            EventType.RUN_COMPLETED, {"status": RunStatus.FAILED.value}
+        )
+
     @staticmethod
     async def _emit_error(
         emitter: _EventEmitter, stage: str, exc: Exception
@@ -370,8 +562,13 @@ class AgentOrchestrator:
 
     async def _safe_run_repo(self, method: str, *args: Any) -> None:
         """安全调用 run_repo 的状态更新方法,异常仅记录不抛出。"""
+        await self._try_run_repo(method, *args)
+
+    async def _try_run_repo(self, method: str, *args: Any) -> bool:
+        """Call run_repo and return whether it succeeded."""
         try:
             await getattr(self._deps.run_repo, method)(*args)
+            return True
         except Exception as exc:
             log_with_fields(
                 logger,
@@ -380,7 +577,7 @@ class AgentOrchestrator:
                 method=method,
                 error=str(exc),
             )
-
+            return False
 
 def _to_message_history(
     history: list[dict[str, Any]],
@@ -401,3 +598,52 @@ def _to_message_history(
         elif role == "user":
             out.append(ModelRequest(parts=[UserPromptPart(content=content)]))
     return out
+
+
+def _extract_usage(run: Any) -> dict[str, int | None]:
+    """Best-effort Pydantic AI usage extraction without binding to one version."""
+    candidates: list[Any] = []
+    result = getattr(run, "result", None)
+    if result is not None:
+        candidates.extend(
+            [
+                getattr(result, "usage", None),
+                getattr(result, "usage_data", None),
+            ]
+        )
+    candidates.extend([getattr(run, "usage", None), getattr(run, "usage_data", None)])
+    for candidate in candidates:
+        if callable(candidate):
+            try:
+                candidate = candidate()
+            except TypeError:
+                continue
+        if candidate is None:
+            continue
+        input_tokens = _usage_field(
+            candidate,
+            "input_tokens",
+            "request_tokens",
+            "prompt_tokens",
+        )
+        output_tokens = _usage_field(
+            candidate,
+            "output_tokens",
+            "response_tokens",
+            "completion_tokens",
+        )
+        if input_tokens is not None or output_tokens is not None:
+            return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+    return {"input_tokens": None, "output_tokens": None}
+
+
+def _usage_field(obj: Any, *names: str) -> int | None:
+    for name in names:
+        value = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None

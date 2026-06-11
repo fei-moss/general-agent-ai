@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 import pytest
@@ -20,6 +21,7 @@ from app.bus.event_bus import InMemoryEventBus, channel_for
 from app.core.config import get_settings
 from app.core.enums import MessageRole, RunStatus
 from app.core.events import EventType
+from app.core.metrics import InMemoryMetrics
 from app.runtime.agent_factory import build_agent, build_mock_model
 from app.runtime.deps import RuntimeDeps
 from app.runtime.orchestrator import AgentOrchestrator
@@ -42,7 +44,11 @@ class _FakeToolRouter:
         self.calls: list[str] = []
 
     async def route(
-        self, query: str, tool_name: str | None = None
+        self,
+        query: str,
+        tool_name: str | None = None,
+        *,
+        agent_run_id: str = "",
     ) -> dict[str, Any]:
         self.calls.append(tool_name or "noop")
         return {
@@ -70,12 +76,14 @@ class _FakeMessageRepo:
         content: str,
         token_count: int = 0,
         meta: dict[str, Any] | None = None,
+        agent_run_id: str | None = None,
     ) -> Any:
         record = {
             "conversation_id": conversation_id,
             "role": role,
             "content": content,
             "token_count": token_count,
+            "agent_run_id": agent_run_id,
         }
         self.added.append(record)
         return record
@@ -84,8 +92,9 @@ class _FakeMessageRepo:
 class _FakeRunRepo:
     """内存运行仓储:记录状态转换。"""
 
-    def __init__(self) -> None:
+    def __init__(self, message_repo: _FakeMessageRepo | None = None) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self._message_repo = message_repo
 
     async def mark_running(
         self, agent_run_id: str, intent: Any | None = None
@@ -101,6 +110,33 @@ class _FakeRunRepo:
     async def mark_failed(self, agent_run_id: str, error: str) -> None:
         self.calls.append(("mark_failed", (agent_run_id, error)))
 
+    async def mark_running_with_plan(
+        self, agent_run_id: str, intent: Any | None, plan: dict[str, Any]
+    ) -> None:
+        self.calls.append(("mark_running_with_plan", (agent_run_id, intent, plan)))
+
+    async def mark_succeeded_with_answer(
+        self,
+        agent_run_id: str,
+        conversation_id: str,
+        answer: str,
+        token_count: int,
+    ) -> None:
+        self.calls.append(
+            (
+                "mark_succeeded_with_answer",
+                (agent_run_id, conversation_id, answer, token_count),
+            )
+        )
+        if self._message_repo is not None:
+            await self._message_repo.add(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=answer,
+                token_count=token_count,
+                agent_run_id=agent_run_id,
+            )
+
 
 @pytest.fixture()
 def deps() -> tuple[
@@ -108,7 +144,7 @@ def deps() -> tuple[
 ]:
     bus = InMemoryEventBus()
     message_repo = _FakeMessageRepo()
-    run_repo = _FakeRunRepo()
+    run_repo = _FakeRunRepo(message_repo)
     runtime = RuntimeDeps(
         retriever=_FakeRetriever(
             [{"id": "d1", "text": "向量库用于近邻检索", "score": 0.9}]
@@ -224,11 +260,15 @@ async def test_knowledge_qa_run_emits_full_event_sequence_and_persists(deps):
     assert persisted["role"] is MessageRole.ASSISTANT
     assert persisted["content"] == answer
     assert persisted["conversation_id"] == "conv-1"
+    assert persisted["agent_run_id"] == agent_run_id
 
     # Assert:运行状态收敛为成功
     methods = [name for name, _ in run_repo.calls]
-    assert "mark_running" in methods
-    assert "mark_succeeded" in methods
+    assert "mark_running_with_plan" in methods
+    assert "mark_succeeded_with_answer" in methods
+    assert "mark_running" not in methods
+    assert "set_plan" not in methods
+    assert "mark_succeeded" not in methods
     assert "mark_failed" not in methods
 
 
@@ -275,7 +315,13 @@ async def test_run_returns_answer_even_when_run_repo_fails(deps):
     runtime, _bus, message_repo, _ = deps
 
     class _BrokenRunRepo(_FakeRunRepo):
+        async def mark_running_with_plan(self, *a, **k):
+            raise RuntimeError("db down")
+
         async def mark_running(self, *a, **k):
+            raise RuntimeError("db down")
+
+        async def mark_succeeded_with_answer(self, *a, **k):
             raise RuntimeError("db down")
 
         async def mark_succeeded(self, *a, **k):
@@ -300,3 +346,23 @@ async def test_run_returns_answer_even_when_run_repo_fails(deps):
     # Assert:仓储故障被隔离,仍返回有效答案且消息落库
     assert isinstance(answer, str) and answer.strip()
     assert len(message_repo.added) == 1
+
+
+async def test_orchestrator_records_ttft_on_first_token(deps):
+    runtime, _bus, _message_repo, _run_repo = deps
+    metrics = InMemoryMetrics()
+    runtime.metrics = metrics
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(build_mock_model())
+    )
+
+    await orchestrator.run(
+        agent_run_id="run-metrics-1",
+        conversation_id="conv-metrics",
+        trace_id="trace-metrics",
+        user_message="测试 TTFT",
+        accepted_at=time.time() - 0.01,
+    )
+
+    assert metrics.histograms["chat_ttft_seconds"]
+    assert metrics.histograms["chat_ttft_seconds"][0][0] >= 0

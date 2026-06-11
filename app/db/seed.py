@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
+
 from app.core.enums import MessageRole
 from app.core.ids import new_conversation_id
 from app.core.logging import configure_logging, get_logger
@@ -49,6 +51,36 @@ async def _ensure_tables() -> None:
     """确保业务表存在(对空库友好,幂等)。"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            await conn.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_message_assistant_per_run
+                        ON message (agent_run_id, role)
+                        WHERE agent_run_id IS NOT NULL AND role = 'ASSISTANT';
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE IF EXISTS idempotency_record
+                        DROP CONSTRAINT IF EXISTS idempotency_record_agent_run_id_fkey;
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE IF EXISTS idempotency_record
+                        ADD CONSTRAINT idempotency_record_agent_run_id_fkey
+                        FOREIGN KEY (agent_run_id)
+                        REFERENCES agent_run(id)
+                        ON DELETE CASCADE
+                        DEFERRABLE INITIALLY DEFERRED;
+                    """
+                )
+            )
 
 
 def load_knowledge_docs() -> list[dict[str, Any]]:

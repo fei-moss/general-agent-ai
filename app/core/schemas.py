@@ -31,6 +31,7 @@ class ChatAccepted(BaseModel):
     status: RunStatus
     stream_url: str
     ws_url: str
+    route_type: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -40,6 +41,7 @@ class MessageOut(BaseModel):
 
     id: str
     conversation_id: str
+    agent_run_id: str | None = None
     role: MessageRole
     content: str
     token_count: int
@@ -69,8 +71,11 @@ class ToolCallOut(BaseModel):
     tool_name: str
     arguments: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
+    attempt: int = 0
     latency_ms: int
     status: TaskStatus
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     created_at: datetime
 
 

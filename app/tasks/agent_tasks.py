@@ -31,6 +31,7 @@ from app.core.logging import get_logger, log_with_fields, set_trace_id
 from app.tasks import run_store
 from app.tasks.async_bridge import run_coro
 from app.tasks.celery_app import RETRY_KWARGS
+from app.runtime.provider_limits import ProviderRateLimitError
 
 logger = get_logger(__name__)
 
@@ -165,6 +166,16 @@ def run_agent_task(
         return run_coro(
             _execute(agent_run_id, conversation_id, trace_id, user_message)
         )
+    except ProviderRateLimitError as exc:
+        if self.request.retries < self.max_retries:
+            countdown = max(1, int((exc.retry_after_ms or 1000) / 1000))
+            raise self.retry(exc=exc, countdown=countdown)
+        error = f"{type(exc).__name__}: {exc.reason}"
+        try:
+            run_coro(_publish_error(agent_run_id, trace_id, error))
+        except Exception:
+            pass
+        return {"status": "FAILED", "error": error}
     except Exception as exc:  # noqa: BLE001 顶层兜底:发事件 + 失败状态 + 重试
         error = f"{type(exc).__name__}: {exc}"
         log_with_fields(

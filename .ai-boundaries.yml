@@ -1,0 +1,35 @@
+# AI change boundaries for this repository.
+#
+# The checker treats entries as path prefixes. Keep this file conservative:
+# docs/tests/spec work is allowed by default, core runtime and operational files
+# require owner approval, and local/private artifacts are forbidden.
+
+allowed:
+  - README.md
+  - docs/
+  - tests/
+  - scripts/sample_knowledge.json
+
+approval_required:
+  - AGENTS.md
+  - .ai-boundaries.yml
+  - .github/
+  - scripts/
+  - app/api/
+  - app/runtime/
+  - app/bus/
+  - app/tasks/
+  - app/db/
+  - app/core/models.py
+  - app/core/schemas.py
+  - app/core/events.py
+  - requirements.txt
+  - docker-compose.yml
+
+forbidden:
+  - .git/
+  - .artifacts/
+  - .env
+  - secrets/
+  - private-keys/
+  - production-dumps/

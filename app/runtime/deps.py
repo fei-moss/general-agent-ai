@@ -14,6 +14,9 @@ from typing import Any, Protocol, runtime_checkable
 from app.core.config import Settings, get_settings
 from app.core.events import AgentEvent
 from app.core.logging import get_logger, log_with_fields
+from app.core.metrics import Metrics
+from app.core.secrets import SecretProvider, build_secret_provider
+from app.runtime.provider_limits import build_provider_limiter
 
 logger = get_logger(__name__)
 
@@ -35,7 +38,11 @@ class ToolRouter(Protocol):
     """工具路由:挑选并执行合适的工具。"""
 
     async def route(
-        self, query: str, tool_name: str | None = None
+        self,
+        query: str,
+        tool_name: str | None = None,
+        *,
+        agent_run_id: str = "",
     ) -> dict[str, Any]:
         """执行工具并返回结构化结果,至少含 tool_name/result/status。"""
         ...
@@ -45,7 +52,7 @@ class ToolRouter(Protocol):
 class EventBusLike(Protocol):
     """事件总线:发布事件到指定 channel。"""
 
-    async def publish(self, channel: str, event: AgentEvent) -> None:
+    async def publish(self, channel: str, event: AgentEvent) -> AgentEvent | None:
         """发布一条事件。"""
         ...
 
@@ -67,6 +74,7 @@ class MessageRepository(Protocol):
         content: str,
         token_count: int = 0,
         meta: dict[str, Any] | None = None,
+        agent_run_id: str | None = None,
     ) -> Any:
         """新增一条消息并返回。"""
         ...
@@ -86,8 +94,24 @@ class RunRepository(Protocol):
         """写入计划快照。"""
         ...
 
+    async def mark_running_with_plan(
+        self, agent_run_id: str, intent: Any | None, plan: dict[str, Any]
+    ) -> None:
+        """置为运行中并写入计划快照。"""
+        ...
+
     async def mark_succeeded(self, agent_run_id: str) -> None:
         """置为成功并记录结束时间。"""
+        ...
+
+    async def mark_succeeded_with_answer(
+        self,
+        agent_run_id: str,
+        conversation_id: str,
+        answer: str,
+        token_count: int,
+    ) -> None:
+        """写入最终 assistant 消息并置为成功。"""
         ...
 
     async def mark_failed(self, agent_run_id: str, error: str) -> None:
@@ -108,9 +132,19 @@ class RuntimeDeps:
     message_repo: MessageRepository
     run_repo: RunRepository
     settings: Settings
+    metrics: Metrics | None = None
+    provider_limiter: Any | None = None
+    secret_provider: SecretProvider | None = None
 
 
-def build_deps(session: Any | None = None) -> RuntimeDeps:
+def build_deps(
+    session: Any | None = None,
+    *,
+    event_bus: EventBusLike | None = None,
+    redis_client: Any | None = None,
+    provider_limiter: Any | None = None,
+    secret_provider: SecretProvider | None = None,
+) -> RuntimeDeps:
     """装配真实依赖。
 
     参数:
@@ -120,11 +154,19 @@ def build_deps(session: Any | None = None) -> RuntimeDeps:
     任何兄弟模块尚未就位时抛出清晰的 ImportError,便于集成期定位缺失。
     """
     settings = get_settings()
+    if redis_client is None:
+        from redis.asyncio import Redis
+
+        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
     try:
         retriever = _build_retriever(settings)
-        tool_router = _build_tool_router(settings)
-        event_bus = _build_event_bus(settings)
+        tool_router = _build_tool_router(settings, session)
+        event_bus = event_bus or _build_event_bus(settings, redis_client)
         message_repo, run_repo = _build_repos(session)
+        secret_provider = secret_provider or build_secret_provider(settings)
+        provider_limiter = provider_limiter or build_provider_limiter(
+            settings, redis_client=redis_client
+        )
     except ImportError as exc:
         log_with_fields(
             logger,
@@ -141,6 +183,8 @@ def build_deps(session: Any | None = None) -> RuntimeDeps:
         message_repo=message_repo,
         run_repo=run_repo,
         settings=settings,
+        provider_limiter=provider_limiter,
+        secret_provider=secret_provider,
     )
 
 
@@ -156,7 +200,7 @@ def _build_retriever(settings: Settings) -> RAGRetriever:
     return RetrieverAdapter()
 
 
-def _build_tool_router(settings: Settings) -> ToolRouter:
+def _build_tool_router(settings: Settings, session: Any | None = None) -> ToolRouter:
     """装配工具路由。
 
     app.tools.router.ToolRouter.route(plan_step) 返回 Tool 且 execute 分离;
@@ -164,14 +208,16 @@ def _build_tool_router(settings: Settings) -> ToolRouter:
     """
     from app.runtime.adapters import ToolRouterAdapter
 
-    return ToolRouterAdapter()
+    return ToolRouterAdapter(log_sink=_build_tool_log_sink(session))
 
 
-def _build_event_bus(settings: Settings) -> EventBusLike:
-    """装配事件总线(app.bus.event_bus 提供单例工厂)。"""
-    from app.bus.event_bus import get_event_bus
+def _build_event_bus(
+    settings: Settings, redis_client: Any | None = None
+) -> EventBusLike:
+    """装配 Redis Stream 事件总线。"""
+    from app.bus.stream_bus import StreamBus
 
-    return get_event_bus()
+    return StreamBus(settings.redis_url, redis_client=redis_client)
 
 
 def _build_repos(
@@ -189,3 +235,20 @@ def _build_repos(
     )
 
     return MessageRepoAdapter(session), RunRepoAdapter(session)
+
+
+def _build_tool_log_sink(session: Any | None):
+    """Build a ToolCallLog sink for ToolRouter audit writes."""
+
+    async def sink(log: Any) -> None:
+        if session is not None:
+            session.add(log)
+            await session.commit()
+            return
+        from app.db.session import async_session_factory
+
+        async with async_session_factory() as scoped:
+            scoped.add(log)
+            await scoped.commit()
+
+    return sink

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from app.core.enums import TaskStatus
@@ -141,20 +142,34 @@ class ToolRouter:
         不向上抛异常,保证单工具失败不拖垮整个 run。
         """
         started = time.perf_counter()
+        started_at = datetime.now(timezone.utc)
         try:
             validate_args(tool.parameters, args)
         except ToolValidationError as exc:
             return await self._finalize(
-                tool, args, agent_run_id, started, error=str(exc)
+                tool,
+                args,
+                agent_run_id,
+                started,
+                started_at,
+                attempt=0,
+                error=str(exc),
             )
-        result, error = await self._run_with_retries(tool, args)
+        result, error, attempt = await self._run_with_retries(tool, args)
         return await self._finalize(
-            tool, args, agent_run_id, started, result=result, error=error
+            tool,
+            args,
+            agent_run_id,
+            started,
+            started_at,
+            attempt=attempt,
+            result=result,
+            error=error,
         )
 
     async def _run_with_retries(
         self, tool: Tool, args: dict[str, Any]
-    ) -> tuple[dict[str, Any] | None, str | None]:
+    ) -> tuple[dict[str, Any] | None, str | None, int]:
         """带超时与指数退避重试地运行工具。"""
         last_error: str | None = None
         for attempt in range(self._max_retries + 1):
@@ -162,13 +177,13 @@ class ToolRouter:
                 result = await asyncio.wait_for(
                     tool.run(args), timeout=self._timeout_s
                 )
-                return result, None
+                return result, None, attempt
             except asyncio.TimeoutError:
                 last_error = f"工具 {tool.name} 执行超时(>{self._timeout_s}s)"
             except Exception as exc:  # noqa: BLE001 - 错误隔离
                 last_error = f"工具 {tool.name} 执行异常: {exc}"
             await self._sleep_before_retry(tool.name, attempt, last_error)
-        return None, last_error
+        return None, last_error, self._max_retries
 
     async def _sleep_before_retry(
         self, tool_name: str, attempt: int, error: str | None
@@ -193,15 +208,27 @@ class ToolRouter:
         args: dict[str, Any],
         agent_run_id: str,
         started: float,
+        started_at: datetime,
         *,
+        attempt: int,
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> dict[str, Any]:
         """组装返回结果、写审计日志,并返回结构化结果。"""
         latency_ms = int((time.perf_counter() - started) * 1000)
+        finished_at = datetime.now(timezone.utc)
         status = TaskStatus.ERROR if error else TaskStatus.DONE
         await self._write_log(
-            tool.name, args, result, error, latency_ms, status, agent_run_id
+            tool.name,
+            args,
+            result,
+            error,
+            attempt,
+            latency_ms,
+            status,
+            agent_run_id,
+            started_at,
+            finished_at,
         )
         if error:
             return {"ok": False, "tool": tool.name, "error": error}
@@ -213,9 +240,12 @@ class ToolRouter:
         args: dict[str, Any],
         result: dict[str, Any] | None,
         error: str | None,
+        attempt: int,
         latency_ms: int,
         status: TaskStatus,
         agent_run_id: str,
+        started_at: datetime,
+        finished_at: datetime,
     ) -> None:
         """通过注入的 sink 写 ToolCallLog;sink 自身异常被隔离。"""
         if self._log_sink is None:
@@ -226,8 +256,11 @@ class ToolRouter:
             tool_name=tool_name,
             arguments=args,
             result=result if error is None else {"error": error},
+            attempt=attempt,
             latency_ms=latency_ms,
             status=status,
+            started_at=started_at,
+            finished_at=finished_at,
         )
         try:
             await self._log_sink(log)

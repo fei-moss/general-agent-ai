@@ -13,16 +13,18 @@ from app.bus.event_bus import (
     get_event_bus,
     set_event_bus,
 )
+from app.bus.stream_bus import StreamBus
 
 
-def create_event_bus(redis_url: str | None = None) -> RedisEventBus:
-    """按 redis_url 构造 RedisEventBus(lifespan 约定的工厂入口)。"""
-    return RedisEventBus(redis_url)
+def create_event_bus(redis_url: str | None = None, redis_client=None) -> StreamBus:
+    """按 redis_url 构造 Redis StreamBus(lifespan 约定的工厂入口)。"""
+    return StreamBus(redis_url, redis_client=redis_client)
 
 
 __all__ = [
     "InMemoryEventBus",
     "RedisEventBus",
+    "StreamBus",
     "channel_for",
     "create_event_bus",
     "get_event_bus",

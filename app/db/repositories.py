@@ -19,10 +19,11 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import IntentType, MessageRole, RunStatus, TaskStatus
-from app.core.ids import new_conversation_id, new_run_id
+from app.core.ids import _new_id, new_conversation_id, new_run_id
 from app.core.models import (
     AgentRun,
     Conversation,
+    IdempotencyRecord,
     Message,
     TaskState,
     ToolCallLog,
@@ -137,11 +138,13 @@ class MessageRepository(_BaseRepository):
         content: str,
         token_count: int = 0,
         meta: dict[str, Any] | None = None,
+        agent_run_id: str | None = None,
     ) -> Message:
         """追加一条消息并返回持久化后的实体。"""
         entity = Message(
             id=message_id,
             conversation_id=conversation_id,
+            agent_run_id=agent_run_id,
             role=role,
             content=content,
             token_count=token_count,
@@ -248,6 +251,41 @@ class AgentRunRepository(_BaseRepository):
         return list(await self._scalars(stmt, "AgentRun"))
 
 
+class IdempotencyRepository(_BaseRepository):
+    """幂等键仓储。"""
+
+    async def create(
+        self,
+        user_id: str,
+        idempotency_key: str,
+        request_hash: str,
+        agent_run_id: str,
+        response: dict[str, Any],
+        record_id: str | None = None,
+    ) -> IdempotencyRecord:
+        """写入一条幂等记录。"""
+        entity = IdempotencyRecord(
+            id=record_id or _new_id("idem_"),
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            agent_run_id=agent_run_id,
+            response=response,
+        )
+        self._session.add(entity)
+        return await self._commit_refresh(entity, "IdempotencyRecord")
+
+    async def get(
+        self, user_id: str, idempotency_key: str
+    ) -> IdempotencyRecord | None:
+        """按用户和幂等键读取记录。"""
+        stmt = select(IdempotencyRecord).where(
+            IdempotencyRecord.user_id == user_id,
+            IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        return await self._scalar(stmt, "IdempotencyRecord")
+
+
 class TaskStateRepository(_BaseRepository):
     """子任务状态仓储,支持重试(attempt 自增)与恢复(payload/result)。"""
 
@@ -322,8 +360,11 @@ class ToolCallLogRepository(_BaseRepository):
         tool_name: str,
         arguments: dict[str, Any] | None = None,
         result: dict[str, Any] | None = None,
+        attempt: int = 0,
         latency_ms: int = 0,
         status: TaskStatus = TaskStatus.DONE,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
     ) -> ToolCallLog:
         """写入一条工具调用日志并返回。"""
         entity = ToolCallLog(
@@ -332,8 +373,11 @@ class ToolCallLogRepository(_BaseRepository):
             tool_name=tool_name,
             arguments=arguments,
             result=result,
+            attempt=attempt,
             latency_ms=latency_ms,
             status=status,
+            started_at=started_at,
+            finished_at=finished_at,
         )
         self._session.add(entity)
         return await self._commit_refresh(entity, "ToolCallLog")

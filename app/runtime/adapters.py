@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Awaitable, Callable
+
+from app.core.models import ToolCallLog
 
 from app.core.enums import MessageRole, RunStatus
 from app.core.ids import _new_id
@@ -16,7 +18,11 @@ from app.core.ids import _new_id
 class RetrieverAdapter:
     """把 app.rag.retriever.RAGRetriever 适配为 retrieve -> list[dict]。"""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        log_sink: Callable[[ToolCallLog], Awaitable[None]] | None = None,
+    ) -> None:
         from app.rag.retriever import RAGRetriever as RealRetriever
 
         self._impl = RealRetriever()
@@ -66,16 +72,24 @@ class ToolRouterAdapter:
     tool_name 缺失时用 _infer_tool_name 做确定性自动选择。
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        log_sink: Callable[[ToolCallLog], Awaitable[None]] | None = None,
+    ) -> None:
         # 触发内置工具注册到全局 registry(import 即注册),避免 ToolRouter
         # 因外部未导入 builtins 而拿到空注册表(KeyError: 未找到工具)。
         import app.tools.builtins  # noqa: F401
         from app.tools.router import ToolRouter as RealToolRouter
 
-        self._impl = RealToolRouter()
+        self._impl = RealToolRouter(log_sink=log_sink)
 
     async def route(
-        self, query: str, tool_name: str | None = None
+        self,
+        query: str,
+        tool_name: str | None = None,
+        *,
+        agent_run_id: str = "",
     ) -> dict[str, Any]:
         """解析并执行工具,返回结构化结果。"""
         resolved = tool_name or _infer_tool_name(query)
@@ -87,7 +101,7 @@ class ToolRouterAdapter:
         )
         plan_step = {"tool": resolved, "args": args}
         tool = self._impl.route(plan_step)
-        raw = await self._impl.execute(tool, args)
+        raw = await self._impl.execute(tool, args, agent_run_id=agent_run_id)
         ok = bool(raw.get("ok"))
         return {
             "tool_name": raw.get("tool", tool_name),
@@ -145,6 +159,7 @@ class MessageRepoAdapter(_SessionScopedRepo):
         content: str,
         token_count: int = 0,
         meta: dict[str, Any] | None = None,
+        agent_run_id: str | None = None,
     ) -> Any:
         """新增消息(契约 add -> 真实 create,补一个 message_id)。"""
         from app.db.repositories import MessageRepository
@@ -159,6 +174,7 @@ class MessageRepoAdapter(_SessionScopedRepo):
                 content=content,
                 token_count=token_count,
                 meta=meta,
+                agent_run_id=agent_run_id,
             )
 
 
@@ -177,6 +193,27 @@ class RunRepoAdapter(_SessionScopedRepo):
                 await repo.set_intent(agent_run_id, intent)
             await repo.update_status(agent_run_id, RunStatus.RUNNING)
 
+    async def mark_running_with_plan(
+        self, agent_run_id: str, intent: Any | None, plan: dict[str, Any]
+    ) -> None:
+        """置运行中并写计划,用一个短事务完成。"""
+        from app.core.models import AgentRun
+        from app.db.repositories import _utcnow
+        from app.db.state_machine import assert_run_transition
+
+        async with self._session_ctx() as session:
+            entity = await session.get(AgentRun, agent_run_id)
+            if entity is None:
+                return
+            assert_run_transition(entity.status, RunStatus.RUNNING)
+            entity.status = RunStatus.RUNNING
+            if entity.started_at is None:
+                entity.started_at = _utcnow()
+            if intent is not None:
+                entity.intent = intent
+            entity.plan = plan
+            await session.commit()
+
     async def set_plan(self, agent_run_id: str, plan: dict[str, Any]) -> None:
         """写入计划快照。"""
         from app.db.repositories import AgentRunRepository
@@ -192,6 +229,36 @@ class RunRepoAdapter(_SessionScopedRepo):
         async with self._session_ctx() as session:
             repo = AgentRunRepository(session)
             await repo.update_status(agent_run_id, RunStatus.SUCCEEDED)
+
+    async def mark_succeeded_with_answer(
+        self,
+        agent_run_id: str,
+        conversation_id: str,
+        answer: str,
+        token_count: int,
+    ) -> None:
+        """写 assistant 最终消息并置成功,用一个短事务完成。"""
+        from app.core.models import AgentRun, Message
+        from app.db.repositories import _utcnow
+        from app.db.state_machine import assert_run_transition
+
+        async with self._session_ctx() as session:
+            message = Message(
+                id=_new_id("msg_"),
+                conversation_id=conversation_id,
+                agent_run_id=agent_run_id,
+                role=MessageRole.ASSISTANT,
+                content=answer,
+                token_count=token_count,
+                meta={},
+            )
+            session.add(message)
+            run = await session.get(AgentRun, agent_run_id)
+            if run is not None:
+                assert_run_transition(run.status, RunStatus.SUCCEEDED)
+                run.status = RunStatus.SUCCEEDED
+                run.finished_at = _utcnow()
+            await session.commit()
 
     async def mark_failed(self, agent_run_id: str, error: str) -> None:
         """置失败并记录错误。"""

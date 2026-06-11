@@ -13,12 +13,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 import httpx
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.core.secrets import build_secret_provider
 
 logger = get_logger(__name__)
 
@@ -26,6 +28,52 @@ logger = get_logger(__name__)
 _MOCK_CHUNK_SIZE = 2
 # OpenAI/Anthropic SSE 流的结束标记
 _SSE_DONE = "[DONE]"
+
+
+@dataclass(frozen=True)
+class ProviderErrorInfo:
+    status_code: int
+    retry_after_ms: int | None = None
+    reason: str = "provider_error"
+
+
+def map_provider_error(exc: Exception) -> ProviderErrorInfo | None:
+    """Map provider/SDK exceptions to sanitized retry metadata when possible."""
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code is None:
+        status_code = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if status_code is None and isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        response = exc.response
+    try:
+        status_code = int(status_code)
+    except (TypeError, ValueError):
+        return None
+    if status_code < 429 and status_code < 500:
+        return None
+    retry_after_ms = _extract_retry_after_ms(response, exc)
+    reason = "provider_rate_limited" if status_code == 429 else "provider_transient"
+    return ProviderErrorInfo(
+        status_code=status_code,
+        retry_after_ms=retry_after_ms,
+        reason=reason,
+    )
+
+
+def _extract_retry_after_ms(response: Any, exc: Exception) -> int | None:
+    value = None
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        value = headers.get("retry-after") or headers.get("Retry-After")
+    value = value or getattr(exc, "retry_after", None)
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, int(seconds * 1000))
 
 
 def _extract_question(messages: list[dict[str, Any]]) -> str:
@@ -106,6 +154,7 @@ class OpenAICompatProvider:
     def __init__(self, settings: Settings | None = None) -> None:
         """从配置读取 base_url / api_key / model 与超时。"""
         self._settings = settings or get_settings()
+        self._secret_provider = build_secret_provider(self._settings)
         self._timeout = self._settings.request_timeout_s
 
     @property
@@ -129,11 +178,11 @@ class OpenAICompatProvider:
 
     def _headers(self) -> dict[str, str]:
         """构造带鉴权的请求头。缺少 key 时抛出明确错误。"""
-        api_key = self._settings.openai_api_key
+        api_key = self._secret_provider.get_secret("openai_api_key")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY 未配置,无法调用 OpenAI 兼容端点")
         return {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {api_key.reveal()}",
             "Content-Type": "application/json",
         }
 
@@ -206,6 +255,7 @@ class AnthropicProvider:
     def __init__(self, settings: Settings | None = None) -> None:
         """从配置读取 api_key / model 与超时。"""
         self._settings = settings or get_settings()
+        self._secret_provider = build_secret_provider(self._settings)
         self._timeout = self._settings.request_timeout_s
         self._base_url = "https://api.anthropic.com/v1"
 
@@ -216,11 +266,11 @@ class AnthropicProvider:
 
     def _headers(self) -> dict[str, str]:
         """构造带鉴权的请求头。缺少 key 时抛出明确错误。"""
-        api_key = self._settings.anthropic_api_key
+        api_key = self._secret_provider.get_secret("anthropic_api_key")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY 未配置,无法调用 Anthropic 端点")
         return {
-            "x-api-key": api_key,
+            "x-api-key": api_key.reveal(),
             "anthropic-version": self._API_VERSION,
             "Content-Type": "application/json",
         }
@@ -319,15 +369,16 @@ def _sync_provider_keys_to_env(settings: Settings) -> None:
     """
     import os
 
+    secret_provider = build_secret_provider(settings)
     mapping = {
-        "OPENAI_API_KEY": settings.openai_api_key,
-        "ANTHROPIC_API_KEY": settings.anthropic_api_key,
-        "GEMINI_API_KEY": settings.gemini_api_key,
-        "DASHSCOPE_API_KEY": settings.dashscope_api_key,
+        "OPENAI_API_KEY": secret_provider.get_secret("openai_api_key"),
+        "ANTHROPIC_API_KEY": secret_provider.get_secret("anthropic_api_key"),
+        "GEMINI_API_KEY": secret_provider.get_secret("gemini_api_key"),
+        "DASHSCOPE_API_KEY": secret_provider.get_secret("dashscope_api_key"),
     }
-    for env_name, value in mapping.items():
-        if value and not os.environ.get(env_name):
-            os.environ[env_name] = value
+    for env_name, secret in mapping.items():
+        if secret and not os.environ.get(env_name):
+            os.environ[env_name] = secret.reveal()
 
 
 def _extract_litellm_delta(chunk: Any) -> str:

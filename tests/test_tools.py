@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.tools.builtins import CalculatorTool, ClockTool, safe_eval
+from app.tools.router import ToolRouter
 
 
 # --- safe_eval 安全求值 ---
@@ -146,3 +147,28 @@ def test_clock_exposes_name_and_empty_required_params():
     # Act / Assert
     assert tool.name == "clock"
     assert tool.parameters["required"] == []
+
+
+async def test_tool_router_writes_audit_log_with_run_id_and_timing():
+    logs = []
+
+    async def sink(log):
+        logs.append(log)
+
+    router = ToolRouter(log_sink=sink, max_retries=0)
+    tool = CalculatorTool()
+
+    out = await router.execute(
+        tool,
+        {"expression": "2 + 2"},
+        agent_run_id="run-audit-1",
+    )
+
+    assert out["ok"] is True
+    assert len(logs) == 1
+    log = logs[0]
+    assert log.agent_run_id == "run-audit-1"
+    assert log.tool_name == "calculator"
+    assert log.attempt == 0
+    assert log.started_at is not None
+    assert log.finished_at is not None

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     # --- 数据库 / 中间件 ---
     db_url: str = "postgresql+asyncpg://postgres:postgres@localhost:55432/agent"
+    db_pool_size: int = 20
+    db_max_overflow: int = 0
+    db_pool_pre_ping: bool = False
+    db_pool_recycle_s: int = 1800
     redis_url: str = "redis://localhost:55379/0"
 
     # --- Celery ---
@@ -39,8 +43,10 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"  # mock | openai | qwen | anthropic | gemini
     openai_base_url: str = "https://api.openai.com/v1"
     openai_api_key: str = ""
+    openai_api_key_file: str = ""
     openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str = ""
+    anthropic_api_key_file: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
     # 通义千问 Qwen:走 DashScope 的 OpenAI 兼容端点(key 见 dashscope_api_key)
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -57,7 +63,10 @@ class Settings(BaseSettings):
     litellm_fallbacks: str = ""
     # 各厂商 key(litellm 通过标准环境变量读取;留空则沿用已注入 os.environ 的值)
     gemini_api_key: str = ""
+    gemini_api_key_file: str = ""
     dashscope_api_key: str = ""  # 通义千问 Qwen (DashScope)
+    dashscope_api_key_file: str = ""
+    provider_secret_strict: bool = True
 
     @property
     def litellm_fallback_list(self) -> list[str]:
@@ -70,6 +79,17 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     embedding_dim: int = 256
     request_timeout_s: float = 60.0
+    chat_runtime_mode: str = "auto"  # celery | realtime | auto
+    realtime_runner_max_concurrency: int = 1000
+    provider_rate_limit_enabled: bool = True
+    provider_rate_limit_fail_open: bool = False
+    provider_rate_limits_json: str = "{}"
+    provider_default_rpm: int = 100000
+    provider_default_tpm: int = 1000000
+    provider_default_max_output_tokens: int = 1024
+    provider_realtime_preflight_timeout_ms: int = 100
+    provider_realtime_gate_wait_budget_ms: int = 1000
+    provider_realtime_degrade_to_batch: bool = True
 
     # --- 服务 ---
     app_host: str = "0.0.0.0"

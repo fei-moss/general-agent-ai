@@ -1,7 +1,7 @@
 """流式事件契约。
 
-定义 Agent 执行过程中通过 Redis Pub/Sub 广播、并经 SSE/WebSocket 推送
-给客户端的事件模型 AgentEvent。所有事件按 seq 严格递增,支持断线回放。
+定义 Agent 执行过程中通过 Redis Stream/PubSub 广播、并经 SSE/WebSocket 推送
+给客户端的事件模型 AgentEvent。新流式回放以 Redis Stream id 为准,seq 仅兼容旧路径。
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ class AgentEvent(BaseModel):
         agent_run_id: 所属运行 ID。
         trace_id: 链路追踪 ID。
         type: 事件类型。
+        stream_id: Redis Stream entry id,用于 SSE id 与断线回放游标。
         seq: 同一运行内单调递增序号,用于排序与回放去重。
         ts: 事件产生的 unix 时间戳(秒,float)。
         data: 事件载荷,结构随 type 而定。
@@ -49,6 +50,7 @@ class AgentEvent(BaseModel):
     agent_run_id: str
     trace_id: str
     type: EventType
+    stream_id: str | None = None
     seq: int
     ts: float = Field(default_factory=time.time)
     data: dict[str, Any] = Field(default_factory=dict)
@@ -69,6 +71,6 @@ class AgentEvent(BaseModel):
         """
         return {
             "event": self.type.value,
-            "id": str(self.seq),
+            "id": self.stream_id or str(self.seq),
             "data": self.to_json(),
         }
