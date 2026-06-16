@@ -3,6 +3,7 @@
 ## Plan Header
 
 - Specification: `docs/specifications/2026-06-11-high-performance-chat-runtime-specification.md`
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Detailed P0 guardrail plan: `docs/implementation-plans/2026-06-11-provider-rate-limit-and-secret-management-implementation-plan.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Target branch/baseline: 当前 `general-agent-ai` 工作区。

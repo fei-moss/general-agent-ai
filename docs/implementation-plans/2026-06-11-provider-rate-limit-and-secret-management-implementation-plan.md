@@ -3,6 +3,7 @@
 ## Plan Header
 
 - Specification: `docs/specifications/2026-06-11-provider-rate-limit-and-secret-management-specification.md`
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Related architecture: `docs/ARCHITECTURE.md`
 - Related runtime spec: `docs/specifications/2026-06-11-high-performance-chat-runtime-specification.md`
 - Target branch/baseline: 当前 `general-agent-ai` 工作区。

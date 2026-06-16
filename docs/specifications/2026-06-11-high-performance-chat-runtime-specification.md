@@ -3,6 +3,7 @@
 ## Context
 
 - Spec ID: `SPEC-CHAT-RUNTIME-001`
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Related guardrail IDs:
   - `SPEC-PROVIDER-RATELIMIT-001`: provider/model 级 Redis Lua RPM/TPM 全局限流。
   - `SPEC-SECRET-MANAGEMENT-001`: 生产 LLM provider 密钥从 Secret Manager 注入, 不进入仓库、日志或持久化数据。

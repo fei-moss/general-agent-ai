@@ -56,8 +56,20 @@ scripts/     seed 等脚本
 tests/       pytest 用例
 ```
 
-## 测试
+## Harness 与测试
+
+本项目的 AI-first 治理入口:
+
+- `AGENTS.md`: 项目级 AI 工作规则; `CLAUDE.md` 指向同一文件, 避免不同工具规则分叉。
+- `.ai-boundaries.yml`: AI 可编辑、需审批、禁止触碰路径边界。
+- `docs/harness-workflows.md`: 动态 Harness workflow 说明。
+- `docs/harness-workflows.json`: 可机器校验的 workflow manifest。
+- `docs/harness-source-analysis.md`: P0/P1 文章阅读、冲突裁决和采用记录。
+- `docs/harness-virtual-requirements.json`: 虚拟需求集合, 用于校验 workflow 覆盖是否落地。
+- `docs/specifications/` 与 `docs/implementation-plans/`: 行为规格和实施计划, 非模板文件必须声明 `Workflow Class: HARNESS-*`。
 
 ```bash
 make test
+make check-harness-workflows
+make verify-release
 ```

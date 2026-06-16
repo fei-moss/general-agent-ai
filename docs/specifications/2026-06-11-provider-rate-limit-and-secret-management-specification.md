@@ -3,6 +3,7 @@
 ## Context
 
 - Spec ID: `SPEC-PROVIDER-GUARDRAILS-001`
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Primary behavior IDs:
   - `SPEC-PROVIDER-RATELIMIT-001`: provider/model 级全局 RPM/TPM 限流。
   - `SPEC-SECRET-MANAGEMENT-001`: 生产 LLM provider 密钥从 Secret Manager 注入, 不进入仓库、日志或持久化数据。

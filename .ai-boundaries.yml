@@ -12,6 +12,7 @@ allowed:
 
 approval_required:
   - AGENTS.md
+  - CLAUDE.md
   - .ai-boundaries.yml
   - .github/
   - scripts/

@@ -78,6 +78,8 @@ overall_status=0
 
 run_check ai_boundaries "$ROOT_DIR/scripts/check_ai_boundaries.sh" || overall_status=1
 run_check spec_contract "$ROOT_DIR/scripts/check_spec_contract.sh" || overall_status=1
+run_check harness_workflows "$ROOT_DIR/scripts/check_harness_workflows.sh" || overall_status=1
+run_check harness_workflow_tests "$ROOT_DIR/scripts/check_harness_workflows_test.sh" || overall_status=1
 run_check python_available "$PYTHON_BIN" --version || overall_status=1
 run_check import_smoke "$PYTHON_BIN" -c 'import app.api.main; import app.runtime.orchestrator; import app.bus.event_bus; import app.core.events' || overall_status=1
 run_check pytest "$PYTHON_BIN" -m pytest -q || overall_status=1

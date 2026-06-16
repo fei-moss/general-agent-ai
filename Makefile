@@ -7,7 +7,7 @@ PIP ?= $(PY) -m pip
 APP_MODULE ?= app.api.main:app
 CELERY_APP ?= app.tasks.celery_app:celery_app
 
-.PHONY: help up down venv install run-api run-worker test seed verify-release
+.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows verify-release
 
 help:
 	@echo "可用目标:"
@@ -19,6 +19,7 @@ help:
 	@echo "  make run-worker 启动 Celery worker(全部队列)"
 	@echo "  make test       运行 pytest"
 	@echo "  make seed       初始化建表 + 灌入示例数据"
+	@echo "  make check-harness-workflows 校验 Harness workflow manifest 与 spec/plan 绑定"
 	@echo "  make verify-release 运行发布前 Harness 验证并写入 .artifacts/release"
 
 up:
@@ -44,6 +45,9 @@ test:
 
 seed:
 	$(PY) scripts/seed.py
+
+check-harness-workflows:
+	PY="$(PY)" scripts/check_harness_workflows.sh
 
 verify-release:
 	PY="$(PY)" scripts/verify_release.sh
