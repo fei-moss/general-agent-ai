@@ -55,7 +55,7 @@ class VectorStore(Protocol):
         ...
 
     async def search(
-        self, query_vec: list[float], top_k: int
+        self, query_vec: list[float], top_k: int, **filters: Any
     ) -> list[tuple[dict[str, Any], float]]:
         """按相似度返回 (doc, score) 列表,score 越大越相似。"""
         ...

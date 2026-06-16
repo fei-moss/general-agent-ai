@@ -91,6 +91,26 @@ class Settings(BaseSettings):
     provider_realtime_gate_wait_budget_ms: int = 1000
     provider_realtime_degrade_to_batch: bool = True
 
+    # --- RAG / Embedding ---
+    rag_enabled: bool = True
+    rag_vector_store: str = "memory"  # memory | pgvector
+    rag_default_top_k: int = 5
+    rag_max_top_k: int = 10
+    rag_query_timeout_ms: int = 1500
+    rag_score_threshold: float = 0.0
+    rag_max_context_chars: int = 6000
+    rag_chunk_size: int = 400
+    rag_chunk_overlap: int = 80
+    rag_index_version: str = "v1"
+    rag_metadata_max_bytes: int = 8192
+    embedding_provider: str = "hash"  # hash | openai
+    embedding_model: str = "hash"
+    embedding_api_key: str = ""
+    embedding_api_key_file: str = ""
+    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_batch_size: int = 64
+    embedding_timeout_s: float = 30.0
+
     # --- 服务 ---
     app_host: str = "0.0.0.0"
     app_port: int = 8000

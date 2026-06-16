@@ -14,17 +14,30 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import IntentType, MessageRole, RunStatus, TaskStatus
+from app.core.enums import (
+    IntentType,
+    KnowledgeBaseStatus,
+    MessageRole,
+    RAGDocumentStatus,
+    RAGIngestionJobStatus,
+    RunStatus,
+    TaskStatus,
+)
 from app.core.ids import _new_id, new_conversation_id, new_run_id
 from app.core.models import (
     AgentRun,
     Conversation,
     IdempotencyRecord,
+    KnowledgeBase,
     Message,
+    RAGDocument,
+    RAGDocumentChunk,
+    RAGIngestionJob,
+    RAGRetrievalLog,
     TaskState,
     ToolCallLog,
 )
@@ -395,3 +408,269 @@ class ToolCallLogRepository(_BaseRepository):
             .order_by(ToolCallLog.created_at.asc())
         )
         return list(await self._scalars(stmt, "ToolCallLog"))
+
+
+class KnowledgeBaseRepository(_BaseRepository):
+    """RAG 知识库仓储。"""
+
+    async def create(
+        self,
+        *,
+        owner_user_id: str,
+        name: str,
+        description: str | None = None,
+        knowledge_base_id: str | None = None,
+    ) -> KnowledgeBase:
+        entity = KnowledgeBase(
+            id=knowledge_base_id or _new_id("kb_"),
+            owner_user_id=owner_user_id,
+            name=name,
+            description=description,
+            status=KnowledgeBaseStatus.ACTIVE,
+        )
+        self._session.add(entity)
+        return await self._commit_refresh(entity, "KnowledgeBase")
+
+    async def get(self, knowledge_base_id: str) -> KnowledgeBase | None:
+        stmt = select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id)
+        return await self._scalar(stmt, "KnowledgeBase")
+
+    async def get_for_user(
+        self, knowledge_base_id: str, owner_user_id: str
+    ) -> KnowledgeBase | None:
+        stmt = select(KnowledgeBase).where(
+            KnowledgeBase.id == knowledge_base_id,
+            KnowledgeBase.owner_user_id == owner_user_id,
+        )
+        return await self._scalar(stmt, "KnowledgeBase")
+
+    async def list_for_user(
+        self, owner_user_id: str, limit: int = 50, offset: int = 0
+    ) -> list[KnowledgeBase]:
+        stmt = (
+            select(KnowledgeBase)
+            .where(KnowledgeBase.owner_user_id == owner_user_id)
+            .order_by(KnowledgeBase.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(await self._scalars(stmt, "KnowledgeBase"))
+
+
+class RAGDocumentRepository(_BaseRepository):
+    """RAG 文档仓储,含 content hash 幂等回放。"""
+
+    async def create_or_get(
+        self,
+        *,
+        document_id: str,
+        knowledge_base_id: str,
+        owner_user_id: str,
+        title: str | None,
+        source_type: str,
+        source_uri: str | None,
+        mime_type: str | None,
+        content_hash: str,
+        raw_content: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[RAGDocument, bool]:
+        existing = await self.get_by_content_hash(knowledge_base_id, content_hash)
+        if existing is not None:
+            return existing, False
+        entity = RAGDocument(
+            id=document_id,
+            knowledge_base_id=knowledge_base_id,
+            owner_user_id=owner_user_id,
+            title=title,
+            source_type=source_type,
+            source_uri=source_uri,
+            mime_type=mime_type,
+            content_hash=content_hash,
+            raw_content=raw_content,
+            status=RAGDocumentStatus.PENDING,
+            meta=metadata or {},
+        )
+        self._session.add(entity)
+        try:
+            return await self._commit_refresh(entity, "RAGDocument"), True
+        except DuplicateEntityError:
+            existing = await self.get_by_content_hash(knowledge_base_id, content_hash)
+            if existing is None:
+                raise
+            return existing, False
+
+    async def get(self, document_id: str) -> RAGDocument | None:
+        stmt = select(RAGDocument).where(RAGDocument.id == document_id)
+        return await self._scalar(stmt, "RAGDocument")
+
+    async def get_for_user(
+        self, document_id: str, owner_user_id: str
+    ) -> RAGDocument | None:
+        stmt = select(RAGDocument).where(
+            RAGDocument.id == document_id,
+            RAGDocument.owner_user_id == owner_user_id,
+        )
+        return await self._scalar(stmt, "RAGDocument")
+
+    async def get_by_content_hash(
+        self, knowledge_base_id: str, content_hash: str
+    ) -> RAGDocument | None:
+        stmt = select(RAGDocument).where(
+            RAGDocument.knowledge_base_id == knowledge_base_id,
+            RAGDocument.content_hash == content_hash,
+        )
+        return await self._scalar(stmt, "RAGDocument")
+
+    async def update_status(
+        self,
+        document_id: str,
+        status: RAGDocumentStatus,
+        *,
+        error_message: str | None = None,
+    ) -> RAGDocument:
+        entity = await self.get(document_id)
+        if entity is None:
+            raise EntityNotFoundError("RAGDocument", document_id)
+        entity.status = status
+        entity.error_message = error_message
+        return await self._commit_refresh(entity, "RAGDocument")
+
+
+class RAGIngestionJobRepository(_BaseRepository):
+    """RAG ingestion job 仓储。"""
+
+    async def create(
+        self,
+        *,
+        job_id: str,
+        document_id: str,
+        knowledge_base_id: str,
+        owner_user_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> RAGIngestionJob:
+        entity = RAGIngestionJob(
+            id=job_id,
+            document_id=document_id,
+            knowledge_base_id=knowledge_base_id,
+            owner_user_id=owner_user_id,
+            status=RAGIngestionJobStatus.PENDING,
+            attempts=0,
+            payload=payload,
+        )
+        self._session.add(entity)
+        return await self._commit_refresh(entity, "RAGIngestionJob")
+
+    async def get(self, job_id: str) -> RAGIngestionJob | None:
+        stmt = select(RAGIngestionJob).where(RAGIngestionJob.id == job_id)
+        return await self._scalar(stmt, "RAGIngestionJob")
+
+    async def get_for_user(
+        self, job_id: str, owner_user_id: str
+    ) -> RAGIngestionJob | None:
+        stmt = select(RAGIngestionJob).where(
+            RAGIngestionJob.id == job_id,
+            RAGIngestionJob.owner_user_id == owner_user_id,
+        )
+        return await self._scalar(stmt, "RAGIngestionJob")
+
+    async def get_latest_for_document(
+        self, document_id: str
+    ) -> RAGIngestionJob | None:
+        stmt = (
+            select(RAGIngestionJob)
+            .where(RAGIngestionJob.document_id == document_id)
+            .order_by(RAGIngestionJob.created_at.desc())
+            .limit(1)
+        )
+        return await self._scalar(stmt, "RAGIngestionJob")
+
+    async def update_status(
+        self,
+        job_id: str,
+        status: RAGIngestionJobStatus,
+        *,
+        error_message: str | None = None,
+    ) -> RAGIngestionJob:
+        entity = await self.get(job_id)
+        if entity is None:
+            raise EntityNotFoundError("RAGIngestionJob", job_id)
+        entity.status = status
+        if status == RAGIngestionJobStatus.RUNNING:
+            entity.started_at = _utcnow()
+            entity.attempts = (entity.attempts or 0) + 1
+        if status in (
+            RAGIngestionJobStatus.SUCCEEDED,
+            RAGIngestionJobStatus.FAILED,
+            RAGIngestionJobStatus.CANCELLED,
+        ):
+            entity.finished_at = _utcnow()
+        entity.error_message = error_message
+        return await self._commit_refresh(entity, "RAGIngestionJob")
+
+
+class RAGChunkRepository(_BaseRepository):
+    """RAG chunk 仓储。"""
+
+    async def replace_for_document(
+        self,
+        *,
+        document_id: str,
+        index_version: str,
+        chunks: list[dict[str, Any]],
+    ) -> int:
+        try:
+            await self._session.execute(
+                delete(RAGDocumentChunk).where(
+                    RAGDocumentChunk.document_id == document_id,
+                    RAGDocumentChunk.index_version == index_version,
+                )
+            )
+            for item in chunks:
+                self._session.add(RAGDocumentChunk(**item))
+            await self._session.commit()
+            return len(chunks)
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise DuplicateEntityError("RAGDocumentChunk", document_id) from exc
+        except SQLAlchemyError as exc:
+            await self._session.rollback()
+            raise PersistenceError(f"persist RAGDocumentChunk failed: {exc}") from exc
+
+
+class RAGRetrievalLogRepository(_BaseRepository):
+    """RAG 检索日志仓储。"""
+
+    async def create(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str,
+        query_hash: str,
+        query_preview: str | None,
+        top_k: int,
+        matched_chunk_ids: list[str],
+        scores: list[float],
+        latency_ms: int,
+        degraded: bool,
+        reason: str | None = None,
+        agent_run_id: str | None = None,
+        conversation_id: str | None = None,
+        log_id: str | None = None,
+    ) -> RAGRetrievalLog:
+        entity = RAGRetrievalLog(
+            id=log_id or _new_id("retrlog_"),
+            agent_run_id=agent_run_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+            query_hash=query_hash,
+            query_preview=query_preview,
+            top_k=top_k,
+            matched_chunk_ids=matched_chunk_ids,
+            scores=scores,
+            latency_ms=latency_ms,
+            degraded=degraded,
+            reason=reason,
+        )
+        self._session.add(entity)
+        return await self._commit_refresh(entity, "RAGRetrievalLog")

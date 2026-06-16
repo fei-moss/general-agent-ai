@@ -136,6 +136,8 @@ async def run_orchestration(
     trace_id: str,
     user_message: str,
     emit: Any = None,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """tasks 层集成入口(薄适配)。
 
@@ -154,6 +156,8 @@ async def run_orchestration(
         trace_id=trace_id,
         user_message=user_message,
         route_type="batch",
+        user_id=user_id,
+        metadata=metadata,
     )
     return {"content": answer, "intent": None}
 
@@ -183,6 +187,8 @@ class AgentOrchestrator:
         user_message: str,
         accepted_at: float | None = None,
         route_type: str = "realtime",
+        user_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """执行一次完整运行,返回最终 assistant 文本。"""
         set_trace_id(trace_id)
@@ -196,7 +202,13 @@ class AgentOrchestrator:
         await emitter.emit(EventType.RUN_STARTED, {"message": user_message})
         try:
             return await self._execute(
-                agent_run_id, conversation_id, user_message, emitter, route_type
+                agent_run_id,
+                conversation_id,
+                user_message,
+                emitter,
+                route_type,
+                user_id,
+                metadata or {},
             )
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
@@ -211,6 +223,8 @@ class AgentOrchestrator:
         user_message: str,
         emitter: _EventEmitter,
         route_type: str,
+        user_id: str | None,
+        metadata: dict[str, Any],
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
@@ -218,12 +232,19 @@ class AgentOrchestrator:
             "mark_running_with_plan",
             agent_run_id,
             None,
-            self._plan_snapshot(),
+            self._plan_snapshot(route_type, metadata),
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
         answer = await self._run_agent(
-            agent_run_id, user_message, history, emitter, route_type
+            agent_run_id,
+            conversation_id,
+            user_message,
+            history,
+            emitter,
+            route_type,
+            user_id,
+            metadata,
         )
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
@@ -247,20 +268,32 @@ class AgentOrchestrator:
     async def _run_agent(
         self,
         agent_run_id: str,
+        conversation_id: str,
         user_message: str,
         history: list[dict[str, Any]],
         emitter: _EventEmitter,
         route_type: str,
+        user_id: str | None,
+        metadata: dict[str, Any],
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
         LLM 在 loop 中自主决定是否检索 / 调用工具;失败时降级为兜底文案,
         保证总有回答产出。
         """
+        knowledge_base_id = _knowledge_base_id(metadata)
         deps = AgentDeps(
-            retriever=self._deps.retriever,
+            retriever=self._contextual_retriever(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                agent_run_id=agent_run_id,
+                knowledge_base_id=knowledge_base_id,
+            ),
             tool_router=self._deps.tool_router,
             agent_run_id=agent_run_id,
+            user_id=user_id or "anonymous",
+            conversation_id=conversation_id,
+            knowledge_base_id=knowledge_base_id,
             retrieval_top_k=self._deps.settings.retrieval_top_k,
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
@@ -494,10 +527,39 @@ class AgentOrchestrator:
             "content": getattr(row, "content", ""),
         }
 
+    def _contextual_retriever(
+        self,
+        *,
+        user_id: str | None,
+        conversation_id: str | None,
+        agent_run_id: str | None,
+        knowledge_base_id: str | None,
+    ) -> Any:
+        """Return a per-run retriever when the adapter supports context."""
+        retriever = self._deps.retriever
+        with_context = getattr(retriever, "with_context", None)
+        if callable(with_context):
+            return with_context(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                agent_run_id=agent_run_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+        return retriever
+
     @staticmethod
-    def _plan_snapshot() -> dict[str, Any]:
+    def _plan_snapshot(route_type: str, metadata: dict[str, Any]) -> dict[str, Any]:
         """Return an engine snapshot for run audit/debugging."""
-        return {"engine": "pydantic-ai", "tools": list(_TOOL_NAMES)}
+        plan: dict[str, Any] = {
+            "engine": "pydantic-ai",
+            "tools": list(_TOOL_NAMES),
+            "route_type": route_type,
+            "metadata": dict(metadata),
+        }
+        kb_id = _knowledge_base_id(metadata)
+        if kb_id:
+            plan["knowledge_base_id"] = kb_id
+        return plan
 
     async def _persist_answer(
         self, conversation_id: str, agent_run_id: str, answer: str
@@ -635,6 +697,14 @@ def _extract_usage(run: Any) -> dict[str, int | None]:
         if input_tokens is not None or output_tokens is not None:
             return {"input_tokens": input_tokens, "output_tokens": output_tokens}
     return {"input_tokens": None, "output_tokens": None}
+
+
+def _knowledge_base_id(metadata: dict[str, Any] | None) -> str | None:
+    value = (metadata or {}).get("knowledge_base_id")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _usage_field(obj: Any, *names: str) -> int | None:

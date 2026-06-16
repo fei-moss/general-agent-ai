@@ -56,6 +56,8 @@ def enqueue_run(payload: dict) -> None:
             conversation_id=payload["conversation_id"],
             trace_id=payload["trace_id"],
             user_message=payload["message"],
+            user_id=payload.get("user_id"),
+            metadata=payload.get("metadata") or {},
         )
     except Exception as exc:
         log_with_fields(

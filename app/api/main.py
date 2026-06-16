@@ -19,7 +19,7 @@ from app.api.middleware import (
     RateLimitMiddleware,
     TraceIdMiddleware,
 )
-from app.api.routers import chat, conversations, health, runs, stream
+from app.api.routers import chat, conversations, health, rag, runs, stream
 from app.core.config import get_settings
 
 
@@ -65,6 +65,7 @@ def _add_routers(app: FastAPI) -> None:
     app.include_router(chat.router)
     app.include_router(stream.router)
     app.include_router(runs.router)
+    app.include_router(rag.router)
 
 
 app = create_app()

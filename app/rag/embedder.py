@@ -5,7 +5,7 @@
   保证无任何 API key 也能端到端跑通。
 - OpenAIEmbedder: 可选,经 httpx 调用 OpenAI 兼容 /embeddings 接口。
 
-工厂 get_embedder() 按 Settings.llm_provider 选择,失败降级到 HashEmbedder。
+工厂 get_embedder() 按 Settings.embedding_provider 选择,失败降级到 HashEmbedder。
 """
 
 from __future__ import annotations
@@ -88,12 +88,15 @@ class OpenAIEmbedder:
 
     def __init__(self, settings: Settings) -> None:
         """初始化,记录配置(不在构造期发起网络请求)。"""
-        if not settings.openai_api_key:
-            raise ValueError("OpenAIEmbedder 需要 openai_api_key")
-        self._base_url = settings.openai_base_url.rstrip("/")
-        self._api_key = settings.openai_api_key
-        self._model = _OPENAI_EMBED_MODEL
-        self._timeout = settings.request_timeout_s
+        api_key = settings.embedding_api_key or settings.openai_api_key
+        if not api_key:
+            raise ValueError("OpenAIEmbedder 需要 embedding_api_key")
+        self._base_url = (
+            settings.embedding_base_url or settings.openai_base_url
+        ).rstrip("/")
+        self._api_key = api_key
+        self._model = settings.embedding_model or _OPENAI_EMBED_MODEL
+        self._timeout = settings.embedding_timeout_s
         self._dim = settings.embedding_dim
 
     @property
@@ -130,11 +133,14 @@ class OpenAIEmbedder:
 def get_embedder(settings: Settings | None = None) -> Embedder:
     """工厂:按配置返回 Embedder 实例。
 
-    provider 为 openai 且具备 api_key 时尝试 OpenAIEmbedder,
+    embedding_provider 为 openai 且具备 api_key 时尝试 OpenAIEmbedder,
     构造失败则记录并降级到 HashEmbedder;其余情况默认 HashEmbedder。
     """
     settings = settings or get_settings()
-    if settings.llm_provider == "openai" and settings.openai_api_key:
+    provider = (settings.embedding_provider or "hash").strip().lower()
+    if provider == "openai" and (
+        settings.embedding_api_key or settings.openai_api_key
+    ):
         try:
             return OpenAIEmbedder(settings)
         except Exception as exc:  # noqa: BLE001 — 降级保证可用性

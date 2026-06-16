@@ -157,6 +157,7 @@ async def create_chat(
             plan={"route_type": route_type, "metadata": body.metadata},
         )
         payload = _build_payload(run_id, conversation.id, trace_id, body)
+        payload["user_id"] = user
         payload["route_type"] = route_type
         if route_type == "batch":
             await repos.create_queued_task(

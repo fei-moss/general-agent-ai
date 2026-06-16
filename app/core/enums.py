@@ -44,3 +44,31 @@ class IntentType(str, Enum):
     KNOWLEDGE_QA = "KNOWLEDGE_QA"
     TOOL_USE = "TOOL_USE"
     MULTI_STEP = "MULTI_STEP"
+
+
+class KnowledgeBaseStatus(str, Enum):
+    """知识库生命周期状态。"""
+
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+
+
+class RAGDocumentStatus(str, Enum):
+    """RAG 文档摄取与索引状态。"""
+
+    PENDING = "PENDING"
+    PARSING = "PARSING"
+    EMBEDDING = "EMBEDDING"
+    EMBEDDED = "EMBEDDED"
+    FAILED = "FAILED"
+    DELETED = "DELETED"
+
+
+class RAGIngestionJobStatus(str, Enum):
+    """RAG ingestion job 状态。"""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"

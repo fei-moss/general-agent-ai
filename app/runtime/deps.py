@@ -28,8 +28,8 @@ logger = get_logger(__name__)
 class RAGRetriever(Protocol):
     """检索器:给定查询返回若干文档片段。"""
 
-    async def retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
-        """返回文档列表,每个至少含 text 字段,可含 id/score/source。"""
+    async def retrieve(self, query: str, top_k: int) -> Any:
+        """返回 RAG 查询响应 dict,或旧式文档列表。"""
         ...
 
 
@@ -191,9 +191,7 @@ def build_deps(
 def _build_retriever(settings: Settings) -> RAGRetriever:
     """装配检索器。
 
-    app.rag.retriever 暴露的是 RAGRetriever 类(retrieve 返回 RetrievalResult),
-    这里用薄适配器把它对齐到本模块声明的 RAGRetriever 契约
-    (retrieve(query, top_k) -> list[dict])。
+    这里用薄适配器把查询服务对齐到 Agent tool 需要的 retrieve 契约。
     """
     from app.runtime.adapters import RetrieverAdapter
 

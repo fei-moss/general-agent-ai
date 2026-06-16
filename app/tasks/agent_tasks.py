@@ -100,6 +100,8 @@ async def _execute(
     conversation_id: str,
     trace_id: str,
     user_message: str,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """异步执行完整编排:状态流转 + 事件发布 + 调用 orchestrator。"""
     set_trace_id(trace_id)
@@ -118,6 +120,8 @@ async def _execute(
         trace_id=trace_id,
         user_message=user_message,
         emit=emit,
+        user_id=user_id,
+        metadata=metadata or {},
     )
 
     intent = (result or {}).get("intent")
@@ -147,6 +151,8 @@ def run_agent_task(
     conversation_id: str,
     trace_id: str,
     user_message: str,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """worker 入口任务:运行一次 Agent 编排。
 
@@ -164,7 +170,14 @@ def run_agent_task(
     )
     try:
         return run_coro(
-            _execute(agent_run_id, conversation_id, trace_id, user_message)
+            _execute(
+                agent_run_id,
+                conversation_id,
+                trace_id,
+                user_message,
+                user_id=user_id,
+                metadata=metadata or {},
+            )
         )
     except ProviderRateLimitError as exc:
         if self.request.retries < self.max_retries:
@@ -190,6 +203,48 @@ def run_agent_task(
             run_coro(_publish_error(agent_run_id, trace_id, error))
         except Exception:  # noqa: BLE001 错误上报本身失败时不再上抛
             pass
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        return {"status": "FAILED", "error": error}
+
+
+@shared_task(
+    bind=True,
+    name="app.tasks.agent_tasks.rag_ingest_document",
+    acks_late=True,
+    **RETRY_KWARGS,
+)
+def rag_ingest_document(self, job_id: str, document_id: str) -> dict[str, Any]:
+    """worker 入口任务:摄取一份 RAG 文档。"""
+    log_with_fields(
+        logger,
+        logging.INFO,
+        "rag_ingest_document_started",
+        job_id=job_id,
+        document_id=document_id,
+        attempt=self.request.retries,
+    )
+    try:
+        from app.rag.service import build_ingestion_service
+
+        chunks = run_coro(
+            build_ingestion_service().ingest_document(
+                job_id=job_id,
+                document_id=document_id,
+            )
+        )
+        return {"status": "SUCCEEDED", "chunks": chunks}
+    except Exception as exc:  # noqa: BLE001
+        error = f"{type(exc).__name__}: {exc}"
+        log_with_fields(
+            logger,
+            logging.ERROR,
+            "rag_ingest_document_failed",
+            job_id=job_id,
+            document_id=document_id,
+            attempt=self.request.retries,
+            error=error,
+        )
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
         return {"status": "FAILED", "error": error}

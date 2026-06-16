@@ -130,6 +130,8 @@ class RealtimeRunner:
                 user_message=request.message,
                 accepted_at=request.accepted_at,
                 route_type=request.route_type,
+                user_id=request.user_id,
+                metadata=request.metadata,
             )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,

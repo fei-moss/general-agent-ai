@@ -69,6 +69,7 @@ celery_app.conf.update(
         "app.tasks.agent_tasks.run_agent_task": {"queue": QUEUE_RUN},
         "app.tasks.agent_tasks.intent_task": {"queue": QUEUE_INTENT},
         "app.tasks.agent_tasks.rag_task": {"queue": QUEUE_RAG},
+        "app.tasks.agent_tasks.rag_ingest_document": {"queue": QUEUE_RAG},
         "app.tasks.agent_tasks.tool_task": {"queue": QUEUE_TOOL},
         "app.tasks.agent_tasks.llm_task": {"queue": QUEUE_LLM},
         "app.tasks.agent_tasks.compose_task": {"queue": QUEUE_COMPOSE},

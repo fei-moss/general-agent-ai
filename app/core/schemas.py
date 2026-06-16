@@ -6,11 +6,24 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
-from app.core.enums import IntentType, MessageRole, RunStatus, TaskStatus
+from app.core.enums import (
+    IntentType,
+    KnowledgeBaseStatus,
+    MessageRole,
+    RAGDocumentStatus,
+    RAGIngestionJobStatus,
+    RunStatus,
+    TaskStatus,
+)
 
 
 class ChatRequest(BaseModel):
@@ -102,3 +115,151 @@ class RunStatusOut(BaseModel):
     status: RunStatus
     intent: IntentType | None = None
     error: str | None = None
+
+
+class KnowledgeBaseCreate(BaseModel):
+    """创建知识库请求。"""
+
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=1024)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_name(cls, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("name 不能为空")
+        return text
+
+
+class KnowledgeBaseOut(BaseModel):
+    """知识库响应。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    owner_user_id: str
+    name: str
+    description: str | None = None
+    status: KnowledgeBaseStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class RAGDocumentCreate(BaseModel):
+    """导入 RAG 文档请求。Phase 1 仅接受文本/Markdown。"""
+
+    knowledge_base_id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=512)
+    content: str = Field(min_length=1)
+    source_type: Literal["manual", "api"] = "manual"
+    source_uri: str | None = Field(default=None, max_length=2048)
+    mime_type: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _strip_content(cls, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("content 不能为空")
+        return text
+
+
+class RAGDocumentAccepted(BaseModel):
+    """文档导入受理响应。"""
+
+    document_id: str
+    job_id: str
+    status: RAGDocumentStatus
+    replayed: bool = False
+
+
+class RAGDocumentOut(BaseModel):
+    """RAG 文档状态响应。"""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    knowledge_base_id: str
+    owner_user_id: str
+    title: str | None = None
+    source_type: str
+    source_uri: str | None = None
+    mime_type: str | None = None
+    status: RAGDocumentStatus
+    error_message: str | None = None
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias="meta",
+        serialization_alias="metadata",
+    )
+    created_at: datetime
+    updated_at: datetime
+
+
+class RAGIngestionJobOut(BaseModel):
+    """RAG ingestion job 状态响应。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    document_id: str
+    knowledge_base_id: str
+    owner_user_id: str
+    status: RAGIngestionJobStatus
+    attempts: int = 0
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+
+
+class RAGQueryRequest(BaseModel):
+    """RAG 查询请求。"""
+
+    knowledge_base_id: str = Field(min_length=1, max_length=64)
+    query: str = Field(min_length=1)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+    filters: dict[str, Any] | None = None
+    strict: bool = False
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def _strip_query(cls, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("query 不能为空")
+        return text
+
+
+class CitationOut(BaseModel):
+    """RAG citation 元数据。"""
+
+    source_uri: str | None = None
+    page: int | None = None
+    section: str | None = None
+    chunk_index: int
+
+
+class KnowledgeSearchResult(BaseModel):
+    """单条 RAG 检索命中。"""
+
+    chunk_id: str
+    document_id: str
+    knowledge_base_id: str
+    title: str | None = None
+    content: str
+    score: float
+    citation: CitationOut
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RAGQueryResponse(BaseModel):
+    """RAG 查询响应。"""
+
+    chunks: list[KnowledgeSearchResult]
+    degraded: bool
+    reason: str | None = None
+    latency_ms: int
+    query_id: str | None = None

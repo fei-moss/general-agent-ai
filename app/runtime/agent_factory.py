@@ -61,15 +61,19 @@ class AgentDeps:
     """注入给各 @agent.tool 的运行期依赖。
 
     字段:
-        retriever: 满足 retrieve(query, top_k) -> list[dict] 契约的检索器。
+        retriever: 满足 retrieve(query, top_k) -> dict/list 契约的检索器。
         tool_router: 满足 route(query, tool_name) -> dict 契约的工具路由。
         agent_run_id: 当前 run id,用于工具审计。
+        user_id/conversation_id/knowledge_base_id: server-side RAG 上下文。
         retrieval_top_k: 检索返回条数上限。
     """
 
     retriever: Any
     tool_router: Any
     agent_run_id: str = ""
+    user_id: str = "anonymous"
+    conversation_id: str = ""
+    knowledge_base_id: str | None = None
     retrieval_top_k: int = 5
 
 
@@ -89,7 +93,7 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
     @agent.tool
     async def search_knowledge(
         ctx: RunContext[AgentDeps], query: str
-    ) -> list[dict[str, Any]]:
+    ) -> Any:
         """检索知识库,返回与查询最相关的若干文档片段。
 
         参数:

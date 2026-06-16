@@ -16,30 +16,65 @@ from app.core.ids import _new_id
 
 
 class RetrieverAdapter:
-    """把 app.rag.retriever.RAGRetriever 适配为 retrieve -> list[dict]。"""
+    """把 RAG 查询服务适配为 Agent tool 可返回的 JSON 结构。"""
 
     def __init__(
         self,
         *,
         log_sink: Callable[[ToolCallLog], Awaitable[None]] | None = None,
+        query_service: Any | None = None,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
+        agent_run_id: str | None = None,
+        knowledge_base_id: str | None = None,
     ) -> None:
-        from app.rag.retriever import RAGRetriever as RealRetriever
+        _ = log_sink
+        self._query_service = query_service
+        self._user_id = user_id or "anonymous"
+        self._conversation_id = conversation_id
+        self._agent_run_id = agent_run_id
+        self._knowledge_base_id = knowledge_base_id
 
-        self._impl = RealRetriever()
+    def with_context(
+        self,
+        *,
+        user_id: str | None,
+        conversation_id: str | None,
+        agent_run_id: str | None,
+        knowledge_base_id: str | None,
+    ) -> "RetrieverAdapter":
+        """派生一个带单次 run 上下文的 adapter。"""
+        return RetrieverAdapter(
+            query_service=self._query_service,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            agent_run_id=agent_run_id,
+            knowledge_base_id=knowledge_base_id,
+        )
 
-    async def retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
-        """调用真实检索器并把 RetrievalResult.chunks 摊平为 dict 列表。"""
-        result = await self._impl.retrieve(query, top_k)
-        chunks = getattr(result, "chunks", []) or []
-        return [
-            {
-                "id": getattr(c, "doc_id", ""),
-                "text": getattr(c, "text", ""),
-                "score": getattr(c, "score", 0.0),
-                "source": getattr(c, "meta", {}),
+    async def retrieve(self, query: str, top_k: int) -> dict[str, Any]:
+        """调用 RAGQueryService 并返回普通 dict。"""
+        if not self._knowledge_base_id:
+            return {
+                "chunks": [],
+                "degraded": True,
+                "reason": "no_knowledge_base",
             }
-            for c in chunks
-        ]
+        service = self._query_service
+        if service is None:
+            from app.rag.service import build_query_service
+
+            service = build_query_service()
+            self._query_service = service
+        result = await service.query(
+            user_id=self._user_id,
+            knowledge_base_id=self._knowledge_base_id,
+            query=query,
+            top_k=top_k,
+            agent_run_id=self._agent_run_id,
+            conversation_id=self._conversation_id,
+        )
+        return result.model_dump(mode="json")
 
 
 # 工具自动选择的关键词启发式(planner 未显式指定 tool_name 时使用)
