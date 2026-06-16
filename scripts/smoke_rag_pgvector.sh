@@ -3,13 +3,14 @@ set -euo pipefail
 
 API_BASE_URL="${API_BASE_URL:-}"
 SMOKE_USER="${SMOKE_USER:-rag-smoke-user}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 if [[ -z "${API_BASE_URL}" ]]; then
   echo "API_BASE_URL is required, for example: https://api-<env>.<domain>" >&2
   exit 2
 fi
 
-python - <<'PY'
+"${PYTHON_BIN}" - <<'PY'
 import json
 import os
 import sys
