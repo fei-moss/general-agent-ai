@@ -83,16 +83,19 @@
 
 5. Worker fork-safety for DockerHost RAG/full-stack smoke
    - Files/modules:
+     - `app/tasks/async_bridge.py`
      - `app/tasks/celery_app.py`
      - `dockerhost/compose.yaml`
      - `tests/test_worker_provider_limits.py`
    - Behavior change:
      - Dispose inherited SQLAlchemy DB pools in Celery child processes after prefork.
+     - Dispose stale async DB pool connections before each new task event loop created by `run_coro()`.
      - Run DockerHost first-version worker with Celery `solo` pool and concurrency 1 to avoid asyncpg prefork hazards during smoke/release validation.
    - Data contract impact:
      - None.
    - Tests to add/update:
      - Worker init handler disposes inherited pool with `close=False`.
+     - `run_coro()` disposes stale DB pool before entering a fresh event loop.
    - Verification command:
      - `.venv/bin/python -m pytest tests/test_worker_provider_limits.py -q`
    - Rollback or compatibility note:

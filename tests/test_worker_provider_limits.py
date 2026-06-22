@@ -44,3 +44,25 @@ def test_celery_worker_process_init_disposes_inherited_db_pool(monkeypatch):
     _dispose_inherited_db_pool()
 
     assert calls == [False]
+
+
+def test_run_coro_disposes_stale_db_pool_before_new_loop(monkeypatch):
+    from app.db import session as db_session
+    from app.tasks.async_bridge import run_coro
+
+    calls: list[bool] = []
+
+    def _dispose(*, close: bool) -> None:
+        calls.append(close)
+
+    async def _value() -> str:
+        return "ok"
+
+    monkeypatch.setattr(
+        db_session,
+        "engine",
+        SimpleNamespace(sync_engine=SimpleNamespace(dispose=_dispose)),
+    )
+
+    assert run_coro(_value()) == "ok"
+    assert calls == [False]

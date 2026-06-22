@@ -103,9 +103,11 @@
   4. `build_model()` constructs Pydantic AI `OpenAIChatModel` with `OpenAIProvider(base_url=ZAI_BASE_URL, api_key=ZAI_API_KEY)`.
   5. Optional GLM-specific request body settings are passed via OpenAI-compatible `extra_body`.
   6. Celery worker child processes reset any inherited SQLAlchemy DB pool after prefork before running chat or RAG tasks.
+  7. Celery's sync-to-async bridge drops stale async DB pool connections before entering a fresh task event loop.
 - Transaction/concurrency boundaries:
   - No request DB connection is held across provider calls.
   - Worker processes must not reuse DB connections inherited from the Celery parent process.
+  - Worker tasks must not reuse asyncpg connections across separate `asyncio.run()` event loops.
   - DockerHost first-version worker uses a single-process Celery `solo` pool to prioritize correctness for async DB/RAG smoke over worker parallelism.
 - Observability/logging/metrics:
   - Existing provider limiter metrics use provider label `zai` and model label `glm-5.2`.
@@ -155,7 +157,7 @@
 
 - Open questions:
   - Real Z.AI account RPM/TPM limits are account-specific and must be configured by the operator.
-  - Higher-throughput Celery prefork/gevent/thread worker modes need a separate hardening pass before being used for production RAG ingestion.
+  - Higher-throughput Celery worker modes and a persistent worker event loop need a separate hardening pass before being used for production RAG ingestion.
 - Accepted assumptions:
   - Z.AI's OpenAI-compatible endpoint is the integration path.
   - `zai` is clearer than overloading `openai` for metrics and secret naming.
