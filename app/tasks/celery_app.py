@@ -7,10 +7,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from celery import Celery
+from celery.signals import worker_process_init
 from kombu import Queue
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -84,3 +89,14 @@ RETRY_KWARGS = {
     "retry_backoff_max": _RETRY_BACKOFF_MAX_S,
     "retry_jitter": True,
 }
+
+
+@worker_process_init.connect
+def _dispose_inherited_db_pool(**_: object) -> None:
+    """Reset DB pool inherited across Celery prefork worker processes."""
+    try:
+        from app.db import session as db_session
+
+        db_session.engine.sync_engine.dispose(close=False)
+    except Exception:  # pragma: no cover - startup best effort
+        logger.exception("failed_to_dispose_inherited_db_pool")

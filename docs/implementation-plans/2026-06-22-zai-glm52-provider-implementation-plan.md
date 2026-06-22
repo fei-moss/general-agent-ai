@@ -81,6 +81,21 @@
    - Rollback or compatibility note:
      - Full `make verify-release` remains the release gate.
 
+5. Worker fork-safety for DockerHost RAG/full-stack smoke
+   - Files/modules:
+     - `app/tasks/celery_app.py`
+     - `tests/test_worker_provider_limits.py`
+   - Behavior change:
+     - Dispose inherited SQLAlchemy DB pools in Celery child processes after prefork.
+   - Data contract impact:
+     - None.
+   - Tests to add/update:
+     - Worker init handler disposes inherited pool with `close=False`.
+   - Verification command:
+     - `.venv/bin/python -m pytest tests/test_worker_provider_limits.py -q`
+   - Rollback or compatibility note:
+     - If this causes startup issues, rollback restores prior worker pool behavior but risks inherited asyncpg connection reuse under prefork.
+
 ## Risk Controls
 
 - Public contract risks:

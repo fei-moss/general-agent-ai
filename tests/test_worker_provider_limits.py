@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from celery.exceptions import Retry
 
@@ -22,3 +24,23 @@ def test_celery_worker_retries_after_provider_limit(monkeypatch):
 
     with pytest.raises(Retry):
         agent_tasks.run_agent_task.run("run-1", "conv-1", "trace-1", "hello")
+
+
+def test_celery_worker_process_init_disposes_inherited_db_pool(monkeypatch):
+    from app.db import session as db_session
+    from app.tasks.celery_app import _dispose_inherited_db_pool
+
+    calls: list[bool] = []
+
+    def _dispose(*, close: bool) -> None:
+        calls.append(close)
+
+    monkeypatch.setattr(
+        db_session,
+        "engine",
+        SimpleNamespace(sync_engine=SimpleNamespace(dispose=_dispose)),
+    )
+
+    _dispose_inherited_db_pool()
+
+    assert calls == [False]

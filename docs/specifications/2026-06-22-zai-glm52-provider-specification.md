@@ -102,8 +102,10 @@
   3. `provider_identity_from_settings()` returns `ProviderIdentity("zai", "glm-5.2")`.
   4. `build_model()` constructs Pydantic AI `OpenAIChatModel` with `OpenAIProvider(base_url=ZAI_BASE_URL, api_key=ZAI_API_KEY)`.
   5. Optional GLM-specific request body settings are passed via OpenAI-compatible `extra_body`.
+  6. Celery worker child processes reset any inherited SQLAlchemy DB pool after prefork before running chat or RAG tasks.
 - Transaction/concurrency boundaries:
-  - No changes.
+  - No request DB connection is held across provider calls.
+  - Worker processes must not reuse DB connections inherited from the Celery parent process.
 - Observability/logging/metrics:
   - Existing provider limiter metrics use provider label `zai` and model label `glm-5.2`.
 - Rollback strategy:
@@ -142,6 +144,7 @@
   - Existing providers remain unchanged.
 - Operational:
   - DockerHost environment documents how to inject `ZAI_API_KEY`.
+  - DockerHost worker can run batch chat and RAG ingestion tasks without inherited asyncpg connection reuse.
 - Evidence artifacts:
   - Focused test output.
   - Release summary when run.
