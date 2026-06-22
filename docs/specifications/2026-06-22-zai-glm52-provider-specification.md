@@ -106,6 +106,7 @@
 - Transaction/concurrency boundaries:
   - No request DB connection is held across provider calls.
   - Worker processes must not reuse DB connections inherited from the Celery parent process.
+  - DockerHost first-version worker uses a single-process Celery `solo` pool to prioritize correctness for async DB/RAG smoke over worker parallelism.
 - Observability/logging/metrics:
   - Existing provider limiter metrics use provider label `zai` and model label `glm-5.2`.
 - Rollback strategy:
@@ -154,6 +155,7 @@
 
 - Open questions:
   - Real Z.AI account RPM/TPM limits are account-specific and must be configured by the operator.
+  - Higher-throughput Celery prefork/gevent/thread worker modes need a separate hardening pass before being used for production RAG ingestion.
 - Accepted assumptions:
   - Z.AI's OpenAI-compatible endpoint is the integration path.
   - `zai` is clearer than overloading `openai` for metrics and secret naming.

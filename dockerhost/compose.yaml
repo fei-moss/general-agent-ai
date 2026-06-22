@@ -76,6 +76,10 @@ services:
         "worker",
         "-l",
         "info",
+        "--pool",
+        "solo",
+        "--concurrency",
+        "1",
         "-Q",
         "q.run,q.intent,q.rag,q.tool,q.llm,q.compose",
       ]
