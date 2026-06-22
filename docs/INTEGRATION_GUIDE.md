@@ -132,11 +132,12 @@ internal_rag_owner_user_id
 6. 如果页面刷新或客户端丢失状态，调用 GET /conversations 找回会话
 ```
 
-## 6. 发起聊天
+## 6. 发起聊天并接收流式返回
 
 ### 6.1 新建会话并聊天
 
-不传 `conversation_id`，服务会自动创建新会话：
+不传 `conversation_id`，服务会自动创建新会话。`POST /chat` 只做异步受理，
+成功后立即返回 `202`，接入方要马上用返回的 `stream_url` 或 `ws_url` 接收结果。
 
 ```bash
 curl -sS -X POST "$BASE_URL/chat" \
@@ -191,7 +192,121 @@ curl -sS -X POST "$BASE_URL/chat" \
 - `agent_run_id`：查询这次运行状态、订阅流使用。
 - `trace_id`：排查问题时给服务端定位日志。
 
-### 6.2 继续已有会话
+### 6.2 用 SSE 接收 token 和最终答案
+
+拿到上一步返回的 `stream_url` 后立即订阅：
+
+```bash
+curl -N "$BASE_URL/stream/run_xxx" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+SSE frame 示例：
+
+```text
+id: 1782112292712-0
+event: TOKEN
+data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","type":"TOKEN","stream_id":"1782112292712-0","seq":6,"ts":1782112292.7,"data":{"token":"hello"}}
+```
+
+客户端从 `TOKEN.data.token` 读取增量文本：
+
+```json
+{
+  "type": "TOKEN",
+  "data": {
+    "token": "文本片段"
+  }
+}
+```
+
+成功终止事件：
+
+```json
+{
+  "type": "RUN_COMPLETED",
+  "data": {
+    "status": "SUCCEEDED",
+    "content": "完整最终答案"
+  }
+}
+```
+
+失败终止事件：
+
+```json
+{
+  "type": "ERROR",
+  "data": {
+    "stage": "provider_rate_limit | runner | stream_replay | agent",
+    "error": "machine-readable error"
+  }
+}
+```
+
+重要事件：
+
+- `RUN_STARTED`
+- `PLANNING_STARTED`
+- `RETRIEVAL_STARTED`
+- `RETRIEVAL_FINISHED`
+- `TOOL_CALL_STARTED`
+- `TOOL_CALL_FINISHED`
+- `LLM_GENERATING`
+- `TOKEN`
+- `RESULT_COMPOSED`
+- `RUN_COMPLETED`
+- `ERROR`
+
+### 6.3 用 WebSocket 接收事件
+
+如果接入方更适合 WebSocket，可以使用响应里的 `ws_url`：
+
+```text
+ws(s)://<host>/ws/run_xxx?token=alice.internal
+```
+
+也可以在握手时传：
+
+```http
+Authorization: Bearer alice.internal
+```
+
+每条 WebSocket 消息是完整 `AgentEvent` JSON；处理规则和 SSE 相同：拼接
+`TOKEN.data.token`，收到 `RUN_COMPLETED` 或 `ERROR` 后结束本轮。
+
+### 6.4 断线续连和结果恢复
+
+SSE 的 `id` 是 Redis Stream id。客户端应该保存最后一个 SSE `id`，重连时带：
+
+```http
+Last-Event-ID: <last_sse_id>
+```
+
+WebSocket 需要从 cursor 恢复时：
+
+```text
+ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
+```
+
+如果 cursor 已超过服务端保留窗口，服务端会返回：
+
+```json
+{
+  "type": "ERROR",
+  "data": {
+    "stage": "stream_replay",
+    "error": "STREAM_GAP"
+  }
+}
+```
+
+此时不要再尝试 replay token，应该查询：
+
+- `GET /runs/{agent_run_id}`
+- `GET /conversations/{conversation_id}`
+
+### 6.5 继续已有会话
 
 把上一次返回的 `conversation_id` 放进请求：
 
@@ -216,7 +331,7 @@ curl -sS -X POST "$BASE_URL/chat" \
 - 如果会话归属不匹配，返回 `403`。
 - 同一 conversation 的 realtime run 会串行化；如果上一轮还没结束，可能返回 `409 CONVERSATION_BUSY`。
 
-### 6.3 不支持同步等待
+### 6.6 不支持同步等待
 
 `POST /chat` 只做异步受理。`stream` 可以省略或传 `true`，但不能传 `false`。
 
@@ -235,7 +350,7 @@ curl -sS -X POST "$BASE_URL/chat" \
 内部脚本也应该先拿 `agent_run_id`，再订阅 `stream_url`，或用
 `GET /runs/{agent_run_id}` 和 `GET /conversations/{conversation_id}` 做状态与结果恢复。
 
-### 6.4 幂等重试
+### 6.7 幂等重试
 
 建议所有可重试的 `POST /chat` 都带：
 
@@ -374,116 +489,7 @@ curl -sS "$BASE_URL/runs/run_xxx" \
 - 客户端刷新页面后恢复状态。
 - `STREAM_GAP` 后确认最终状态。
 
-## 9. 流式返回
-
-### 9.1 SSE
-
-```bash
-curl -N "$BASE_URL/stream/run_xxx" \
-  -H 'Authorization: Bearer alice.internal'
-```
-
-SSE frame 示例：
-
-```text
-id: 1782112292712-0
-event: TOKEN
-data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","type":"TOKEN","stream_id":"1782112292712-0","seq":6,"ts":1782112292.7,"data":{"token":"hello"}}
-```
-
-重要事件：
-
-- `RUN_STARTED`
-- `PLANNING_STARTED`
-- `RETRIEVAL_STARTED`
-- `RETRIEVAL_FINISHED`
-- `TOOL_CALL_STARTED`
-- `TOOL_CALL_FINISHED`
-- `LLM_GENERATING`
-- `TOKEN`
-- `RESULT_COMPOSED`
-- `RUN_COMPLETED`
-- `ERROR`
-
-客户端从 `TOKEN.data.token` 读取增量文本：
-
-```json
-{
-  "type": "TOKEN",
-  "data": {
-    "token": "文本片段"
-  }
-}
-```
-
-成功终止事件：
-
-```json
-{
-  "type": "RUN_COMPLETED",
-  "data": {
-    "status": "SUCCEEDED",
-    "content": "完整最终答案"
-  }
-}
-```
-
-失败终止事件：
-
-```json
-{
-  "type": "ERROR",
-  "data": {
-    "stage": "provider_rate_limit | runner | stream_replay | agent",
-    "error": "machine-readable error"
-  }
-}
-```
-
-### 9.2 断线续连
-
-SSE 的 `id` 是 Redis Stream id。客户端应该保存最后一个 SSE `id`，重连时带：
-
-```http
-Last-Event-ID: <last_sse_id>
-```
-
-如果 cursor 已超过服务端保留窗口，服务端会返回：
-
-```json
-{
-  "type": "ERROR",
-  "data": {
-    "stage": "stream_replay",
-    "error": "STREAM_GAP"
-  }
-}
-```
-
-此时不要再尝试 replay token，应该查询：
-
-- `GET /runs/{agent_run_id}`
-- `GET /conversations/{conversation_id}`
-
-### 9.3 WebSocket
-
-```text
-ws(s)://<host>/ws/run_xxx?token=alice.internal
-```
-
-也可以在握手时传：
-
-```http
-Authorization: Bearer alice.internal
-```
-
-需要从 cursor 恢复时：
-
-```text
-ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
-```
-
-## 10. 内部 RAG 管理接口
+## 9. 内部 RAG 管理接口
 
 这一组接口不是普通业务接入面。它只给内部知识库管理员、内部资料上传脚本、
 或内部 ingestion Agent 使用，用于维护服务端自己的文档知识库。
@@ -498,7 +504,7 @@ ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 - 没有进入白名单的身份会收到 `403 RAG_ADMIN_FORBIDDEN`。
 - 直接 `/rag/query` 会返回原始 chunk，因此同样只允许内部调试/验收使用。
 
-### 10.1 创建知识库
+### 9.1 创建知识库
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
@@ -524,14 +530,14 @@ curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
 }
 ```
 
-### 10.2 查询知识库列表
+### 9.2 查询知识库列表
 
 ```bash
 curl -sS "$BASE_URL/rag/knowledge-bases" \
   -H 'Authorization: Bearer rag-admin'
 ```
 
-### 10.3 导入文本/Markdown 文档
+### 9.3 导入文本/Markdown 文档
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/documents" \
@@ -559,7 +565,7 @@ curl -sS -X POST "$BASE_URL/rag/documents" \
 }
 ```
 
-### 10.4 查询文档摄取状态
+### 9.4 查询文档摄取状态
 
 ```bash
 curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
@@ -589,7 +595,7 @@ curl -sS "$BASE_URL/rag/documents/doc_xxx" \
 }
 ```
 
-### 10.5 直接检索知识库
+### 9.5 直接检索知识库
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/query" \
@@ -631,7 +637,7 @@ curl -sS -X POST "$BASE_URL/rag/query" \
 }
 ```
 
-### 10.6 让普通聊天使用内部知识库
+### 9.6 让普通聊天使用内部知识库
 
 创建并导入内部知识库后，由运维配置：
 
@@ -643,7 +649,7 @@ RAG_INTERNAL_OWNER_USER_ID=rag-admin
 配置完成后，普通 `/chat` 请求不需要传 KB ID。Agent 会在运行过程中自主决定是否调用
 `search_knowledge`，服务端会把检索限制在配置好的内部知识库上。
 
-## 11. 健康检查和观测
+## 10. 健康检查和观测
 
 ```bash
 curl -sS "$BASE_URL/healthz"
@@ -679,7 +685,7 @@ curl -sS "$BASE_URL/metrics"
 - `runner_timeouts_total`
 - `reaper_runs_total`
 
-## 12. 常见错误
+## 11. 常见错误
 
 HTTP 状态：
 
@@ -705,7 +711,7 @@ HTTP 状态：
 - `STREAM_GAP`
 - `RUN_TIMEOUT`
 
-## 13. Agent 接入清单
+## 12. Agent 接入清单
 
 1. 设置 `BASE_URL`。
 2. 选择稳定的内部 `user_id`。
