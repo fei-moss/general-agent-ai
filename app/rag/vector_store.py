@@ -24,7 +24,10 @@ _EPS = 1e-12
 
 def _to_matrix(vectors: list[list[float]]) -> np.ndarray:
     """将向量列表转为二维矩阵(float64)。"""
-    return np.asarray(vectors, dtype=np.float64)
+    matrix = np.asarray(vectors, dtype=np.float64)
+    if not np.isfinite(matrix).all():
+        raise ValueError("向量包含非有限数值")
+    return matrix
 
 
 def _normalize_rows(mat: np.ndarray) -> np.ndarray:
@@ -95,7 +98,9 @@ class InMemoryVectorStore:
             raise ValueError("查询向量维度与库内向量不一致")
         normed = _normalize_rows(matrix)
         q_normed = _normalize_rows(query)[0]
-        scores = normed @ q_normed  # (N,) 余弦相似度
+        scores = np.einsum("ij,j->i", normed, q_normed, optimize=True)  # 余弦相似度
+        if not np.isfinite(scores).all():
+            raise ValueError("相似度分数包含非有限数值")
 
         k = min(top_k, len(ids))
         # argpartition 取 top-k 再排序,避免全排序开销

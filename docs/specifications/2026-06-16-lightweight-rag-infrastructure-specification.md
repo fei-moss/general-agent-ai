@@ -19,6 +19,7 @@
   - Existing `PgVectorStore` is a placeholder and is not enabled by the factory.
 - Current behavior:
   - `HashEmbedder` and `InMemoryVectorStore` support deterministic local/demo retrieval.
+  - `OpenAIEmbedder` supports OpenAI-compatible embedding APIs when explicitly configured.
   - `RAGRetriever.ingest()` can chunk, embed, and write to the in-memory store.
   - `RAGRetriever.retrieve()` can return in-memory hits with timeout/degradation semantics.
   - `search_knowledge` already exists as a Pydantic AI tool, but it is backed by the demo retriever adapter rather than a persistent knowledge store.
@@ -333,6 +334,15 @@
   - Embedding provider quota uses the existing provider limiter path or an extension of it; it is not enforced through Postgres.
   - Realtime `search_knowledge` must have short timeout/degraded fallback.
   - Long RAG, reindexing, and document parsing beyond plain text go through worker/batch path.
+- Embedding provider contract:
+  - `embedding_provider=hash` remains the zero-secret local/test default.
+  - Explicit real providers must not silently fall back to `hash` when their secret is missing.
+  - `embedding_provider=openai` uses an OpenAI-compatible `/embeddings` endpoint with bearer auth.
+  - `embedding_provider=gemini` uses the Gemini API `models/{model}:batchEmbedContents` endpoint with `x-goog-api-key` auth.
+  - Gemini model names may be configured as either `gemini-embedding-2` or `models/gemini-embedding-2`; requests normalize to `models/{model}`.
+  - Gemini batch requests must preserve one output vector per input text and preserve input order.
+  - Gemini requests should set `output_dimensionality` from `embedding_dim` so pgvector dimensions, response vectors, and stored metadata stay aligned.
+  - `embedding_api_key` is the provider-neutral secret; Gemini may also read `gemini_api_key` for operator convenience. Neither value may be logged, persisted, or committed.
 - Observability/logging/metrics:
   - Metrics:
     - `rag_ingestion_jobs_total{status}`
@@ -402,6 +412,7 @@
   - `SPEC-RAG-INFRA-001`: `/rag/query` returns ranked chunks with `chunk_id`, `document_id`, `score`, `content`, and citation.
   - `SPEC-RAG-INFRA-001`: `search_knowledge` uses persistent RAG when enabled and still supports deterministic mock/local behavior when disabled.
   - `SPEC-RAG-INFRA-001`: Agent answers can reference returned citation source ids and do not invent citations.
+  - `SPEC-RAG-INFRA-001`: `embedding_provider=gemini` sends batch requests to Gemini Embedding 2, parses `embeddings[].values`, and never exposes the API key.
 - Edge cases:
   - Empty content returns 422.
   - Unknown/unauthorized knowledge base returns 404/403.
@@ -437,6 +448,7 @@
   - Phase 1 supports JSON text/Markdown import only; binary upload and Docling are deferred.
   - Phase 1 stores imported text content in Postgres `rag_document.raw_content`; object storage is deferred until binary upload/file retention is introduced.
   - Local/test default embedding provider is deterministic `hash`; production must explicitly configure `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, dimension, and secret source before enabling persistent RAG with a real provider.
+  - Gemini Embedding 2 is the preferred first production semantic embedding option for this project. Its key is injected from local/secret-manager environment, not repository files.
   - Agent RAG uses only an explicitly bound `knowledge_base_id` from request metadata/run plan. It does not silently choose the first active user knowledge base.
   - pgvector is sufficient for the expected initial scale.
   - DockerHost is the preferred integration environment for pgvector validation.

@@ -1,0 +1,4 @@
+{"id":"q_dockerhost_pgvector","query":"How do we smoke test pgvector with DockerHost?","relevant_doc_ids":["dockerhost"],"max_rank":1,"top_k":3,"tags":["dockerhost","pgvector"]}
+{"id":"q_rag_degraded_timeout","query":"What should RAG do if retrieval times out during a chat run?","relevant_doc_ids":["rag_runtime"],"max_rank":2,"top_k":3,"tags":["rag","degraded"]}
+{"id":"q_provider_secret_storage","query":"Where should provider API keys be stored?","relevant_doc_ids":["provider_secrets"],"max_rank":1,"top_k":3,"tags":["secrets"]}
+{"id":"q_gemini_embedding_endpoint","query":"Which endpoint does the Gemini embedding provider call?","relevant_doc_ids":["gemini_embedding"],"max_rank":2,"top_k":3,"tags":["gemini","embedding"]}

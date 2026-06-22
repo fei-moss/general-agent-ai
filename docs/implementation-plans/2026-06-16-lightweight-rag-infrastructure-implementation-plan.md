@@ -13,7 +13,7 @@
   - Binary file upload, object storage, Docling, OCR, or office document parsing.
   - Team/RBAC knowledge bases.
   - Full UI for knowledge base management.
-  - Production embedding provider selection beyond configurable OpenAI-compatible/provider-secret hooks.
+  - Broad embedding provider marketplace beyond OpenAI-compatible and Gemini hooks.
 
 ## Change Steps
 
@@ -64,7 +64,7 @@
     - `rag_chunk_size: int`
     - `rag_chunk_overlap: int`
     - `rag_index_version: str = "v1"`
-    - `embedding_provider: str = "hash"`
+    - `embedding_provider: str = "hash"` (`hash|openai|gemini`)
     - `embedding_model: str = "hash"`
     - `embedding_dim: int`
     - `embedding_batch_size: int = 64`
@@ -144,6 +144,10 @@
   - Decouple embedding provider from chat `llm_provider`.
   - Keep `HashEmbedder` as local/test default.
   - Add OpenAI-compatible embedding provider path behind explicit config and secret validation.
+  - Add `GeminiEmbedder` for `gemini-embedding-2` via `models/{model}:batchEmbedContents`, using `x-goog-api-key`, one request per input text, and response order preservation.
+  - Normalize Gemini model ids so both `gemini-embedding-2` and `models/gemini-embedding-2` are valid configuration values.
+  - Set Gemini `output_dimensionality` from `embedding_dim` to keep pgvector vector dimensions aligned.
+  - Explicit real providers (`openai|gemini`) fail fast when neither provider-neutral nor provider-specific secret is configured; only default `hash` remains zero-secret.
   - Route real embedding requests through provider/model limiter before network calls where feasible.
 - Data contract impact:
   - Chunks carry `document_id`, `chunk_index`, offsets/section metadata, provider/model/dim/index_version.
@@ -151,6 +155,7 @@
   - Parser tests.
   - Chunker config tests.
   - Hash embedder compatibility tests.
+  - Gemini embedder request-shape and response-parsing tests with `httpx.MockTransport`, no real API call.
   - Missing/invalid embedding secret tests.
 - Verification command:
   - `.venv/bin/python -m pytest tests/test_rag_service.py tests/test_secret_management.py tests/test_provider_rate_limits.py -q`

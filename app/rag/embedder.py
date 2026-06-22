@@ -4,8 +4,10 @@
 - HashEmbedder: 零外部依赖、确定性的 hashing-trick 向量化(默认),
   保证无任何 API key 也能端到端跑通。
 - OpenAIEmbedder: 可选,经 httpx 调用 OpenAI 兼容 /embeddings 接口。
+- GeminiEmbedder: 可选,经 Gemini API batchEmbedContents 生成语义向量。
 
-工厂 get_embedder() 按 Settings.embedding_provider 选择,失败降级到 HashEmbedder。
+工厂 get_embedder() 按 Settings.embedding_provider 选择。默认 hash 零依赖;
+显式真实 provider 缺少 secret 时失败,避免生产静默退回 hash。
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import numpy as np
 from app.core.config import Settings, get_settings
 from app.core.interfaces import Embedder
 from app.core.logging import get_logger, log_with_fields
+from app.core.secrets import build_secret_provider
 
 logger = get_logger(__name__)
 
@@ -26,12 +29,41 @@ logger = get_logger(__name__)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[^\sA-Za-z0-9]")
 # OpenAI 默认 embedding 模型
 _OPENAI_EMBED_MODEL = "text-embedding-3-small"
+_OPENAI_BASE_URL = "https://api.openai.com/v1"
+_GEMINI_EMBED_MODEL = "gemini-embedding-2"
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _EPS = 1e-12
 
 
 def _tokenize(text: str) -> list[str]:
     """轻量分词:小写化后抽取词/单字符 token。"""
     return _TOKEN_RE.findall(text.lower())
+
+
+def _secret_value(settings: Settings, *names: str) -> str:
+    """按优先级读取 secret,支持 Settings 字段和 *_file 注入。"""
+    provider = build_secret_provider(settings)
+    for name in names:
+        secret = provider.get_secret(name)
+        if secret:
+            return secret.reveal()
+    return ""
+
+
+def _gemini_model_resource(model: str | None) -> str:
+    """规范化 Gemini model resource,用于请求体与 URL。"""
+    value = (model or _GEMINI_EMBED_MODEL).strip()
+    if value.startswith("models/"):
+        return value
+    return f"models/{value}"
+
+
+def _provider_model(settings: Settings, default: str) -> str:
+    """返回真实 provider 的模型名,忽略 hash 默认占位值。"""
+    model = (settings.embedding_model or "").strip()
+    if not model or model == "hash":
+        return default
+    return model
 
 
 class HashEmbedder:
@@ -88,14 +120,14 @@ class OpenAIEmbedder:
 
     def __init__(self, settings: Settings) -> None:
         """初始化,记录配置(不在构造期发起网络请求)。"""
-        api_key = settings.embedding_api_key or settings.openai_api_key
+        api_key = _secret_value(settings, "embedding_api_key", "openai_api_key")
         if not api_key:
             raise ValueError("OpenAIEmbedder 需要 embedding_api_key")
         self._base_url = (
             settings.embedding_base_url or settings.openai_base_url
         ).rstrip("/")
         self._api_key = api_key
-        self._model = settings.embedding_model or _OPENAI_EMBED_MODEL
+        self._model = _provider_model(settings, _OPENAI_EMBED_MODEL)
         self._timeout = settings.embedding_timeout_s
         self._dim = settings.embedding_dim
 
@@ -130,24 +162,106 @@ class OpenAIEmbedder:
         return [item["embedding"] for item in items]
 
 
+class GeminiEmbedder:
+    """经 Gemini API 的向量化器。
+
+    使用 batchEmbedContents,确保批量输入返回一组与输入顺序一致的
+    embeddings。Gemini key 通过 x-goog-api-key 传递,不进入日志。
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        """初始化,记录配置(不在构造期发起网络请求)。"""
+        api_key = _secret_value(settings, "embedding_api_key", "gemini_api_key")
+        if not api_key:
+            raise ValueError("GeminiEmbedder 需要 embedding_api_key 或 gemini_api_key")
+        self._api_key = api_key
+        base_url = (settings.embedding_base_url or "").strip().rstrip("/")
+        if not base_url or base_url == _OPENAI_BASE_URL:
+            base_url = _GEMINI_BASE_URL
+        self._base_url = base_url
+        self._model_resource = _gemini_model_resource(
+            _provider_model(settings, _GEMINI_EMBED_MODEL)
+        )
+        self._timeout = settings.embedding_timeout_s
+        self._dim = settings.embedding_dim
+
+    @property
+    def name(self) -> str:
+        """实现名称。"""
+        return "gemini"
+
+    @property
+    def dim(self) -> int:
+        """输出向量维度(配置声明值)。"""
+        return self._dim
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """调用 Gemini batchEmbedContents 批量向量化。"""
+        if not texts:
+            return []
+
+        import httpx  # 延迟导入,避免无网络场景的导入成本
+
+        payload = {
+            "requests": [
+                {
+                    "model": self._model_resource,
+                    "content": {"parts": [{"text": text or ""}]},
+                    "output_dimensionality": self._dim,
+                }
+                for text in texts
+            ]
+        }
+        headers = {"x-goog-api-key": self._api_key}
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(
+                f"{self._base_url}/{self._model_resource}:batchEmbedContents",
+                json=payload,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        embeddings = data["embeddings"]
+        if len(embeddings) != len(texts):
+            raise ValueError("embedding_count_mismatch")
+        vectors = [[float(v) for v in item["values"]] for item in embeddings]
+        for vector in vectors:
+            if len(vector) != self._dim:
+                raise ValueError("embedding_dimension_mismatch")
+        return vectors
+
+
 def get_embedder(settings: Settings | None = None) -> Embedder:
     """工厂:按配置返回 Embedder 实例。
 
-    embedding_provider 为 openai 且具备 api_key 时尝试 OpenAIEmbedder,
-    构造失败则记录并降级到 HashEmbedder;其余情况默认 HashEmbedder。
+    默认 hash 保持零依赖。显式选择真实 provider 时缺 secret 会失败,
+    避免生产把语义检索静默变成 hash 检索。
     """
     settings = settings or get_settings()
     provider = (settings.embedding_provider or "hash").strip().lower()
-    if provider == "openai" and (
-        settings.embedding_api_key or settings.openai_api_key
-    ):
+    if provider == "openai":
         try:
             return OpenAIEmbedder(settings)
         except Exception as exc:  # noqa: BLE001 — 降级保证可用性
+            if not _secret_value(settings, "embedding_api_key", "openai_api_key"):
+                raise
             log_with_fields(
                 logger,
                 logging.WARNING,
                 "OpenAIEmbedder 初始化失败,降级到 HashEmbedder",
+                error=str(exc),
+            )
+    if provider == "gemini":
+        try:
+            return GeminiEmbedder(settings)
+        except Exception as exc:  # noqa: BLE001 — 降级保证可用性
+            if not _secret_value(settings, "embedding_api_key", "gemini_api_key"):
+                raise
+            log_with_fields(
+                logger,
+                logging.WARNING,
+                "GeminiEmbedder 初始化失败,降级到 HashEmbedder",
                 error=str(exc),
             )
     return HashEmbedder(dim=settings.embedding_dim)

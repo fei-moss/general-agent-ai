@@ -66,6 +66,60 @@ class _FakeVectorStore:
         ][:top_k]
 
 
+class _FakeDocumentRepo:
+    def __init__(self) -> None:
+        self.statuses: list[tuple[str, str, str | None]] = []
+
+    async def get(self, document_id: str) -> Any:
+        return SimpleNamespace(
+            id=document_id,
+            knowledge_base_id="kb_1",
+            owner_user_id="user_1",
+            raw_content="MOSS Agent does not use real capital.",
+            mime_type="text/plain",
+            source_uri="https://moss-5.gitbook.io/moss/moss-agent-handbook",
+            meta={
+                "doc_id": "moss_product_safety",
+                "section": "product_safety",
+            },
+        )
+
+    async def update_status(
+        self,
+        document_id: str,
+        status: Any,
+        *,
+        error_message: str | None = None,
+    ) -> Any:
+        value = status.value if hasattr(status, "value") else str(status)
+        self.statuses.append((document_id, value, error_message))
+        return SimpleNamespace(id=document_id, status=status)
+
+
+class _FakeIngestionJobRepo:
+    def __init__(self) -> None:
+        self.statuses: list[tuple[str, str, str | None]] = []
+
+    async def update_status(
+        self,
+        job_id: str,
+        status: Any,
+        *,
+        error_message: str | None = None,
+    ) -> Any:
+        value = status.value if hasattr(status, "value") else str(status)
+        self.statuses.append((job_id, value, error_message))
+        return SimpleNamespace(id=job_id, status=status)
+
+
+class _CapturingVectorStore:
+    def __init__(self) -> None:
+        self.docs: list[dict[str, Any]] = []
+
+    async def add(self, docs: list[dict[str, Any]]) -> None:
+        self.docs.extend(docs)
+
+
 async def test_query_service_returns_citations_and_writes_retrieval_log():
     from app.rag.service import RAGQueryService
 
@@ -122,3 +176,34 @@ async def test_query_service_timeout_degrades_without_raising():
     assert response.chunks == []
     assert log_repo.records[0]["degraded"] is True
     assert log_repo.records[0]["reason"] == "timeout"
+
+
+async def test_ingestion_preserves_source_doc_id_in_chunk_metadata():
+    from app.rag.service import RAGIngestionService
+
+    vector_store = _CapturingVectorStore()
+    service = RAGIngestionService(
+        document_repo=_FakeDocumentRepo(),
+        job_repo=_FakeIngestionJobRepo(),
+        embedder=_FakeEmbedder(),
+        vector_store=vector_store,
+        settings=Settings(
+            _env_file=None,
+            embedding_provider="gemini",
+            embedding_model="gemini-embedding-2",
+            embedding_dim=2,
+            rag_chunk_size=512,
+            rag_chunk_overlap=80,
+        ),
+    )
+
+    chunk_count = await service.ingest_document(
+        job_id="ragjob_1",
+        document_id="doc_db_1",
+    )
+
+    assert chunk_count == 1
+    metadata = vector_store.docs[0]["metadata"]
+    assert metadata["doc_id"] == "moss_product_safety"
+    assert metadata["db_document_id"] == "doc_db_1"
+    assert metadata["source_uri"] == "https://moss-5.gitbook.io/moss/moss-agent-handbook"

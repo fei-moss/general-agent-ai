@@ -302,6 +302,7 @@ class RAGIngestionService:
             for chunk, vector in zip(chunks, vectors):
                 if len(vector) != self._settings.embedding_dim:
                     raise ValueError("embedding_dimension_mismatch")
+                source_doc_id = parsed.metadata.get("doc_id") or document_id
                 records.append(
                     {
                         "id": _new_id("chunk_"),
@@ -316,7 +317,8 @@ class RAGIngestionService:
                         "token_count": len(chunk.text),
                         "metadata": {
                             **parsed.metadata,
-                            "doc_id": document_id,
+                            "doc_id": source_doc_id,
+                            "db_document_id": document_id,
                             "chunk": chunk.index,
                             "source_uri": getattr(document, "source_uri", None),
                         },

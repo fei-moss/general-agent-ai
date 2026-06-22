@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 80
     rag_index_version: str = "v1"
     rag_metadata_max_bytes: int = 8192
-    embedding_provider: str = "hash"  # hash | openai
+    embedding_provider: str = "hash"  # hash | openai | gemini
     embedding_model: str = "hash"
     embedding_api_key: str = ""
     embedding_api_key_file: str = ""

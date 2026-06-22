@@ -13,8 +13,8 @@ services:
       LLM_PROVIDER: mock
       RAG_ENABLED: "true"
       RAG_VECTOR_STORE: pgvector
-      EMBEDDING_PROVIDER: hash
-      EMBEDDING_MODEL: hash
+      EMBEDDING_PROVIDER: gemini
+      EMBEDDING_MODEL: gemini-embedding-2
       EMBEDDING_DIM: "256"
       PROVIDER_SECRET_STRICT: "true"
     depends_on:
@@ -61,8 +61,8 @@ services:
       LLM_PROVIDER: mock
       RAG_ENABLED: "true"
       RAG_VECTOR_STORE: pgvector
-      EMBEDDING_PROVIDER: hash
-      EMBEDDING_MODEL: hash
+      EMBEDDING_PROVIDER: gemini
+      EMBEDDING_MODEL: gemini-embedding-2
       EMBEDDING_DIM: "256"
       PROVIDER_SECRET_STRICT: "true"
     depends_on:
