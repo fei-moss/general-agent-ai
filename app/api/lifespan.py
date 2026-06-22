@@ -26,6 +26,7 @@ from app.core.config import get_settings
 from app.core.events import AgentEvent
 from app.core.interfaces import EventBus
 from app.core.logging import configure_logging, get_logger, log_with_fields
+from app.core.metrics import Metrics
 from app.core.secrets import build_secret_provider
 from app.runtime.locks import ConversationLock, RunLease
 from app.runtime.provider_limits import (
@@ -51,12 +52,12 @@ class _NullEventBus:
         return
 
 
-def _build_event_bus(redis_url: str, redis_client=None) -> EventBus:
+def _build_event_bus(redis_url: str, redis_client=None, metrics: Metrics | None = None) -> EventBus:
     """构造事件总线,优先复用 bus 作者实现,缺失时降级。"""
     try:
         from app.bus import create_event_bus  # type: ignore
 
-        return create_event_bus(redis_url, redis_client=redis_client)
+        return create_event_bus(redis_url, redis_client=redis_client, metrics=metrics)
     except Exception:
         pass
     try:
@@ -78,20 +79,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """初始化与释放应用级共享资源。"""
     settings = get_settings()
     configure_logging(settings.log_level)
+    metrics = Metrics()
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
-    event_bus = _build_event_bus(settings.redis_url, redis)
+    event_bus = _build_event_bus(settings.redis_url, redis, metrics)
     secret_provider = build_secret_provider(settings)
     identity = provider_identity_from_settings(settings)
     secret_provider.validate_required(identity.provider, identity.model)
-    provider_limiter = build_provider_limiter(settings, redis_client=redis)
+    provider_limiter = build_provider_limiter(settings, redis_client=redis, metrics=metrics)
     app.state.redis = redis
+    app.state.metrics = metrics
     app.state.event_bus = event_bus
     app.state.secret_provider = secret_provider
     app.state.provider_limiter = provider_limiter
     app.state.rate_limiter = RateLimiter(redis, settings.rate_limit_per_min)
     app.state.conversation_lock = ConversationLock(redis_client=redis)
     app.state.realtime_runner = _build_realtime_runner(
-        redis, event_bus, settings, provider_limiter, secret_provider
+        redis, event_bus, settings, provider_limiter, secret_provider, metrics
     )
     logger.info("API 启动完成")
     try:
@@ -112,7 +115,7 @@ async def _shutdown(app: FastAPI, redis: Redis) -> None:
 
 
 def _build_realtime_runner(
-    redis, event_bus: EventBus, settings, provider_limiter, secret_provider
+    redis, event_bus: EventBus, settings, provider_limiter, secret_provider, metrics
 ) -> RealtimeRunner:
     """Build the per-process realtime runner with shared Redis-backed deps."""
 
@@ -126,6 +129,7 @@ def _build_realtime_runner(
                 redis_client=redis,
                 provider_limiter=provider_limiter,
                 secret_provider=secret_provider,
+                metrics=metrics,
             )
         )
 
@@ -133,4 +137,7 @@ def _build_realtime_runner(
         orchestrator_factory=orchestrator_factory,
         run_lease=RunLease(redis_client=redis),
         max_concurrency=settings.realtime_runner_max_concurrency,
+        max_runtime_s=settings.run_max_runtime_s,
+        metrics=metrics,
+        event_bus=event_bus,
     )

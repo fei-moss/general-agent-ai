@@ -16,9 +16,9 @@ from app.bus.event_bus import (
 from app.bus.stream_bus import StreamBus
 
 
-def create_event_bus(redis_url: str | None = None, redis_client=None) -> StreamBus:
+def create_event_bus(redis_url: str | None = None, redis_client=None, metrics=None) -> StreamBus:
     """按 redis_url 构造 Redis StreamBus(lifespan 约定的工厂入口)。"""
-    return StreamBus(redis_url, redis_client=redis_client)
+    return StreamBus(redis_url, redis_client=redis_client, metrics=metrics)
 
 
 __all__ = [

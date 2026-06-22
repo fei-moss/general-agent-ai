@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from app.core.config import get_settings
 from app.core.enums import RunStatus
+from app.core.events import AgentEvent, EventType
 from app.core.metrics import Metrics
 from app.runtime.locks import RunLease
 
@@ -62,6 +63,8 @@ class RealtimeRunner:
         heartbeat_interval_s: float = 10.0,
         metrics: Metrics | None = None,
         max_concurrency: int | None = None,
+        max_runtime_s: float | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         self._orchestrator_factory = orchestrator_factory or self._default_orchestrator
         self._run_lease = run_lease or RunLease()
@@ -69,6 +72,10 @@ class RealtimeRunner:
         self._run_lease_ttl_s = run_lease_ttl_s
         self._heartbeat_interval_s = heartbeat_interval_s
         self._metrics = metrics or Metrics()
+        self._event_bus = event_bus
+        self._max_runtime_s = (
+            max_runtime_s if max_runtime_s is not None else get_settings().run_max_runtime_s
+        )
         self._max_concurrency = (
             max_concurrency
             if max_concurrency is not None
@@ -123,20 +130,34 @@ class RealtimeRunner:
                 request.agent_run_id, conversation_lease
             )
             orchestrator = self._orchestrator_factory()
-            content = await orchestrator.run(
-                agent_run_id=request.agent_run_id,
-                conversation_id=request.conversation_id,
-                trace_id=request.trace_id,
-                user_message=request.message,
-                accepted_at=request.accepted_at,
-                route_type=request.route_type,
-                user_id=request.user_id,
-                metadata=request.metadata,
+            content = await asyncio.wait_for(
+                orchestrator.run(
+                    agent_run_id=request.agent_run_id,
+                    conversation_id=request.conversation_id,
+                    trace_id=request.trace_id,
+                    user_message=request.message,
+                    accepted_at=request.accepted_at,
+                    route_type=request.route_type,
+                    user_id=request.user_id,
+                    metadata=request.metadata,
+                ),
+                timeout=self._max_runtime_s,
             )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.SUCCEEDED,
                 content=content,
+            )
+        except asyncio.TimeoutError:
+            self._metrics.inc_counter(
+                "runner_timeouts_total",
+                {"runner_id": self._runner_id},
+            )
+            await self._finalize_timeout(request)
+            return RealtimeRunResult(
+                agent_run_id=request.agent_run_id,
+                status=RunStatus.FAILED,
+                error="RUN_TIMEOUT",
             )
         except Exception as exc:  # noqa: BLE001 runner must converge to terminal result
             return RealtimeRunResult(
@@ -195,6 +216,30 @@ class RealtimeRunner:
         from app.runtime.orchestrator import AgentOrchestrator
 
         return AgentOrchestrator(build_deps())
+
+    async def _finalize_timeout(self, request: RealtimeRunRequest) -> None:
+        """Best-effort terminal state/event for runner-level timeout."""
+        try:
+            from app.tasks import run_store
+
+            await run_store.mark_run_failed(request.agent_run_id, "RUN_TIMEOUT")
+        except Exception:
+            pass
+        if self._event_bus is None:
+            return
+        try:
+            await self._event_bus.publish(
+                f"run:{request.agent_run_id}",
+                AgentEvent(
+                    agent_run_id=request.agent_run_id,
+                    trace_id=request.trace_id,
+                    type=EventType.ERROR,
+                    seq=0,
+                    data={"stage": "runner", "error": "RUN_TIMEOUT"},
+                ),
+            )
+        except Exception:
+            pass
 
 
 def now_seconds() -> float:

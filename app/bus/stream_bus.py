@@ -40,7 +40,7 @@ class StreamBus:
         settings = get_settings()
         self._redis_url = redis_url or settings.redis_url
         self._client = redis_client
-        self._maxlen = maxlen
+        self._maxlen = maxlen if maxlen is not None else settings.stream_maxlen
         self._block_ms = block_ms
         self._metrics = metrics or Metrics()
 

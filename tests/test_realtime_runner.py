@@ -112,6 +112,70 @@ async def test_realtime_runner_failure_releases_leases_and_returns_failed():
     assert conversation_lease.released is True
 
 
+async def test_realtime_runner_timeout_releases_leases_and_returns_failed(monkeypatch):
+    from app.core.enums import RunStatus
+    from app.core.events import EventType
+    from app.core.metrics import InMemoryMetrics
+    from app.runtime.runner import RealtimeRunRequest, RealtimeRunner
+    from app.tasks import run_store
+
+    class _Orchestrator:
+        async def run(self, **kwargs):
+            await asyncio.sleep(0.05)
+            return "too late"
+
+    failed_runs: list[tuple[str, str]] = []
+
+    async def _mark_failed(run_id: str, error: str) -> None:
+        failed_runs.append((run_id, error))
+
+    class _EventBus:
+        def __init__(self) -> None:
+            self.events = []
+
+        async def publish(self, channel, event):
+            self.events.append((channel, event))
+            return event
+
+    monkeypatch.setattr(run_store, "mark_run_failed", _mark_failed)
+    metrics = InMemoryMetrics()
+    event_bus = _EventBus()
+    run_lease = FakeRunLease()
+    conversation_lease = FakeLockLease("conv-1")
+    runner = RealtimeRunner(
+        orchestrator_factory=lambda: _Orchestrator(),
+        run_lease=run_lease,
+        runner_id="runner-test",
+        heartbeat_interval_s=0,
+        max_runtime_s=0.001,
+        metrics=metrics,
+        event_bus=event_bus,
+    )
+
+    result = await runner.run_chat(
+        RealtimeRunRequest(
+            agent_run_id="run-timeout",
+            conversation_id="conv-1",
+            user_id="user-1",
+            trace_id="trace-1",
+            message="hello",
+            metadata={},
+            accepted_at=0.0,
+        ),
+        conversation_lease=conversation_lease,
+    )
+
+    assert result.status is RunStatus.FAILED
+    assert result.error == "RUN_TIMEOUT"
+    assert failed_runs == [("run-timeout", "RUN_TIMEOUT")]
+    assert event_bus.events[0][0] == "run:run-timeout"
+    assert event_bus.events[0][1].type is EventType.ERROR
+    assert event_bus.events[0][1].data["error"] == "RUN_TIMEOUT"
+    assert await run_lease.is_alive("run-timeout") is False
+    assert conversation_lease.released is True
+    assert metrics.counters["runner_timeouts_total"]
+
+
 async def test_realtime_runner_updates_active_run_metric():
     from app.core.metrics import InMemoryMetrics
     from app.runtime.runner import RealtimeRunRequest, RealtimeRunner

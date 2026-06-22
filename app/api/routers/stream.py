@@ -27,8 +27,10 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import CurrentUser, ReposDep, get_event_bus
 from app.api.repos import Repos
 from app.core.events import AgentEvent, EventType
+from app.core.ids import new_trace_id
 from app.core.interfaces import EventBus
 from app.core.logging import get_logger, log_with_fields, set_trace_id
+from app.core.metrics import Metrics
 from app.db.session import async_session_factory
 
 logger = get_logger(__name__)
@@ -163,10 +165,16 @@ async def _iter_events(
 ) -> AsyncIterator[AgentEvent]:
     """Iterate events from StreamBus with replay, or fallback to old EventBus."""
     if hasattr(bus, "replay"):
-        async for event in bus.subscribe(agent_run_id, last_event_id):  # type: ignore[call-arg]
-            yield event
-            if _is_terminal(event):
-                break
+        try:
+            async for event in bus.subscribe(agent_run_id, last_event_id):  # type: ignore[call-arg]
+                yield event
+                if _is_terminal(event):
+                    break
+        except Exception as exc:
+            if _is_stream_gap(exc):
+                yield _stream_gap_event(agent_run_id, last_event_id)
+                return
+            raise
         return
 
     last_seq = _parse_legacy_seq(last_event_id)
@@ -212,3 +220,23 @@ def _parse_legacy_seq(last_event_id: str | None) -> int | None:
 def _is_terminal(event: AgentEvent) -> bool:
     event_type = event.type.value if hasattr(event.type, "value") else event.type
     return event_type in {item.value for item in _TERMINAL_TYPES}
+
+
+def _is_stream_gap(exc: Exception) -> bool:
+    return exc.__class__.__name__ == "StreamGapError"
+
+
+def _stream_gap_event(agent_run_id: str, last_event_id: str | None) -> AgentEvent:
+    Metrics().inc_counter("stream_replay_gap_total", {"route": "stream"})
+    return AgentEvent(
+        agent_run_id=agent_run_id,
+        trace_id=new_trace_id(),
+        type=EventType.ERROR,
+        seq=0,
+        data={
+            "stage": "stream_replay",
+            "error": "STREAM_GAP",
+            "message": "stream replay cursor is outside retention",
+            "last_event_id": last_event_id,
+        },
+    )

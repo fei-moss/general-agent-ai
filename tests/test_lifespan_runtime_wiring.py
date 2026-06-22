@@ -29,6 +29,7 @@ async def test_lifespan_wires_shared_redis_runtime_resources(monkeypatch):
             rate_limit_per_min=1000,
             log_level="WARNING",
             realtime_runner_max_concurrency=123,
+            run_max_runtime_s=456,
         ),
     )
     monkeypatch.setattr(lifespan_module, "configure_logging", lambda *args, **kwargs: None)
@@ -37,11 +38,15 @@ async def test_lifespan_wires_shared_redis_runtime_resources(monkeypatch):
 
     async with lifespan_module.lifespan(app):
         assert app.state.redis is redis
+        assert app.state.metrics is not None
         assert app.state.event_bus._client is redis
         assert app.state.conversation_lock._client is redis
         assert app.state.realtime_runner._run_lease._client is redis
+        assert app.state.realtime_runner._event_bus is app.state.event_bus
         assert app.state.realtime_runner._max_concurrency == 123
+        assert app.state.realtime_runner._max_runtime_s == 456
         orchestrator = app.state.realtime_runner._orchestrator_factory()
         assert orchestrator._deps.event_bus is app.state.event_bus
+        assert orchestrator._deps.metrics is app.state.metrics
 
     assert redis.closed is True

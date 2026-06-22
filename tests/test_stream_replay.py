@@ -32,6 +32,23 @@ async def test_stream_router_iter_events_uses_last_event_id_cursor():
     assert [event.type for event in replayed] == ["RUN_COMPLETED"]
 
 
+async def test_stream_router_converts_retention_gap_to_stable_error():
+    from app.api.routers.stream import _iter_events
+    from app.core.events import EventType
+    from app.core.metrics import reset_default_metrics_registry
+
+    reset_default_metrics_registry()
+    bus = FakeStreamBus()
+    bus.gap_before_id = "5-0"
+
+    replayed = [event async for event in _iter_events(bus, "run-1", "1-0")]
+
+    assert len(replayed) == 1
+    assert replayed[0].type is EventType.ERROR
+    assert replayed[0].data["error"] == "STREAM_GAP"
+    assert replayed[0].data["last_event_id"] == "1-0"
+
+
 async def test_stream_owner_mismatch_raises_403():
     from app.api.routers.stream import _assert_run_owner
 

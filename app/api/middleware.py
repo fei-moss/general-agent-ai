@@ -25,7 +25,14 @@ _BEARER_PREFIX = "Bearer "
 _TRACE_HEADER = "X-Trace-Id"
 
 # 无需鉴权即可访问的路径前缀(健康检查与文档)
-_PUBLIC_PREFIXES = ("/healthz", "/readyz", "/docs", "/redoc", "/openapi.json")
+_PUBLIC_PREFIXES = (
+    "/healthz",
+    "/readyz",
+    "/metrics",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+)
 # 需要执行限流的路径前缀(写入/触发类)
 _RATE_LIMITED_PREFIXES = ("/chat",)
 

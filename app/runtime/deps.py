@@ -144,6 +144,7 @@ def build_deps(
     redis_client: Any | None = None,
     provider_limiter: Any | None = None,
     secret_provider: SecretProvider | None = None,
+    metrics: Metrics | None = None,
 ) -> RuntimeDeps:
     """装配真实依赖。
 
@@ -165,7 +166,7 @@ def build_deps(
         message_repo, run_repo = _build_repos(session)
         secret_provider = secret_provider or build_secret_provider(settings)
         provider_limiter = provider_limiter or build_provider_limiter(
-            settings, redis_client=redis_client
+            settings, redis_client=redis_client, metrics=metrics
         )
     except ImportError as exc:
         log_with_fields(
@@ -183,6 +184,7 @@ def build_deps(
         message_repo=message_repo,
         run_repo=run_repo,
         settings=settings,
+        metrics=metrics or Metrics(),
         provider_limiter=provider_limiter,
         secret_provider=secret_provider,
     )

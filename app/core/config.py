@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     provider_realtime_preflight_timeout_ms: int = 100
     provider_realtime_gate_wait_budget_ms: int = 1000
     provider_realtime_degrade_to_batch: bool = True
+    run_max_runtime_s: float = 300.0
+    stream_maxlen: int = 1000
+    metrics_enabled: bool = True
+    reaper_enabled: bool = True
+    reaper_interval_s: float = 30.0
+    reaper_stale_after_s: int = 300
+    reaper_max_attempts: int = 3
+    worker_pool: str = "prefork"
+    worker_concurrency: int = 2
 
     # --- RAG / Embedding ---
     rag_enabled: bool = True
