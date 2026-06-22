@@ -257,3 +257,14 @@ async def test_provider_error_mapper_extracts_retry_after_and_sets_backoff():
 def test_mock_provider_bypass_identity_is_centralized():
     assert provider_identity_from_settings(Settings(_env_file=None, llm_provider="mock")).mock
     assert provider_identity_from_settings(Settings(_env_file=None, llm_provider="")).mock
+
+
+def test_zai_provider_identity_uses_glm52_model():
+    identity = provider_identity_from_settings(
+        Settings(_env_file=None, llm_provider="zai")
+    )
+
+    assert identity.provider == "zai"
+    assert identity.model == "glm-5.2"
+    assert identity.key == "ratelimit:provider:zai:glm-5.2"
+    assert identity.mock is False

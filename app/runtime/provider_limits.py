@@ -132,6 +132,7 @@ def provider_identity_from_settings(settings: Settings) -> ProviderIdentity:
     model = {
         "openai": getattr(settings, "openai_model", "openai"),
         "qwen": getattr(settings, "qwen_model", "qwen"),
+        "zai": getattr(settings, "zai_model", "glm-5.2"),
         "anthropic": getattr(settings, "anthropic_model", "anthropic"),
         "gemini": getattr(settings, "gemini_model", "gemini"),
     }.get(provider, provider)

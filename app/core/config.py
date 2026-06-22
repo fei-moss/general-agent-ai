@@ -38,9 +38,10 @@ class Settings(BaseSettings):
     #   mock      -> FunctionModel(零 key 确定性中文回答,无需任何外部依赖)
     #   openai    -> OpenAIChatModel(openai_base_url/openai_model)
     #   qwen      -> OpenAIChatModel(qwen_base_url/qwen_model,DashScope 兼容端点)
+    #   zai       -> OpenAIChatModel(zai_base_url/zai_model,Z.AI GLM-5.2)
     #   anthropic -> AnthropicModel(anthropic_model)
     #   gemini    -> GoogleModel(gemini_model)
-    llm_provider: str = "mock"  # mock | openai | qwen | anthropic | gemini
+    llm_provider: str = "mock"  # mock | openai | qwen | zai | anthropic | gemini
     openai_base_url: str = "https://api.openai.com/v1"
     openai_api_key: str = ""
     openai_api_key_file: str = ""
@@ -51,6 +52,14 @@ class Settings(BaseSettings):
     # 通义千问 Qwen:走 DashScope 的 OpenAI 兼容端点(key 见 dashscope_api_key)
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     qwen_model: str = "qwen-plus"
+    # Z.AI GLM:走 OpenAI 兼容端点(key 见 zai_api_key)
+    zai_base_url: str = "https://api.z.ai/api/paas/v4/"
+    zai_model: str = "glm-5.2"
+    zai_api_key: str = ""
+    zai_api_key_file: str = ""
+    zai_thinking_type: str = "enabled"  # enabled | disabled
+    zai_reasoning_effort: str = "max"
+    zai_tool_stream: bool = True
     # Google Gemini(key 见 gemini_api_key)
     gemini_model: str = "gemini-2.5-flash"
 

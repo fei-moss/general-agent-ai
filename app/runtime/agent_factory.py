@@ -4,7 +4,7 @@
 是否检索知识库、调用哪个工具、何时收尾。这里负责三件事:
 
 1. build_model(settings):按 settings.llm_provider 选择 PydanticAI 原生 model
-   (mock / openai / qwen / anthropic / gemini),其中 mock 用 FunctionModel
+   (mock / openai / qwen / zai / anthropic / gemini),其中 mock 用 FunctionModel
    实现零 key、确定性、可演示一次「检索->回答」的离线行为。
 2. AgentDeps:通过依赖注入把检索器与工具路由传给各 @agent.tool,工具实现
    仅做薄转发,复用既有 RetrieverAdapter / ToolRouterAdapter 契约。
@@ -163,6 +163,10 @@ def build_model(
             settings.qwen_base_url,
             api_key.reveal() if api_key else "",
         )
+    if provider == "zai":
+        secret_provider.validate_required("zai", settings.zai_model)
+        api_key = secret_provider.get_secret("zai_api_key")
+        return _zai_model(settings, api_key.reveal() if api_key else "")
     if provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -196,6 +200,37 @@ def _openai_model(model: str, base_url: str, api_key: str) -> Model:
     return OpenAIChatModel(
         model,
         provider=OpenAIProvider(base_url=base_url, api_key=api_key),
+    )
+
+
+def _zai_model(settings: Settings, api_key: str) -> Model:
+    """构造 Z.AI GLM OpenAI-compatible model."""
+    from pydantic_ai.models.openai import OpenAIChatModel, OpenAIModelProfile
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    if not api_key:
+        raise RuntimeError("PROVIDER_SECRET_MISSING provider=zai")
+    extra_body: dict[str, Any] = {
+        "max_tokens": settings.provider_default_max_output_tokens,
+        "tool_stream": settings.zai_tool_stream,
+    }
+    thinking_type = (settings.zai_thinking_type or "").strip().lower()
+    if thinking_type:
+        extra_body["thinking"] = {"type": thinking_type}
+    reasoning_effort = (settings.zai_reasoning_effort or "").strip()
+    if reasoning_effort:
+        extra_body["reasoning_effort"] = reasoning_effort
+    return OpenAIChatModel(
+        settings.zai_model,
+        provider=OpenAIProvider(
+            base_url=settings.zai_base_url,
+            api_key=api_key,
+        ),
+        profile=OpenAIModelProfile(
+            openai_chat_thinking_field="reasoning_content",
+            openai_supports_strict_tool_definition=False,
+        ),
+        settings={"extra_body": extra_body},
     )
 
 

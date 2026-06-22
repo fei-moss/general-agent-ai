@@ -1,6 +1,6 @@
 # Agent Execution Platform
 
-一句话概述:这是一个**异步化的 Agent 执行平台**——客户端提交请求后 API 立即返回 `agent_run_id`(HTTP 202),真正的 **agentic 推理**(由 [PydanticAI](https://ai.pydantic.dev/) 驱动,LLM 在 loop 中自主决定检索知识库 / 调用工具 / 生成回答)在后台 Celery Worker 中执行,执行过程通过 SSE / WebSocket 以事件流实时推送;原生支持多 provider(claude / openai / qwen / gemini),内置零依赖 mock 模型(FunctionModel)与 HashEmbedder,**无需任何 API key 即可端到端跑通**。
+一句话概述:这是一个**异步化的 Agent 执行平台**——客户端提交请求后 API 立即返回 `agent_run_id`(HTTP 202),真正的 **agentic 推理**(由 [PydanticAI](https://ai.pydantic.dev/) 驱动,LLM 在 loop 中自主决定检索知识库 / 调用工具 / 生成回答)在后台 Celery Worker 中执行,执行过程通过 SSE / WebSocket 以事件流实时推送;原生支持多 provider(claude / openai / qwen / zai / gemini),内置零依赖 mock 模型(FunctionModel)与 HashEmbedder,**无需任何 API key 即可端到端跑通**。
 
 详细设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -22,6 +22,17 @@ make run-api
 # 5. 另开终端启动 Worker(消费全部队列)
 make run-worker
 ```
+
+## Z.AI GLM-5.2
+
+真实模型链路使用 `LLM_PROVIDER=zai`，默认模型为 `glm-5.2`，默认端点为 `https://api.z.ai/api/paas/v4/`。API key 只通过运行环境或 secret file 注入，不写入仓库文件。
+
+```bash
+export LLM_PROVIDER=zai
+export ZAI_API_KEY='<set-by-secret-manager>'
+```
+
+DockerHost 部署时使用 `dockerhost/env.example` 中的变量形态，并通过 `envctl --secret-env ZAI_API_KEY` 注入真实 key。
 
 ## 端到端 demo(curl)
 

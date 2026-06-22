@@ -18,6 +18,7 @@ from app.llm.providers import (
     AnthropicProvider,
     MockLLMProvider,
     OpenAICompatProvider,
+    ZAICompatProvider,
 )
 
 logger = get_logger(__name__)
@@ -33,6 +34,8 @@ def _build_provider(name: str, settings: Settings) -> LLMProvider:
     key = (name or "mock").strip().lower()
     if key == "openai":
         return OpenAICompatProvider(settings)
+    if key == "zai":
+        return ZAICompatProvider(settings)
     if key == "anthropic":
         return AnthropicProvider(settings)
     if key == "litellm":

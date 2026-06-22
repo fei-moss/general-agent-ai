@@ -54,7 +54,7 @@ def required_secret_name(provider: str | None) -> str | None:
         return None
     if key == "qwen":
         return "dashscope_api_key"
-    if key in {"openai", "anthropic", "gemini", "dashscope"}:
+    if key in {"openai", "anthropic", "gemini", "dashscope", "zai"}:
         return f"{key}_api_key"
     return f"{key}_api_key"
 

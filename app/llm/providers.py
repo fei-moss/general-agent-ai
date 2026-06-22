@@ -219,6 +219,87 @@ class OpenAICompatProvider:
         return _parse_openai_completion(data)
 
 
+class ZAICompatProvider(OpenAICompatProvider):
+    """Z.AI GLM provider using the documented OpenAI-compatible endpoint."""
+
+    @property
+    def name(self) -> str:
+        """Provider 名称。"""
+        return "zai"
+
+    def _payload(
+        self, messages: list[dict[str, Any]], stream: bool, **kwargs: Any
+    ) -> dict[str, Any]:
+        """构造 Z.AI /chat/completions 请求体。"""
+        extra = _strip_provider_kwargs(dict(kwargs))
+        model = extra.pop("model", self._settings.zai_model)
+        max_tokens = extra.pop(
+            "max_tokens", self._settings.provider_default_max_output_tokens
+        )
+        tool_stream = extra.pop("tool_stream", self._settings.zai_tool_stream)
+        thinking_type = str(
+            extra.pop("thinking_type", self._settings.zai_thinking_type) or ""
+        ).strip()
+        reasoning_effort = str(
+            extra.pop("reasoning_effort", self._settings.zai_reasoning_effort) or ""
+        ).strip()
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "max_tokens": max_tokens,
+            "tool_stream": tool_stream,
+        }
+        body.update(extra)
+        if thinking_type:
+            body["thinking"] = {"type": thinking_type}
+        if reasoning_effort:
+            body["reasoning_effort"] = reasoning_effort
+        return body
+
+    def _headers(self) -> dict[str, str]:
+        """构造带 Z.AI 鉴权的请求头。"""
+        api_key = self._secret_provider.get_secret("zai_api_key")
+        if not api_key:
+            raise RuntimeError("ZAI_API_KEY 未配置,无法调用 Z.AI GLM 端点")
+        return {
+            "Authorization": f"Bearer {api_key.reveal()}",
+            "Content-Type": "application/json",
+        }
+
+    async def stream(
+        self, messages: list[dict[str, Any]], **kwargs: Any
+    ) -> AsyncIterator[str]:
+        """流式调用 Z.AI 并解析 SSE。"""
+        url = f"{self._settings.zai_base_url.rstrip('/')}/chat/completions"
+        payload = self._payload(messages, stream=True, **kwargs)
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with client.stream(
+                "POST", url, headers=self._headers(), json=payload
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    token = _parse_openai_sse_line(line)
+                    if token is None:
+                        continue
+                    if token == _SSE_DONE:
+                        break
+                    if token:
+                        yield token
+
+    async def complete(
+        self, messages: list[dict[str, Any]], **kwargs: Any
+    ) -> str:
+        """一次性调用 Z.AI,返回首个 choice 的文本。"""
+        url = f"{self._settings.zai_base_url.rstrip('/')}/chat/completions"
+        payload = self._payload(messages, stream=False, **kwargs)
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(url, headers=self._headers(), json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        return _parse_openai_completion(data)
+
+
 def _parse_openai_sse_line(line: str) -> str | None:
     """解析单行 OpenAI SSE。
 

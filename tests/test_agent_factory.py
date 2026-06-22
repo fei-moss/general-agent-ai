@@ -56,6 +56,28 @@ def test_build_model_qwen_uses_openai_chat_model_with_qwen_model():
     assert model.model_name == "qwen-plus"
 
 
+def test_build_model_zai_uses_openai_chat_model_with_glm52_defaults():
+    model = build_model(
+        _settings(
+            llm_provider="zai",
+            zai_api_key="sk-zai-test",
+            provider_default_max_output_tokens=4096,
+        )
+    )
+
+    assert isinstance(model, OpenAIChatModel)
+    assert model.model_name == "glm-5.2"
+    assert str(model.client.base_url) == "https://api.z.ai/api/paas/v4/"
+    assert model.settings["extra_body"] == {
+        "max_tokens": 4096,
+        "tool_stream": True,
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "max",
+    }
+    assert model.profile.openai_chat_thinking_field == "reasoning_content"
+    assert model.profile.openai_supports_strict_tool_definition is False
+
+
 def test_build_model_anthropic_uses_anthropic_model():
     model = build_model(
         _settings(
