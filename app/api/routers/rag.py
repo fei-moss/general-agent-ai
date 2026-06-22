@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import CurrentUser, ReposDep
+from app.core.config import Settings, get_settings
 from app.core.enums import (
     KnowledgeBaseStatus,
     RAGDocumentStatus,
@@ -35,6 +36,7 @@ from app.rag.service import RAGQueryError, build_query_service
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["rag"])
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(
@@ -46,7 +48,9 @@ async def create_knowledge_base(
     body: KnowledgeBaseCreate,
     user: CurrentUser,
     repos: ReposDep,
+    settings: SettingsDep,
 ) -> Any:
+    _assert_rag_admin(user, settings)
     repo = KnowledgeBaseRepository(repos.session)
     return await repo.create(
         owner_user_id=user,
@@ -56,7 +60,10 @@ async def create_knowledge_base(
 
 
 @router.get("/knowledge-bases", response_model=list[KnowledgeBaseOut])
-async def list_knowledge_bases(user: CurrentUser, repos: ReposDep) -> Any:
+async def list_knowledge_bases(
+    user: CurrentUser, repos: ReposDep, settings: SettingsDep
+) -> Any:
+    _assert_rag_admin(user, settings)
     repo = KnowledgeBaseRepository(repos.session)
     return await repo.list_for_user(user)
 
@@ -66,7 +73,9 @@ async def get_knowledge_base(
     knowledge_base_id: str,
     user: CurrentUser,
     repos: ReposDep,
+    settings: SettingsDep,
 ) -> Any:
+    _assert_rag_admin(user, settings)
     return await _get_kb_or_error(knowledge_base_id, user, repos)
 
 
@@ -79,7 +88,9 @@ async def create_document(
     body: RAGDocumentCreate,
     user: CurrentUser,
     repos: ReposDep,
+    settings: SettingsDep,
 ) -> RAGDocumentAccepted:
+    _assert_rag_admin(user, settings)
     kb = await _get_kb_or_error(body.knowledge_base_id, user, repos)
     if _status_value(kb.status) != KnowledgeBaseStatus.ACTIVE.value:
         raise HTTPException(status_code=409, detail="KNOWLEDGE_BASE_DISABLED")
@@ -122,7 +133,9 @@ async def get_document(
     document_id: str,
     user: CurrentUser,
     repos: ReposDep,
+    settings: SettingsDep,
 ) -> Any:
+    _assert_rag_admin(user, settings)
     doc_repo = RAGDocumentRepository(repos.session)
     document = await doc_repo.get(document_id)
     if document is None:
@@ -137,7 +150,9 @@ async def get_ingestion_job(
     job_id: str,
     user: CurrentUser,
     repos: ReposDep,
+    settings: SettingsDep,
 ) -> Any:
+    _assert_rag_admin(user, settings)
     job_repo = RAGIngestionJobRepository(repos.session)
     job = await job_repo.get_for_user(job_id, user)
     if job is None:
@@ -149,7 +164,9 @@ async def get_ingestion_job(
 async def query_knowledge(
     body: RAGQueryRequest,
     user: CurrentUser,
+    settings: SettingsDep,
 ) -> RAGQueryResponse:
+    _assert_rag_admin(user, settings)
     service = build_query_service()
     try:
         return await service.query(
@@ -217,6 +234,23 @@ def _content_hash(text: str) -> str:
 
 def _status_value(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value)
+
+
+def _assert_rag_admin(user: str, settings: Settings) -> None:
+    if user in _rag_admin_user_ids(settings):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="RAG_ADMIN_FORBIDDEN",
+    )
+
+
+def _rag_admin_user_ids(settings: Settings) -> set[str]:
+    return {
+        item.strip()
+        for item in (settings.rag_admin_user_ids or "").split(",")
+        if item.strip()
+    }
 
 
 def _strict_status(reason: str) -> int:

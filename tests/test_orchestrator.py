@@ -188,6 +188,57 @@ def _make_tool_then_answer_model(
     return FunctionModel(stream_function=stream_fn)
 
 
+def test_rag_knowledge_base_selection_uses_server_configuration():
+    from app.core.config import Settings
+    from app.runtime.orchestrator import _knowledge_base_id
+
+    assert (
+        _knowledge_base_id(
+            Settings(_env_file=None),
+            {"knowledge_base_id": "kb_client"},
+        )
+        is None
+    )
+
+    assert (
+        _knowledge_base_id(
+            Settings(
+                _env_file=None,
+                rag_default_knowledge_base_id=" kb_internal ",
+            ),
+            {"knowledge_base_id": "kb_client"},
+        )
+        == "kb_internal"
+    )
+
+    assert (
+        _knowledge_base_id(
+            Settings(
+                _env_file=None,
+                rag_allow_client_knowledge_base_id=True,
+            ),
+            {"knowledge_base_id": " kb_client "},
+        )
+        == "kb_client"
+    )
+
+
+def test_plan_snapshot_removes_client_rag_metadata_by_default():
+    from app.core.config import Settings
+
+    plan = AgentOrchestrator._plan_snapshot(
+        "realtime",
+        {"mode": "realtime", "knowledge_base_id": "kb_client"},
+        Settings(
+            _env_file=None,
+            rag_default_knowledge_base_id="kb_internal",
+        ),
+    )
+
+    assert plan["knowledge_base_id"] == "kb_internal"
+    assert plan["metadata"] == {"mode": "realtime"}
+
+
 async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):
     """订阅 channel,收集事件直到 RUN_COMPLETED 或超时。"""
     collected = []

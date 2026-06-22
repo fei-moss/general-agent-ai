@@ -16,7 +16,7 @@ Chat Server 是一个中心化的 Agent Chat 服务。它负责：
 - 调用底层模型，目前 DockerHost 测试环境使用 Z.AI `glm-5.2`。
 - 支持 SSE / WebSocket 流式返回。
 - 支持按 `conversation_id` 继续上下文。
-- 支持 RAG 知识库、文档导入、向量检索。
+- 普通聊天会按服务端配置透明使用内部 RAG 知识库。
 - 暴露健康检查和 Prometheus metrics。
 
 接入方不需要自己保存完整消息历史，但应该保存当前用户正在使用的
@@ -57,8 +57,9 @@ X-API-Key: <user_id>
 
 - header 里的值会被当成 `user_id`。
 - `user_id` 会写入数据库，用于资源归属。
-- 同一个用户继续会话、查会话、查 run、订阅 stream、访问 RAG，都必须传同一个 `user_id`。
+- 同一个用户继续会话、查会话、查 run、订阅 stream，都必须传同一个 `user_id`。
 - 这不是正式认证，只是“上游服务已经完成认证后，把内部用户 ID 传给 Chat Server”的占位方式。
+- `/rag/*` 不是普通用户接口，只允许内部知识库管理员或内部 ingestion Agent 访问。
 
 示例：
 
@@ -95,8 +96,8 @@ user_id = alice.internal
 | `message` | 会话里的用户消息和 assistant 消息。 |
 | `agent_run` | 一次模型/Agent 执行。包含状态、trace、错误、plan。 |
 | `idempotency_record` | 防止客户端重试导致重复创建 run。 |
-| `knowledge_base` | RAG 知识库，归属于某个 `user_id`。 |
-| `rag_document` / `rag_document_chunk` | RAG 文档和切片。 |
+| `knowledge_base` | 内部 RAG 知识库，通常归属于内部上传/运维身份。 |
+| `rag_document` / `rag_document_chunk` | 内部 RAG 文档和切片。 |
 | `rag_ingestion_job` | 文档向量化摄取任务。 |
 
 关系：
@@ -107,7 +108,7 @@ user_id
        ├─ message[]
        └─ agent_run[]
 
-user_id
+internal_rag_owner_user_id
   └─ knowledge_base
        └─ rag_document
             └─ rag_document_chunk[]
@@ -161,11 +162,14 @@ curl -sS -X POST "$BASE_URL/chat" \
   "stream": true,
   "metadata": {
     "mode": "auto | realtime | batch",
-    "task_type": "chat | file_analysis | slow_tool | batch",
-    "knowledge_base_id": "可选；需要 RAG 时传"
+    "task_type": "chat | file_analysis | slow_tool | batch"
   }
 }
 ```
+
+普通接入方不要传 `metadata.knowledge_base_id`。服务端会根据
+`RAG_DEFAULT_KNOWLEDGE_BASE_ID` 决定是否在 Agent 运行中检索内部知识库；
+默认情况下客户端传入的 `knowledge_base_id` 会被忽略。
 
 响应是 HTTP `202`：
 
@@ -479,14 +483,27 @@ Authorization: Bearer alice.internal
 ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 ```
 
-## 10. RAG 接口
+## 10. 内部 RAG 管理接口
+
+这一组接口不是普通业务接入面。它只给内部知识库管理员、内部资料上传脚本、
+或内部 ingestion Agent 使用，用于维护服务端自己的文档知识库。
+
+普通用户和普通业务系统不要调用 `/rag/*`，也不要把 `knowledge_base_id`
+放进 `/chat` metadata。普通聊天如果需要 RAG 增强，由服务端配置的内部知识库自动参与。
+
+内部访问要求：
+
+- `Authorization: Bearer <internal_rag_admin_user_id>`
+- 该身份必须出现在服务端 `RAG_ADMIN_USER_IDS` 配置里。
+- 没有进入白名单的身份会收到 `403 RAG_ADMIN_FORBIDDEN`。
+- 直接 `/rag/query` 会返回原始 chunk，因此同样只允许内部调试/验收使用。
 
 ### 10.1 创建知识库
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H 'Authorization: Bearer rag-admin' \
   -d '{
     "name": "Product docs",
     "description": "内部产品知识库"
@@ -498,7 +515,7 @@ curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
 ```json
 {
   "id": "kb_xxx",
-  "owner_user_id": "alice.internal",
+  "owner_user_id": "rag-admin",
   "name": "Product docs",
   "description": "内部产品知识库",
   "status": "ACTIVE",
@@ -511,7 +528,7 @@ curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
 
 ```bash
 curl -sS "$BASE_URL/rag/knowledge-bases" \
-  -H 'Authorization: Bearer alice.internal'
+  -H 'Authorization: Bearer rag-admin'
 ```
 
 ### 10.3 导入文本/Markdown 文档
@@ -519,7 +536,7 @@ curl -sS "$BASE_URL/rag/knowledge-bases" \
 ```bash
 curl -sS -X POST "$BASE_URL/rag/documents" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H 'Authorization: Bearer rag-admin' \
   -d '{
     "knowledge_base_id": "kb_xxx",
     "title": "DockerHost notes",
@@ -546,7 +563,7 @@ curl -sS -X POST "$BASE_URL/rag/documents" \
 
 ```bash
 curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+  -H 'Authorization: Bearer rag-admin'
 ```
 
 等到：
@@ -561,7 +578,7 @@ curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
 
 ```bash
 curl -sS "$BASE_URL/rag/documents/doc_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+  -H 'Authorization: Bearer rag-admin'
 ```
 
 文档状态应为：
@@ -577,7 +594,7 @@ curl -sS "$BASE_URL/rag/documents/doc_xxx" \
 ```bash
 curl -sS -X POST "$BASE_URL/rag/query" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H 'Authorization: Bearer rag-admin' \
   -d '{
     "knowledge_base_id": "kb_xxx",
     "query": "DockerHost 部署里有哪些服务？",
@@ -614,22 +631,17 @@ curl -sS -X POST "$BASE_URL/rag/query" \
 }
 ```
 
-### 10.6 在聊天中使用 RAG
+### 10.6 让普通聊天使用内部知识库
 
-把 `knowledge_base_id` 放进 `metadata`：
+创建并导入内部知识库后，由运维配置：
 
-```json
-{
-  "message": "基于知识库回答：DockerHost 部署里有哪些服务？",
-  "stream": true,
-  "metadata": {
-    "mode": "realtime",
-    "knowledge_base_id": "kb_xxx"
-  }
-}
+```bash
+RAG_DEFAULT_KNOWLEDGE_BASE_ID=kb_xxx
+RAG_INTERNAL_OWNER_USER_ID=rag-admin
 ```
 
-Agent 会在运行过程中自主决定是否调用知识检索工具。
+配置完成后，普通 `/chat` 请求不需要传 KB ID。Agent 会在运行过程中自主决定是否调用
+`search_knowledge`，服务端会把检索限制在配置好的内部知识库上。
 
 ## 11. 健康检查和观测
 
@@ -687,6 +699,7 @@ HTTP 状态：
 - `CONVERSATION_BUSY`
 - `IDEMPOTENCY_CONFLICT`
 - `PROVIDER_LIMITER_UNAVAILABLE`
+- `RAG_ADMIN_FORBIDDEN`
 - `RAG_QUEUE_UNAVAILABLE`
 - `KNOWLEDGE_BASE_DISABLED`
 - `STREAM_GAP`
@@ -707,5 +720,5 @@ HTTP 状态：
 11. 需要完整历史时，调用 `GET /conversations/{conversation_id}`。
 12. SSE 断线时，用最后一个 SSE `id` 作为 `Last-Event-ID` 重连。
 13. 遇到 `STREAM_GAP`，改查 `/runs/{id}` 和 `/conversations/{id}`。
-14. 需要 RAG 时，先创建 KB、导入文档、等待 `SUCCEEDED`，再在 chat metadata 里传 `knowledge_base_id`。
+14. 不要调用 `/rag/*` 或传 `metadata.knowledge_base_id`；RAG 由服务端内部知识库配置透明生效。
 15. 接流量前检查 `/readyz`，排障时查看 `/metrics`。

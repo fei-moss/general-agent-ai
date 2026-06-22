@@ -77,3 +77,24 @@ async def test_retriever_adapter_passes_runtime_context_to_query_service():
     assert service.calls[0]["agent_run_id"] == "run_1"
     assert service.calls[0]["knowledge_base_id"] == "kb_1"
     assert service.calls[0]["top_k"] == 2
+
+
+async def test_retriever_adapter_passes_internal_kb_owner_to_query_service():
+    from app.runtime.adapters import RetrieverAdapter
+
+    service = _FakeRAGQueryService()
+    adapter = RetrieverAdapter(
+        query_service=service,
+        user_id="alice.internal",
+        conversation_id="conv_1",
+        agent_run_id="run_1",
+        knowledge_base_id="kb_internal",
+        knowledge_base_owner_user_id="rag-admin",
+    )
+
+    response = await adapter.retrieve("部署方式", top_k=2)
+
+    assert response["degraded"] is False
+    assert service.calls[0]["user_id"] == "alice.internal"
+    assert service.calls[0]["owner_user_id"] == "rag-admin"
+    assert service.calls[0]["knowledge_base_id"] == "kb_internal"

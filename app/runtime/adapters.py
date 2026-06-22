@@ -27,6 +27,7 @@ class RetrieverAdapter:
         conversation_id: str | None = None,
         agent_run_id: str | None = None,
         knowledge_base_id: str | None = None,
+        knowledge_base_owner_user_id: str | None = None,
     ) -> None:
         _ = log_sink
         self._query_service = query_service
@@ -34,6 +35,7 @@ class RetrieverAdapter:
         self._conversation_id = conversation_id
         self._agent_run_id = agent_run_id
         self._knowledge_base_id = knowledge_base_id
+        self._knowledge_base_owner_user_id = knowledge_base_owner_user_id
 
     def with_context(
         self,
@@ -42,6 +44,7 @@ class RetrieverAdapter:
         conversation_id: str | None,
         agent_run_id: str | None,
         knowledge_base_id: str | None,
+        knowledge_base_owner_user_id: str | None = None,
     ) -> "RetrieverAdapter":
         """派生一个带单次 run 上下文的 adapter。"""
         return RetrieverAdapter(
@@ -50,6 +53,7 @@ class RetrieverAdapter:
             conversation_id=conversation_id,
             agent_run_id=agent_run_id,
             knowledge_base_id=knowledge_base_id,
+            knowledge_base_owner_user_id=knowledge_base_owner_user_id,
         )
 
     async def retrieve(self, query: str, top_k: int) -> dict[str, Any]:
@@ -68,6 +72,7 @@ class RetrieverAdapter:
             self._query_service = service
         result = await service.query(
             user_id=self._user_id,
+            owner_user_id=self._knowledge_base_owner_user_id,
             knowledge_base_id=self._knowledge_base_id,
             query=query,
             top_k=top_k,

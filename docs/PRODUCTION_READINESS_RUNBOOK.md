@@ -83,10 +83,12 @@ curl -fsS -H 'Authorization: Bearer smoke-user' "$BASE_URL/runs/<run_id>"
 
 RAG smoke:
 
-1. Create a knowledge base.
-2. Import one short document.
-3. Wait until ingestion job succeeds.
-4. Query the knowledge base and confirm `degraded=false`.
+1. Use an identity included in `RAG_ADMIN_USER_IDS`; ordinary `smoke-user` must not call `/rag/*`.
+2. Create a knowledge base.
+3. Import one short document.
+4. Wait until ingestion job succeeds.
+5. Query the knowledge base through `/rag/query` only as the internal RAG admin and confirm `degraded=false`.
+6. To let ordinary Chat consume that KB, deploy with `RAG_DEFAULT_KNOWLEDGE_BASE_ID=<kb_id>` and `RAG_INTERNAL_OWNER_USER_ID=<rag_admin_user_id>`.
 
 ## Load Smoke
 

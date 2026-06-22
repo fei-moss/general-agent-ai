@@ -232,7 +232,7 @@ class AgentOrchestrator:
             "mark_running_with_plan",
             agent_run_id,
             None,
-            self._plan_snapshot(route_type, metadata),
+            self._plan_snapshot(route_type, metadata, self._deps.settings),
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
@@ -281,13 +281,17 @@ class AgentOrchestrator:
         LLM 在 loop 中自主决定是否检索 / 调用工具;失败时降级为兜底文案,
         保证总有回答产出。
         """
-        knowledge_base_id = _knowledge_base_id(metadata)
+        knowledge_base_id = _knowledge_base_id(self._deps.settings, metadata)
+        knowledge_base_owner_user_id = _knowledge_base_owner_user_id(
+            self._deps.settings, user_id
+        )
         deps = AgentDeps(
             retriever=self._contextual_retriever(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 agent_run_id=agent_run_id,
                 knowledge_base_id=knowledge_base_id,
+                knowledge_base_owner_user_id=knowledge_base_owner_user_id,
             ),
             tool_router=self._deps.tool_router,
             agent_run_id=agent_run_id,
@@ -534,6 +538,7 @@ class AgentOrchestrator:
         conversation_id: str | None,
         agent_run_id: str | None,
         knowledge_base_id: str | None,
+        knowledge_base_owner_user_id: str | None,
     ) -> Any:
         """Return a per-run retriever when the adapter supports context."""
         retriever = self._deps.retriever
@@ -544,19 +549,22 @@ class AgentOrchestrator:
                 conversation_id=conversation_id,
                 agent_run_id=agent_run_id,
                 knowledge_base_id=knowledge_base_id,
+                knowledge_base_owner_user_id=knowledge_base_owner_user_id,
             )
         return retriever
 
     @staticmethod
-    def _plan_snapshot(route_type: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    def _plan_snapshot(
+        route_type: str, metadata: dict[str, Any], settings: Any
+    ) -> dict[str, Any]:
         """Return an engine snapshot for run audit/debugging."""
         plan: dict[str, Any] = {
             "engine": "pydantic-ai",
             "tools": list(_TOOL_NAMES),
             "route_type": route_type,
-            "metadata": dict(metadata),
+            "metadata": _plan_metadata(settings, metadata),
         }
-        kb_id = _knowledge_base_id(metadata)
+        kb_id = _knowledge_base_id(settings, metadata)
         if kb_id:
             plan["knowledge_base_id"] = kb_id
         return plan
@@ -699,8 +707,31 @@ def _extract_usage(run: Any) -> dict[str, int | None]:
     return {"input_tokens": None, "output_tokens": None}
 
 
-def _knowledge_base_id(metadata: dict[str, Any] | None) -> str | None:
+def _knowledge_base_id(settings: Any, metadata: dict[str, Any] | None) -> str | None:
+    default_value = _clean_text(
+        getattr(settings, "rag_default_knowledge_base_id", "")
+    )
+    if default_value:
+        return default_value
+    if not bool(getattr(settings, "rag_allow_client_knowledge_base_id", False)):
+        return None
     value = (metadata or {}).get("knowledge_base_id")
+    return _clean_text(value)
+
+
+def _knowledge_base_owner_user_id(settings: Any, user_id: str | None) -> str | None:
+    configured = _clean_text(getattr(settings, "rag_internal_owner_user_id", ""))
+    return configured or user_id
+
+
+def _plan_metadata(settings: Any, metadata: dict[str, Any]) -> dict[str, Any]:
+    output = dict(metadata)
+    if not bool(getattr(settings, "rag_allow_client_knowledge_base_id", False)):
+        output.pop("knowledge_base_id", None)
+    return output
+
+
+def _clean_text(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).strip()

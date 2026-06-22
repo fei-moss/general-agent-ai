@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 80
     rag_index_version: str = "v1"
     rag_metadata_max_bytes: int = 8192
+    rag_admin_user_ids: str = ""
+    rag_default_knowledge_base_id: str = ""
+    rag_internal_owner_user_id: str = ""
+    rag_allow_client_knowledge_base_id: bool = False
     embedding_provider: str = "hash"  # hash | openai | gemini
     embedding_model: str = "hash"
     embedding_api_key: str = ""

@@ -1,5 +1,10 @@
 # 2026-06-16 Lightweight RAG Infrastructure Specification
 
+> Boundary update: `SPEC-INTERNAL-RAG-BOUNDARY-001` supersedes the user-facing
+> knowledge-base semantics in this phase-1 spec. `/rag/*` is now an internal
+> management surface, and ordinary Chat requests consume only server-selected
+> internal knowledge bases by default.
+
 ## Context
 
 - Spec ID: `SPEC-RAG-INFRA-001`

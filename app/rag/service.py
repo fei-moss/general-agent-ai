@@ -57,6 +57,7 @@ class RAGQueryService:
         self,
         *,
         user_id: str,
+        owner_user_id: str | None = None,
         knowledge_base_id: str | None,
         query: str,
         top_k: int | None = None,
@@ -77,6 +78,7 @@ class RAGQueryService:
             result = await asyncio.wait_for(
                 self._query_inner(
                     user_id=user_id,
+                    owner_user_id=owner_user_id,
                     knowledge_base_id=knowledge_base_id,
                     query=query,
                     top_k=k,
@@ -108,13 +110,17 @@ class RAGQueryService:
         self,
         *,
         user_id: str,
+        owner_user_id: str | None,
         knowledge_base_id: str,
         query: str,
         top_k: int,
         filters: dict[str, Any],
         started: float,
     ) -> RAGQueryResponse:
-        kb = await self._knowledge_base_repo.get_for_user(knowledge_base_id, user_id)
+        query_owner_user_id = owner_user_id or user_id
+        kb = await self._knowledge_base_repo.get_for_user(
+            knowledge_base_id, query_owner_user_id
+        )
         if kb is None:
             return self._response([], True, "knowledge_base_not_found", started)
         status = getattr(kb, "status", "")
@@ -131,7 +137,7 @@ class RAGQueryService:
             self._vector_store,
             query_vec,
             top_k,
-            owner_user_id=user_id,
+            owner_user_id=query_owner_user_id,
             knowledge_base_id=knowledge_base_id,
             index_version=self._settings.rag_index_version,
             filters=filters,
