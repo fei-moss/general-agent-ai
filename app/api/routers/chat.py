@@ -6,7 +6,6 @@ POST /chat 流程:
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
 4. 投递 Celery run_agent_task。
 5. 立即返回 ChatAccepted(含 stream_url / ws_url)。
-   stream=False 时改为订阅事件总线同步等待最终结果。
 
 API 层无状态:不在内存保存会话,全部经 DB/Redis。
 """
@@ -19,18 +18,15 @@ import math
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 
-from app.api.deps import CurrentUser, EventBusDep, ReposDep
+from app.api.deps import CurrentUser, ReposDep
 from app.api.idempotency import chat_request_hash
 from app.api.runner_gateway import (
     RunnerUnavailableError,
-    await_completion,
     enqueue_run,
 )
 from app.core.config import get_settings
 from app.core.enums import MessageRole, RunStatus
-from app.core.events import EventType
 from app.core.ids import _new_id, new_conversation_id, new_run_id, new_trace_id
 from app.core.logging import get_logger, log_with_fields
 from app.core.schemas import ChatAccepted, ChatRequest
@@ -72,10 +68,10 @@ async def create_chat(
     request: Request,
     user: CurrentUser,
     repos: ReposDep,
-    bus: EventBusDep,
 ) -> Any:
     """受理一次对话/任务请求。"""
     _validate_message(body.message)
+    _validate_async_only(body.stream)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
@@ -181,8 +177,6 @@ async def create_chat(
             conversation_lease = None
             capacity_slot = None
 
-        if not body.stream:
-            return await _wait_sync(bus, run_id, conversation.id, trace_id)
         return accepted
     finally:
         if capacity_slot is not None:
@@ -287,6 +281,15 @@ def _validate_message(message: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="message 不能为空",
+        )
+
+
+def _validate_async_only(stream: bool) -> None:
+    """Chat API only accepts asynchronous streaming runs."""
+    if stream is False:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="STREAM_FALSE_NOT_SUPPORTED",
         )
 
 
@@ -439,32 +442,4 @@ def _accepted(
         stream_url=f"/stream/{run_id}",
         ws_url=f"/ws/{run_id}",
         route_type=route_type,
-    )
-
-
-async def _wait_sync(bus, run_id: str, conversation_id: str, trace_id: str) -> Any:
-    """stream=False:订阅事件总线等待运行结束,返回最终结果或 504。"""
-    final_event = await await_completion(bus, run_id)
-    if final_event is None:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="等待运行结果超时",
-        )
-    # RUN_COMPLETED 在成功与失败时都会发出,需进一步看 data.status;
-    # ERROR 终止事件直接视为失败。
-    succeeded = (
-        final_event.type == EventType.RUN_COMPLETED
-        and final_event.data.get("status") == RunStatus.SUCCEEDED.value
-    )
-    return JSONResponse(
-        status_code=status.HTTP_200_OK if succeeded else status.HTTP_502_BAD_GATEWAY,
-        content={
-            "agent_run_id": run_id,
-            "conversation_id": conversation_id,
-            "trace_id": trace_id,
-            "status": RunStatus.SUCCEEDED.value
-            if succeeded
-            else RunStatus.FAILED.value,
-            "result": final_event.data,
-        },
     )

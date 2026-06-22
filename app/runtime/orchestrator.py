@@ -258,7 +258,7 @@ class AgentOrchestrator:
         if not completed:
             await self._persist_answer(conversation_id, agent_run_id, answer)
             await self._safe_run_repo("mark_succeeded", agent_run_id)
-        # 终止事件携带 status 与答案内容,供同步等待路径(stream=False)直接取用。
+        # 终止事件携带 status 与答案内容,供流式消费者和恢复接口兜底校验。
         await emitter.emit(
             EventType.RUN_COMPLETED,
             {"status": RunStatus.SUCCEEDED.value, "content": answer},

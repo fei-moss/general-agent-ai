@@ -99,11 +99,43 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
         request,
         "user-1",
         _Repos(),
-        bus=None,
     )
 
     assert response.agent_run_id == "run-existing"
     assert response.status is RunStatus.RUNNING
+
+
+async def test_stream_false_is_rejected_before_side_effects():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    class _Lock:
+        async def acquire(self, *args, **kwargs):
+            raise AssertionError("lock must not be acquired")
+
+    request = SimpleNamespace(
+        headers={"idempotency-key": "key-sync"},
+        state=SimpleNamespace(trace_id="trace-sync"),
+        app=SimpleNamespace(state=SimpleNamespace(conversation_lock=_Lock())),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                stream=False,
+                metadata={"mode": "realtime"},
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "STREAM_FALSE_NOT_SUPPORTED"
 
 
 async def test_forbidden_conversation_does_not_reserve_realtime_capacity():
@@ -141,7 +173,6 @@ async def test_forbidden_conversation_does_not_reserve_realtime_capacity():
             request,
             "user-1",
             _Repos(),
-            bus=None,
         )
 
     assert getattr(exc.value, "status_code", None) == 403

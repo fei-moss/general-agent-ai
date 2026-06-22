@@ -491,9 +491,7 @@ class Metrics:
     - `metadata.mode=auto` + provider over-limit/backoff -> degrade to batch when configured, recording `degraded_reason=provider_rate_limited`.
   - Response preserves existing envelope and may add `route_type`.
   - Idempotency replay returns the original `ChatAccepted` envelope with current run status when request hash matches.
-  - `stream=false`:
-    - For realtime: can wait for terminal event with timeout.
-    - For batch: returns accepted unless sync wait explicitly supported.
+  - `stream=false` is superseded by `SPEC-ASYNC-CHAT-ONLY-001` and must return `422 STREAM_FALSE_NOT_SUPPORTED`.
 - Data contract impact:
   - `ChatRequest.metadata` semantics defined for route selection.
   - `ChatAccepted.route_type` optional addition if added to schema.

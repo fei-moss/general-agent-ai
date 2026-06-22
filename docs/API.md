@@ -17,7 +17,7 @@ POST /chat ──202──▶ 返回 agent_run_id + stream_url
 
 - 提交后**立即返回**(HTTP 202),真正的推理(LLM 自主检索 / 调用工具 / 流式生成)在后台 Worker 执行。
 - 前端通过 **SSE 或 WebSocket** 订阅 `agent_run_id` 的事件流,拿到逐 token 输出与工具调用进度。
-- 也支持**同步模式**(`stream:false`),后端等跑完一次性返回结果(适合脚本/调试,不适合做打字机效果)。
+- 不支持同步等待结果。脚本和前端都必须按 `agent_run_id` 使用事件流、状态接口或会话历史恢复结果。
 
 ---
 
@@ -68,11 +68,9 @@ X-RateLimit-Remaining: 0
 | 401 | 缺少/无效鉴权凭证 |
 | 403 | 无权访问该资源(会话归属不符) |
 | 404 | 资源不存在 |
-| 422 | 请求体校验失败(如 message 为空) |
+| 422 | 请求体校验失败(如 message 为空或 `stream:false`) |
 | 429 | 触发限流 |
-| 502 | 同步模式下运行失败 |
 | 503 | 任务队列 / 依赖未就绪 |
-| 504 | 同步模式等待超时 |
 
 ---
 
@@ -105,7 +103,7 @@ X-RateLimit-Remaining: 0
 |------|------|------|------|------|
 | `message` | string | ✅ | — | 用户消息(非空) |
 | `conversation_id` | string \| null | ❌ | null | 续接已有会话;不传则**自动新建** |
-| `stream` | boolean | ❌ | `true` | `true`=异步事件流;`false`=同步等待结果 |
+| `stream` | boolean | ❌ | `true` | 兼容字段;省略或传 `true`;`false` 会返回 422 |
 | `metadata` | object | ❌ | `{}` | 透传元数据(当前预留,后端暂未消费) |
 
 ```json
@@ -116,7 +114,7 @@ X-RateLimit-Remaining: 0
 }
 ```
 
-#### 响应 A:`stream: true` → **202 Accepted**(`ChatAccepted`)
+#### 响应: **202 Accepted**(`ChatAccepted`)
 
 ```json
 {
@@ -130,19 +128,16 @@ X-RateLimit-Remaining: 0
 ```
 > 拿到 `agent_run_id` 后,立刻用 `stream_url` 订阅 SSE,或 `ws_url` 连 WebSocket。
 
-#### 响应 B:`stream: false` → 同步等待
+#### 不支持 `stream:false`
 
-成功 **200**(失败 **502**,结构相同;超时 **504**;队列不可用 **503**):
+`POST /chat` 永远是异步受理接口。传 `stream:false` 会返回 **422**:
+
 ```json
-{
-  "agent_run_id": "run_xxx",
-  "conversation_id": "conv_xxx",
-  "trace_id": "trace_xxx",
-  "status": "SUCCEEDED",
-  "result": { "status": "SUCCEEDED", "content": "（123+456）×7 的结果是 4053。" }
-}
+{ "detail": "STREAM_FALSE_NOT_SUPPORTED" }
 ```
-> 最终答案在 `result.content`。
+
+脚本场景如果不想渲染逐 token，也应该订阅到 `RUN_COMPLETED`，或轮询
+`GET /runs/{agent_run_id}` 后读取 `GET /conversations/{conversation_id}` 的消息历史。
 
 ---
 

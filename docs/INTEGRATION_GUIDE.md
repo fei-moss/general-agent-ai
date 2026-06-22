@@ -216,24 +216,24 @@ curl -sS -X POST "$BASE_URL/chat" \
 - 如果会话归属不匹配，返回 `403`。
 - 同一 conversation 的 realtime run 会串行化；如果上一轮还没结束，可能返回 `409 CONVERSATION_BUSY`。
 
-### 6.3 同步等待结果
+### 6.3 不支持同步等待
 
-如果内部脚本不想处理 SSE，可以设置 `stream=false`：
+`POST /chat` 只做异步受理。`stream` 可以省略或传 `true`，但不能传 `false`。
 
-```bash
-curl -sS -X POST "$BASE_URL/chat" \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
-  -d '{
-    "message": "GLM-5.2 是否已经接通？",
-    "stream": false,
-    "metadata": {
-      "mode": "realtime"
-    }
-  }'
+如果传：
+
+```json
+{ "stream": false }
 ```
 
-这会等待终止事件后返回最终结果。交互式客户端和长任务仍建议使用流式模式。
+服务会返回：
+
+```json
+{ "detail": "STREAM_FALSE_NOT_SUPPORTED" }
+```
+
+内部脚本也应该先拿 `agent_run_id`，再订阅 `stream_url`，或用
+`GET /runs/{agent_run_id}` 和 `GET /conversations/{conversation_id}` 做状态与结果恢复。
 
 ### 6.4 幂等重试
 
@@ -689,10 +689,9 @@ HTTP 状态：
 | `403` | 当前 `user_id` 无权访问该资源。 |
 | `404` | run、conversation、knowledge base、document 或 job 不存在。 |
 | `409` | conversation busy、知识库不可用、幂等冲突。 |
-| `422` | 请求体不合法，常见为空 message / content / query。 |
+| `422` | 请求体不合法，常见为空 message / content / query，或 `stream=false`。 |
 | `429` | 用户级或 provider 级限流。 |
 | `503` | 队列、Redis、provider limiter 或 guardrail 不可用。 |
-| `504` | `stream=false` 同步等待超时。 |
 
 常见 machine-readable detail / error：
 
@@ -701,6 +700,7 @@ HTTP 状态：
 - `PROVIDER_LIMITER_UNAVAILABLE`
 - `RAG_ADMIN_FORBIDDEN`
 - `RAG_QUEUE_UNAVAILABLE`
+- `STREAM_FALSE_NOT_SUPPORTED`
 - `KNOWLEDGE_BASE_DISABLED`
 - `STREAM_GAP`
 - `RUN_TIMEOUT`

@@ -25,7 +25,7 @@
 ## Product Semantics
 
 - User/operator workflow:
-  - 普通用户继续通过 `POST /chat` 发起问题,通过 SSE/WS 订阅事件,或 `stream=false` 同步等待最终结果。
+  - 普通用户继续通过 `POST /chat` 发起问题,并通过 SSE/WS、run 状态或会话历史获取结果;`stream=false` 已由 `SPEC-ASYNC-CHAT-ONLY-001` 禁用。
   - Operator 可以在 DockerHost 上配置 API、worker、reaper、provider、embedding、provider limits、worker pool/concurrency。
   - Operator 通过 `/readyz` 判断服务是否可接流量,通过 `/metrics` 抓取运行指标,通过 runbook 执行 smoke/load/rollback。
   - Reaper 周期性扫描 stale queued/running runs,对可重试 batch 重新入队,对孤儿 realtime run 标记失败并尽量写 terminal event。

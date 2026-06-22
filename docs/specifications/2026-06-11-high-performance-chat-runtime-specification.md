@@ -1,5 +1,10 @@
 # 2026-06-11 High Performance Chat Runtime Specification
 
+> Boundary update: `SPEC-ASYNC-CHAT-ONLY-001` supersedes the synchronous
+> `stream=false` parts of this spec. `POST /chat` is now async-only: accepted
+> runs return `202 ChatAccepted`, and clients must use SSE, WebSocket, run
+> status, or conversation history for results.
+
 ## Context
 
 - Spec ID: `SPEC-CHAT-RUNTIME-001`
@@ -81,7 +86,7 @@
 - Request fields and validation:
   - `message`: required, non-empty string。
   - `conversation_id`: optional string; provided 时必须存在且属于当前用户。
-  - `stream`: boolean, default true; `true` 表示客户端希望订阅事件流, 不强制执行路径。
+  - `stream`: boolean, default true; only omitted or `true` is accepted. `false` returns `422 STREAM_FALSE_NOT_SUPPORTED`。
   - `metadata`: object; 可包含 `mode=realtime|batch|auto`, `task_type`, `file_refs` 等扩展字段。
   - `metadata.provider` / `metadata.model` 若开放给客户端覆盖, 必须经过 server-side allowlist; 第一阶段建议只允许服务端配置决定 provider/model。
   - `Idempotency-Key`: optional header; 若提供则必须按用户唯一。
@@ -95,7 +100,7 @@
   - 可扩展 `route_type: realtime|batch`, 但不能破坏现有字段。
   - provider 限流降级时, `agent_run.plan` 或等价 meta 记录 `provider`, `model`, `provider_limit_key`, `degraded`, `degraded_reason`, `retry_after_ms`。
 - Status/error codes:
-  - 200: 同步或状态查询成功。
+  - 200: 状态查询成功。
   - 202: run accepted。
   - 401: 未鉴权。
   - 403: owner 不匹配。
@@ -104,7 +109,6 @@
   - 422: 请求校验失败。
   - 429: 用户级限流或 `PROVIDER_RATE_LIMITED`。
   - 503: runner/queue 依赖不可用, `PROVIDER_LIMITER_UNAVAILABLE`, 或 `PROVIDER_SECRET_MISSING`。
-  - 504: 同步等待超时。
   - Over-limit realtime responses include `Retry-After` when `retry_after_ms` is available。
 - Events:
   - `RUN_STARTED`
