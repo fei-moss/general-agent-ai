@@ -1,52 +1,141 @@
-# General Agent AI Chat Server Integration Guide
+# Chat Server 接入指南
 
-This guide is the external contract for humans and Agents integrating with the
-Chat Server. It describes the currently deployed API shape, not future auth or
-tenant-management plans.
+这份文档面向两类接入方：
 
-## Base URL
+- 人类工程师：需要知道怎么从业务系统调用 Chat Server。
+- Agent / 自动化程序：需要按稳定接口发起聊天、订阅流、恢复会话、查询状态。
 
-Use the environment URL provided by operations. Current DockerHost smoke URL:
+本文描述的是当前已经实现的接口契约，不描述未来正式认证、租户、计费系统。
+
+## 1. 服务定位
+
+Chat Server 是一个中心化的 Agent Chat 服务。它负责：
+
+- 接收聊天请求。
+- 维护用户、会话、消息、运行状态。
+- 调用底层模型，目前 DockerHost 测试环境使用 Z.AI `glm-5.2`。
+- 支持 SSE / WebSocket 流式返回。
+- 支持按 `conversation_id` 继续上下文。
+- 支持 RAG 知识库、文档导入、向量检索。
+- 暴露健康检查和 Prometheus metrics。
+
+接入方不需要自己保存完整消息历史，但应该保存当前用户正在使用的
+`conversation_id`。如果接入方丢失了 `conversation_id`，可以通过会话列表接口重新查询。
+
+## 2. Base URL
+
+由运维提供环境地址。当前 DockerHost smoke 环境：
 
 ```text
 https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org
 ```
 
-Treat DockerHost URLs as test/staging endpoints unless operations promotes one
-as stable.
+下文示例统一使用：
 
-## Identity Header
+```bash
+export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org"
+```
 
-Current identity is header-derived:
+DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
+
+## 3. 当前身份模型
+
+当前版本还没有正式登录态、OAuth、租户、API Key 管理系统。服务现在采用
+header-derived identity：
 
 ```http
 Authorization: Bearer <user_id>
 ```
 
-or:
+或：
 
 ```http
 X-API-Key: <user_id>
 ```
 
-The value is treated as `user_id` and stored on owned resources such as
-conversations, runs, and knowledge bases. This is not formal authentication; it
-is an upstream-auth identity pass-through placeholder. Use a stable internal
-user id, for example `alice.internal`, and reuse the same value for follow-up
-requests.
+规则：
 
-Public endpoints:
+- header 里的值会被当成 `user_id`。
+- `user_id` 会写入数据库，用于资源归属。
+- 同一个用户继续会话、查会话、查 run、订阅 stream、访问 RAG，都必须传同一个 `user_id`。
+- 这不是正式认证，只是“上游服务已经完成认证后，把内部用户 ID 传给 Chat Server”的占位方式。
+
+示例：
+
+```http
+Authorization: Bearer alice.internal
+```
+
+这会被服务理解为：
+
+```text
+user_id = alice.internal
+```
+
+公开端点：
 
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
-- `/docs`, `/redoc`, `/openapi.json`
+- `GET /docs`
+- `GET /redoc`
+- `GET /openapi.json`
 
-All business endpoints require an identity header.
+其他业务端点都需要身份 header。
 
-## Chat
+## 4. 中心化数据模型
 
-### Start A Realtime Chat
+为了支持继续对话，Chat Server 内部有中心化持久化表。接入方不直接访问数据库，只通过 API 使用。
+
+核心对象：
+
+| 对象 | 用途 |
+| --- | --- |
+| `conversation` | 会话。归属于某个 `user_id`，用于多轮上下文。 |
+| `message` | 会话里的用户消息和 assistant 消息。 |
+| `agent_run` | 一次模型/Agent 执行。包含状态、trace、错误、plan。 |
+| `idempotency_record` | 防止客户端重试导致重复创建 run。 |
+| `knowledge_base` | RAG 知识库，归属于某个 `user_id`。 |
+| `rag_document` / `rag_document_chunk` | RAG 文档和切片。 |
+| `rag_ingestion_job` | 文档向量化摄取任务。 |
+
+关系：
+
+```text
+user_id
+  └─ conversation
+       ├─ message[]
+       └─ agent_run[]
+
+user_id
+  └─ knowledge_base
+       └─ rag_document
+            └─ rag_document_chunk[]
+```
+
+继续对话依赖 `conversation_id`：
+
+- 第一次 `POST /chat` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
+- 返回体里会给出 `conversation_id`。
+- 后续请求传这个 `conversation_id`，服务会加载该会话历史，再进行新一轮 Agent 执行。
+- 如果接入方不知道有哪些 conversation，可以调用 `GET /conversations` 查询当前 `user_id` 下的会话列表。
+
+## 5. 最常见接入流程
+
+```text
+1. 业务系统确定内部 user_id
+2. POST /chat，带 Authorization: Bearer <user_id>
+3. 保存返回的 conversation_id 和 agent_run_id
+4. 订阅 stream_url，读取 TOKEN 和 RUN_COMPLETED
+5. 用户继续追问时，再 POST /chat，并传 conversation_id
+6. 如果页面刷新或客户端丢失状态，调用 GET /conversations 找回会话
+```
+
+## 6. 发起聊天
+
+### 6.1 新建会话并聊天
+
+不传 `conversation_id`，服务会自动创建新会话：
 
 ```bash
 curl -sS -X POST "$BASE_URL/chat" \
@@ -63,22 +152,22 @@ curl -sS -X POST "$BASE_URL/chat" \
   }'
 ```
 
-Request body:
+请求字段：
 
 ```json
 {
-  "conversation_id": "optional existing conversation id",
-  "message": "required non-empty user message",
+  "conversation_id": "可选；继续旧会话时传",
+  "message": "必填；用户消息，不能为空",
   "stream": true,
   "metadata": {
     "mode": "auto | realtime | batch",
     "task_type": "chat | file_analysis | slow_tool | batch",
-    "knowledge_base_id": "optional kb id"
+    "knowledge_base_id": "可选；需要 RAG 时传"
   }
 }
 ```
 
-Response is HTTP `202`:
+响应是 HTTP `202`：
 
 ```json
 {
@@ -92,29 +181,40 @@ Response is HTTP `202`:
 }
 ```
 
-Use `Idempotency-Key` for client retries. Reusing the same key with the same
-payload returns the original run; reusing it with a different payload returns
-`409 IDEMPOTENCY_CONFLICT`.
+接入方应该保存：
 
-### Continue A Conversation
+- `conversation_id`：后续继续对话使用。
+- `agent_run_id`：查询这次运行状态、订阅流使用。
+- `trace_id`：排查问题时给服务端定位日志。
 
-Pass the previous `conversation_id`:
+### 6.2 继续已有会话
 
-```json
-{
-  "conversation_id": "conv_xxx",
-  "message": "基于上一轮回答，再展开讲一下 RAG 链路。",
-  "stream": true,
-  "metadata": {"mode": "realtime"}
-}
+把上一次返回的 `conversation_id` 放进请求：
+
+```bash
+curl -sS -X POST "$BASE_URL/chat" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer alice.internal' \
+  -H 'Idempotency-Key: chat-002' \
+  -d '{
+    "conversation_id": "conv_xxx",
+    "message": "基于上一轮回答，再展开讲一下 RAG 链路。",
+    "stream": true,
+    "metadata": {
+      "mode": "realtime"
+    }
+  }'
 ```
 
-Same-conversation realtime work is serialized. If another realtime run is active
-for that conversation, the API returns `409 CONVERSATION_BUSY`.
+注意：
 
-### Synchronous Result
+- `conversation_id` 必须属于当前 header 里的 `user_id`。
+- 如果会话归属不匹配，返回 `403`。
+- 同一 conversation 的 realtime run 会串行化；如果上一轮还没结束，可能返回 `409 CONVERSATION_BUSY`。
 
-For simple scripts that do not want SSE:
+### 6.3 同步等待结果
+
+如果内部脚本不想处理 SSE，可以设置 `stream=false`：
 
 ```bash
 curl -sS -X POST "$BASE_URL/chat" \
@@ -123,23 +223,163 @@ curl -sS -X POST "$BASE_URL/chat" \
   -d '{
     "message": "GLM-5.2 是否已经接通？",
     "stream": false,
-    "metadata": {"mode": "realtime"}
+    "metadata": {
+      "mode": "realtime"
+    }
   }'
 ```
 
-This waits for a terminal event. Use streaming for normal interactive clients
-and longer tasks.
+这会等待终止事件后返回最终结果。交互式客户端和长任务仍建议使用流式模式。
 
-## Streaming
+### 6.4 幂等重试
 
-### SSE
+建议所有可重试的 `POST /chat` 都带：
+
+```http
+Idempotency-Key: <client-generated-stable-key>
+```
+
+语义：
+
+- 同一个 `user_id` + 同一个 `Idempotency-Key` + 相同 payload：返回原始 run。
+- 同一个 `user_id` + 同一个 `Idempotency-Key` + 不同 payload：返回 `409 IDEMPOTENCY_CONFLICT`。
+
+## 7. 会话查询接口
+
+这部分是继续对话能力的关键。Chat Server 会保存 `user_id` 下的 conversation 和 message，接入方可以通过 API 查询。
+
+### 7.1 创建空会话
+
+一般不必手动创建，因为 `POST /chat` 不带 `conversation_id` 时会自动创建。需要先建一个带标题的空会话时，可以调用：
+
+```bash
+curl -sS -X POST "$BASE_URL/conversations" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer alice.internal' \
+  -d '{
+    "title": "Support analysis"
+  }'
+```
+
+响应：
+
+```json
+{
+  "id": "conv_xxx",
+  "user_id": "alice.internal",
+  "title": "Support analysis",
+  "created_at": "2026-06-22T07:00:00Z",
+  "updated_at": "2026-06-22T07:00:00Z"
+}
+```
+
+### 7.2 查询当前用户的会话列表
+
+```bash
+curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+返回当前 `user_id` 下的会话列表，按更新时间倒序：
+
+```json
+[
+  {
+    "id": "conv_xxx",
+    "user_id": "alice.internal",
+    "title": null,
+    "created_at": "2026-06-22T07:00:00Z",
+    "updated_at": "2026-06-22T07:05:00Z"
+  }
+]
+```
+
+分页参数：
+
+- `limit`: 1 到 100，默认 20。
+- `offset`: 从 0 开始，默认 0。
+
+### 7.3 查询单个会话及消息
+
+```bash
+curl -sS "$BASE_URL/conversations/conv_xxx" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+响应包含会话和消息列表：
+
+```json
+{
+  "id": "conv_xxx",
+  "user_id": "alice.internal",
+  "title": null,
+  "created_at": "2026-06-22T07:00:00Z",
+  "updated_at": "2026-06-22T07:05:00Z",
+  "messages": [
+    {
+      "id": "msg_xxx",
+      "conversation_id": "conv_xxx",
+      "agent_run_id": null,
+      "role": "USER",
+      "content": "你好",
+      "token_count": 0,
+      "created_at": "2026-06-22T07:00:01Z",
+      "meta": {}
+    },
+    {
+      "id": "msg_yyy",
+      "conversation_id": "conv_xxx",
+      "agent_run_id": "run_xxx",
+      "role": "ASSISTANT",
+      "content": "你好，我是 Chat Server。",
+      "token_count": 18,
+      "created_at": "2026-06-22T07:00:03Z",
+      "meta": {}
+    }
+  ]
+}
+```
+
+权限语义：
+
+- 只能查询当前 `user_id` 自己的 conversation。
+- 其他用户的 conversation 返回 `403`。
+- 不存在返回 `404`。
+
+## 8. 运行状态查询
+
+```bash
+curl -sS "$BASE_URL/runs/run_xxx" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+响应：
+
+```json
+{
+  "agent_run_id": "run_xxx",
+  "status": "PENDING | RUNNING | SUCCEEDED | FAILED | CANCELLED",
+  "intent": null,
+  "error": null
+}
+```
+
+用途：
+
+- SSE 断开后确认 run 是否结束。
+- 客户端刷新页面后恢复状态。
+- `STREAM_GAP` 后确认最终状态。
+
+## 9. 流式返回
+
+### 9.1 SSE
 
 ```bash
 curl -N "$BASE_URL/stream/run_xxx" \
   -H 'Authorization: Bearer alice.internal'
 ```
 
-The server emits standard SSE frames:
+SSE frame 示例：
 
 ```text
 id: 1782112292712-0
@@ -147,7 +387,7 @@ event: TOKEN
 data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","type":"TOKEN","stream_id":"1782112292712-0","seq":6,"ts":1782112292.7,"data":{"token":"hello"}}
 ```
 
-Important event types:
+重要事件：
 
 - `RUN_STARTED`
 - `PLANNING_STARTED`
@@ -161,25 +401,30 @@ Important event types:
 - `RUN_COMPLETED`
 - `ERROR`
 
-Read answer deltas from:
+客户端从 `TOKEN.data.token` 读取增量文本：
 
 ```json
-{"data": {"token": "text chunk"}}
+{
+  "type": "TOKEN",
+  "data": {
+    "token": "文本片段"
+  }
+}
 ```
 
-Terminal success:
+成功终止事件：
 
 ```json
 {
   "type": "RUN_COMPLETED",
   "data": {
     "status": "SUCCEEDED",
-    "content": "full final answer"
+    "content": "完整最终答案"
   }
 }
 ```
 
-Terminal failure:
+失败终止事件：
 
 ```json
 {
@@ -191,71 +436,52 @@ Terminal failure:
 }
 ```
 
-SSE `id` is a Redis Stream id. Store the last seen id and reconnect with:
+### 9.2 断线续连
+
+SSE 的 `id` 是 Redis Stream id。客户端应该保存最后一个 SSE `id`，重连时带：
 
 ```http
 Last-Event-ID: <last_sse_id>
 ```
 
-If the cursor is older than retained stream entries, the server returns an
-`ERROR` event with `data.error = "STREAM_GAP"`. In that case, query run status
-and conversation history instead of trying to replay old tokens.
+如果 cursor 已超过服务端保留窗口，服务端会返回：
 
-### WebSocket
+```json
+{
+  "type": "ERROR",
+  "data": {
+    "stage": "stream_replay",
+    "error": "STREAM_GAP"
+  }
+}
+```
+
+此时不要再尝试 replay token，应该查询：
+
+- `GET /runs/{agent_run_id}`
+- `GET /conversations/{conversation_id}`
+
+### 9.3 WebSocket
 
 ```text
 ws(s)://<host>/ws/run_xxx?token=alice.internal
 ```
 
-or pass `Authorization: Bearer <user_id>` during the WebSocket handshake. Use
-`last_event_id=<stream_id>` to resume from a cursor.
+也可以在握手时传：
 
-## Run Status
-
-```bash
-curl -sS "$BASE_URL/runs/run_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+```http
+Authorization: Bearer alice.internal
 ```
 
-Response:
+需要从 cursor 恢复时：
 
-```json
-{
-  "agent_run_id": "run_xxx",
-  "status": "PENDING | RUNNING | SUCCEEDED | FAILED | CANCELLED",
-  "intent": null,
-  "error": null
-}
+```text
+ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 ```
 
-## Conversations
+## 10. RAG 接口
 
-Create an empty conversation:
-
-```bash
-curl -sS -X POST "$BASE_URL/conversations" \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
-  -d '{"title": "Support analysis"}'
-```
-
-List conversations:
-
-```bash
-curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
-  -H 'Authorization: Bearer alice.internal'
-```
-
-Get one conversation with messages:
-
-```bash
-curl -sS "$BASE_URL/conversations/conv_xxx" \
-  -H 'Authorization: Bearer alice.internal'
-```
-
-## RAG Knowledge Bases
-
-### Create Knowledge Base
+### 10.1 创建知识库
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
@@ -263,11 +489,32 @@ curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
   -H 'Authorization: Bearer alice.internal' \
   -d '{
     "name": "Product docs",
-    "description": "Internal product support knowledge"
+    "description": "内部产品知识库"
   }'
 ```
 
-### Import Text Document
+响应：
+
+```json
+{
+  "id": "kb_xxx",
+  "owner_user_id": "alice.internal",
+  "name": "Product docs",
+  "description": "内部产品知识库",
+  "status": "ACTIVE",
+  "created_at": "2026-06-22T07:00:00Z",
+  "updated_at": "2026-06-22T07:00:00Z"
+}
+```
+
+### 10.2 查询知识库列表
+
+```bash
+curl -sS "$BASE_URL/rag/knowledge-bases" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+### 10.3 导入文本/Markdown 文档
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/documents" \
@@ -276,13 +523,15 @@ curl -sS -X POST "$BASE_URL/rag/documents" \
   -d '{
     "knowledge_base_id": "kb_xxx",
     "title": "DockerHost notes",
-    "content": "DockerHost runs the API, worker, reaper, Postgres, Redis, and pgvector.",
+    "content": "DockerHost 运行 API、worker、reaper、Postgres、Redis 和 pgvector。",
     "source_type": "api",
-    "metadata": {"source": "integration-guide"}
+    "metadata": {
+      "source": "integration-guide"
+    }
   }'
 ```
 
-Response:
+响应：
 
 ```json
 {
@@ -293,16 +542,37 @@ Response:
 }
 ```
 
-Poll ingestion:
+### 10.4 查询文档摄取状态
 
 ```bash
 curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
   -H 'Authorization: Bearer alice.internal'
 ```
 
-Wait for `status = "SUCCEEDED"` and document `status = "EMBEDDED"`.
+等到：
 
-### Query Knowledge Base Directly
+```json
+{
+  "status": "SUCCEEDED"
+}
+```
+
+再查文档：
+
+```bash
+curl -sS "$BASE_URL/rag/documents/doc_xxx" \
+  -H 'Authorization: Bearer alice.internal'
+```
+
+文档状态应为：
+
+```json
+{
+  "status": "EMBEDDED"
+}
+```
+
+### 10.5 直接检索知识库
 
 ```bash
 curl -sS -X POST "$BASE_URL/rag/query" \
@@ -316,7 +586,7 @@ curl -sS -X POST "$BASE_URL/rag/query" \
   }'
 ```
 
-Response includes:
+响应包含命中的 chunk：
 
 ```json
 {
@@ -325,9 +595,15 @@ Response includes:
       "chunk_id": "chunk_xxx",
       "document_id": "doc_xxx",
       "knowledge_base_id": "kb_xxx",
-      "content": "matched text",
+      "title": "DockerHost notes",
+      "content": "命中的文本",
       "score": 0.83,
-      "citation": {"chunk_index": 0},
+      "citation": {
+        "source_uri": null,
+        "page": null,
+        "section": null,
+        "chunk_index": 0
+      },
       "metadata": {}
     }
   ],
@@ -338,9 +614,9 @@ Response includes:
 }
 ```
 
-### Chat With RAG
+### 10.6 在聊天中使用 RAG
 
-Pass `knowledge_base_id` inside chat metadata:
+把 `knowledge_base_id` 放进 `metadata`：
 
 ```json
 {
@@ -353,9 +629,9 @@ Pass `knowledge_base_id` inside chat metadata:
 }
 ```
 
-The Agent decides whether to call the knowledge-search tool during the run.
+Agent 会在运行过程中自主决定是否调用知识检索工具。
 
-## Health And Operations
+## 11. 健康检查和观测
 
 ```bash
 curl -sS "$BASE_URL/healthz"
@@ -363,9 +639,9 @@ curl -sS "$BASE_URL/readyz"
 curl -sS "$BASE_URL/metrics"
 ```
 
-`/healthz` only proves the API process is alive.
+`/healthz` 只表示 API 进程还活着。
 
-`/readyz` checks:
+`/readyz` 是接流量前应该看的就绪检查，包含：
 
 - `db`
 - `redis`
@@ -374,9 +650,13 @@ curl -sS "$BASE_URL/metrics"
 - `provider_limiter`
 - `reaper`
 
-For real model traffic, `provider_secret` should be `configured`.
+真实模型链路下，`provider_secret` 应该是：
 
-`/metrics` returns Prometheus text. Useful metrics include:
+```json
+"configured"
+```
+
+`/metrics` 返回 Prometheus text。常用指标：
 
 - `chat_ttft_seconds_*`
 - `provider_rate_limit_decisions_total`
@@ -387,20 +667,22 @@ For real model traffic, `provider_secret` should be `configured`.
 - `runner_timeouts_total`
 - `reaper_runs_total`
 
-## Error Reference
+## 12. 常见错误
 
-Common HTTP responses:
+HTTP 状态：
 
-- `401`: missing identity header.
-- `403`: resource belongs to another `user_id`.
-- `404`: run, conversation, knowledge base, document, or job not found.
-- `409`: conversation busy, disabled knowledge base, or idempotency conflict.
-- `422`: invalid request body, usually empty required fields.
-- `429`: user or provider rate limit.
-- `503`: queue, limiter, Redis, or provider guardrail unavailable.
-- `504`: synchronous wait timed out.
+| 状态码 | 含义 |
+| --- | --- |
+| `401` | 缺少身份 header。 |
+| `403` | 当前 `user_id` 无权访问该资源。 |
+| `404` | run、conversation、knowledge base、document 或 job 不存在。 |
+| `409` | conversation busy、知识库不可用、幂等冲突。 |
+| `422` | 请求体不合法，常见为空 message / content / query。 |
+| `429` | 用户级或 provider 级限流。 |
+| `503` | 队列、Redis、provider limiter 或 guardrail 不可用。 |
+| `504` | `stream=false` 同步等待超时。 |
 
-Common machine-readable details:
+常见 machine-readable detail / error：
 
 - `CONVERSATION_BUSY`
 - `IDEMPOTENCY_CONFLICT`
@@ -410,15 +692,20 @@ Common machine-readable details:
 - `STREAM_GAP`
 - `RUN_TIMEOUT`
 
-## Agent Integration Checklist
+## 13. Agent 接入清单
 
-1. Set `BASE_URL`.
-2. Pick a stable `user_id` and send `Authorization: Bearer <user_id>`.
-3. Use `Idempotency-Key` on every retryable `POST /chat`.
-4. Submit `POST /chat` with `stream=true`.
-5. Subscribe to `stream_url` with the same identity header.
-6. Accumulate `TOKEN.data.token` until `RUN_COMPLETED`.
-7. Persist last SSE `id`; reconnect with `Last-Event-ID`.
-8. On `STREAM_GAP`, call `/runs/{id}` and `/conversations/{id}`.
-9. For RAG, create a KB, import documents, wait for `SUCCEEDED`, then pass `knowledge_base_id` in chat metadata.
-10. Treat `/readyz` as the traffic gate and `/metrics` as the observability surface.
+1. 设置 `BASE_URL`。
+2. 选择稳定的内部 `user_id`。
+3. 每个请求带 `Authorization: Bearer <user_id>`。
+4. `POST /chat` 时带 `Idempotency-Key`。
+5. 新聊天不传 `conversation_id`，服务会自动创建。
+6. 保存返回的 `conversation_id`，后续追问必须传回。
+7. 保存返回的 `agent_run_id`，用于订阅 stream 和查询 run。
+8. 订阅 `stream_url`，读取 `TOKEN.data.token`。
+9. 收到 `RUN_COMPLETED` 后，使用 `data.content` 作为最终答案。
+10. 页面刷新或本地状态丢失时，调用 `GET /conversations` 找回会话列表。
+11. 需要完整历史时，调用 `GET /conversations/{conversation_id}`。
+12. SSE 断线时，用最后一个 SSE `id` 作为 `Last-Event-ID` 重连。
+13. 遇到 `STREAM_GAP`，改查 `/runs/{id}` 和 `/conversations/{id}`。
+14. 需要 RAG 时，先创建 KB、导入文档、等待 `SUCCEEDED`，再在 chat metadata 里传 `knowledge_base_id`。
+15. 接流量前检查 `/readyz`，排障时查看 `/metrics`。
