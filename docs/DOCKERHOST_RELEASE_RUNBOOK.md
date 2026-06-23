@@ -63,6 +63,76 @@ envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhos
 docker compose -f /Users/chris/AiProject/general-agent-ai/dockerhost/compose.yaml config
 ```
 
+## DockerHost Release CLI（默认 dry-run）
+
+`scripts/dockerhost_release.py` 是本 runbook 的辅助 CLI。默认只生成有序 plan 和脱敏 audit JSON,不会调用真实 `git`, `envctl` 或 `curl`。只有显式加入 `--execute` 时,CLI 才会执行外部命令。
+
+dry-run deploy plan:
+
+```bash
+.venv/bin/python scripts/dockerhost_release.py deploy \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --git-ref "$GIT_REF" \
+  --base-url "$BASE_URL" \
+  --secret-env ZAI_API_KEY \
+  --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file> \
+  --audit-json /tmp/dockerhost-release-plan.json
+```
+
+真实执行必须显式添加 `--execute`;执行结果和命令输出会写入脱敏 audit JSON:
+
+```bash
+.venv/bin/python scripts/dockerhost_release.py deploy \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --git-ref "$GIT_REF" \
+  --base-url "$BASE_URL" \
+  --secret-env ZAI_API_KEY \
+  --secret-env GEMINI_API_KEY \
+  --execute \
+  --audit-json /tmp/dockerhost-release-audit.json
+```
+
+其他 action:
+
+```bash
+.venv/bin/python scripts/dockerhost_release.py redeploy \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --git-ref "$GIT_REF" \
+  --base-url "$BASE_URL" \
+  --secret-env ZAI_API_KEY
+
+.venv/bin/python scripts/dockerhost_release.py rollback --previous-sha "$PREVIOUS_SHA" \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --base-url "$BASE_URL" \
+  --secret-env ZAI_API_KEY
+
+.venv/bin/python scripts/dockerhost_release.py smoke \
+  --name "$ENV_NAME" \
+  --base-url "$BASE_URL"
+
+.venv/bin/python scripts/dockerhost_release.py destroy \
+  --name "$ENV_NAME"
+```
+
+CLI plan/execute 顺序:
+
+- deploy/redeploy/rollback: `git status --short`, `git rev-parse HEAD`, `git ls-remote`, `envctl check-project`, `envctl validate-template`, `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`, `envctl status`, `/healthz`, `/readyz`, `stream=false` 422, accepted chat, SSE smoke, `/runs/{agent_run_id}`, worker logs, reaper logs。
+- rollback 使用 `--previous-sha` 作为 `envctl up --git-ref` 的目标,并复用同一环境和 secret 注入方式。
+- smoke 只执行状态、健康、ready、async chat、SSE 和 worker/reaper 检查,不改变 Git ref。
+- destroy 只规划或执行 `envctl unexpose --service db`, `envctl unexpose --service cache`, `envctl down --name "$ENV_NAME"`;只对 disposable environment 使用。
+
+Secret hygiene:
+
+- `--secret-env` 只接受 secret 名称,例如 `ZAI_API_KEY`;不要传 `ZAI_API_KEY=<value>`。
+- `--secret-file KEY=PATH` 只在真实 envctl 命令中使用 PATH;audit/stdout 只记录 secret 名称和 `KEY=<redacted-secret-file>`。
+- CLI 不支持 `--secret KEY=VALUE`。
+- command output 和 audit JSON 都必须脱敏;发现 secret 值、raw bearer token、private key 或 secret file 内容时,不得把 audit 作为发布证据提交。
+- CLI 只覆盖 SSE smoke;需要 WebSocket 证据时继续执行本 runbook 的 WebSocket Smoke 章节。
+
 ## 4. Secret 注入
 
 优先使用 `--secret-env`。这要求 secret 值已在当前私有 shell 环境中存在,但不要用 `env`, `printenv`, `set`, `history` 或日志输出它们。

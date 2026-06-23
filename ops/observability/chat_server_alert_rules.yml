@@ -1,0 +1,113 @@
+groups:
+  - name: chat-server-observability
+    interval: 30s
+    rules:
+      - alert: ChatServerReadinessDown
+        expr: min by (env, instance, check) (chat_readyz_check{check=~"db|redis|event_bus|provider_secret|provider_limiter|reaper"}) == 0
+        for: 2m
+        labels:
+          severity: p0
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server readiness check is failing"
+          description: "A /readyz dependency check is not ready. Treat missing data as unknown and verify with bounded logs."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#readiness-失败"
+
+      - alert: ChatServerHighApiErrorRate
+        expr: sum by (env) (rate(chat_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (env) (rate(chat_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: p0
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server API 5xx ratio is above 5 percent"
+          description: "User-visible API errors are sustained. Check deploy timing, provider panels, Redis/event bus, and redacted API logs."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#api-错误率升高"
+
+      - alert: ChatServerTTFTTooHigh
+        expr: max by (env, provider, model, runtime_mode) (quantile_over_time(0.95, chat_ttft_seconds_last[10m])) > 10
+        for: 10m
+        labels:
+          severity: p1
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server TTFT p95 is above 10 seconds"
+          description: "First-token latency is degraded. Split by provider/model/runtime mode and correlate with provider and queue panels."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#ttft-或流式-token-gap-升高"
+
+      - alert: ChatServerStreamTokenGapTooHigh
+        expr: max by (env, route, runtime_mode) (quantile_over_time(0.95, chat_stream_token_gap_seconds_last[5m])) > 15
+        for: 5m
+        labels:
+          severity: p1
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server stream token gap p95 is above 15 seconds"
+          description: "Accepted realtime runs are not delivering tokens promptly. Check stream logs, Redis Stream, event bus, and disconnect/replay behavior."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#ttft-或流式-token-gap-升高"
+
+      - alert: ChatServerProvider429Spike
+        expr: sum by (env, provider, model) (rate(provider_errors_total{status_code="429"}[5m])) * 60 > 5 or sum by (env, provider, model, reason) (rate(provider_rate_limit_decisions_total{reason=~"RATE_LIMITED|BACKING_OFF"}[5m])) * 60 > 5
+        for: 10m
+        labels:
+          severity: p2
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server provider 429 or rate-limit denial spike"
+          description: "Provider quota pressure is elevated. Check quota, admission decisions, retry-after, and whether admitted runs are failing."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#provider-4295xx"
+
+      - alert: ChatServerProvider5xxElevated
+        expr: sum by (env, provider, model) (rate(provider_errors_total{status_code=~"5.."}[5m])) / clamp_min(sum by (env, provider, model) (rate(provider_requests_total[5m])), 1) > 0.02
+        for: 10m
+        labels:
+          severity: p1
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server provider 5xx ratio is above 2 percent"
+          description: "Provider transient failures are elevated. Verify provider status, retry behavior, backoff, and sanitized provider logs."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#provider-4295xx"
+
+      - alert: ChatServerCeleryQueueBacklog
+        expr: max by (env, queue) (celery_oldest_queued_age_seconds) > 300 or max by (env, queue) (celery_queue_depth) > 100
+        for: 10m
+        labels:
+          severity: p1
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server Celery queue backlog is elevated"
+          description: "Batch work is aging or queue depth is high. Check worker health, retries, provider backoff, DB, and Redis."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#celery-队列积压"
+
+      - alert: ChatServerReaperStalled
+        expr: increase(reaper_runs_total[10m]) == 0 or increase(reaper_failed_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: p1
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server reaper is stalled or failing"
+          description: "The stale-run reaper has not completed scans or is recording failures. Check reaper service health and redacted reaper_scan logs."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#reaper-或-stale-run"
+
+      - alert: ChatServerMetricsScrapeStale
+        expr: absent_over_time(chat_requests_total[5m]) or min by (env, instance) (up{job=~"chat-api|chat-worker|chat-reaper"}) == 0
+        for: 5m
+        labels:
+          severity: p2
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Chat Server metrics scrape is stale or down"
+          description: "Core panels may be blank. Treat observability state as unknown and use /readyz plus bounded redacted logs."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#核心面板"
+
+      - alert: ChatServerSecretLeakSuspected
+        expr: increase(secret_redaction_violations_total{service=~"chat-.*"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: p0
+          spec_id: SPEC-CHAT-OBSERVABILITY-ALERTING-001
+        annotations:
+          summary: "Potential Chat Server secret leak signal"
+          description: "Stop copying suspect output. Record only sanitized metadata and follow the secret leak path."
+          runbook_url: "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md#疑似-secret-泄漏"

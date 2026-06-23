@@ -10,7 +10,7 @@
   - `SPEC-PROVIDER-GUARDRAILS-001`: provider/model quota、usage settlement、secret readiness。
   - `SPEC-ASYNC-CHAT-ONLY-001`: Chat 接口只接受异步流式合同。
   - `SPEC-INTERNAL-RAG-BOUNDARY-001`: RAG 内部管理边界。
-- PRD/source request: 实现“Chat Server 生产观测与告警体系完善”切片,先补稳定 SPEC-* 与 Workflow Class,再补 implementation plan,再补可执行/可校验交付物。写入范围限制为本 spec、implementation plan、观测告警 runbook、pytest 文档契约测试。
+- PRD/source request: 实现“Chat Server 生产观测与告警体系完善”切片,先补稳定 SPEC-* 与 Workflow Class,再补 implementation plan,再补可执行/可校验交付物。最终交付必须包含本 spec、implementation plan、观测告警 runbook、Grafana dashboard JSON、Prometheus alert rules YAML、离线资产 validator 和 pytest 契约测试。
 - Target baseline: branch `codex/zai-glm52-dockerhost` 当前工作树;本切片不修改 DockerHost 发布/回滚文件,避免影响并行 worker。
 - Current behavior:
   - `docs/PRODUCTION_READINESS_RUNBOOK.md` 已描述 Chat 请求链路、DockerHost deploy、readiness/metrics smoke、load smoke、rollback、backup 和 residual risks。
@@ -18,11 +18,12 @@
   - `app/api/routers/health.py` 暴露 `/healthz`、`/readyz`、`/metrics`;`/readyz` 覆盖 DB、Redis、event bus、provider secret、provider limiter、reaper 配置状态。
   - `tests/test_production_readiness.py` 已用 pytest 断言 Prometheus 输出、metrics endpoint、readyz 状态和 DockerHost production config check。
   - Grafana MCP 生产日志访问属于授权运维能力,凭据只在本机私有目录或安全运行环境注入,不得进入仓库。
-- Problem: 现有 readiness 和 metrics 面已经存在,但生产使用者仍缺一份可执行的观测/告警合同:核心面板缺少统一口径,日志查询缺少 bounded 查询模板,告警阈值和排障路径缺少可复用流程,secret/token 脱敏边界缺少文档契约测试防退化。
+- Problem: 现有 readiness 和 metrics 面已经存在,但生产使用者仍缺一份可执行的观测/告警合同:核心面板缺少统一口径,日志查询缺少 bounded 查询模板,告警阈值和排障路径缺少可复用流程,secret/token 脱敏边界缺少文档契约测试防退化,并且仓库中缺少可提交、可离线校验的 dashboard/rules 资产供生产安装流程复用。
 - Non-goals:
   - 不新增或修改 runtime/API/tasks/db/core 代码。
   - 不修改 DockerHost adapter、发布、回滚、envctl 或 deployment 文件。
-  - 不创建真实 Grafana dashboard、Prometheus rule、Alertmanager route 或生产 MCP token。
+  - 不把 dashboard/rules 直接安装到生产 Grafana、Prometheus 或 Alertmanager。
+  - 不新增 Alertmanager route、paging receiver 或生产 MCP token。
   - 不写入真实 provider key、Grafana token、DockerHost token、用户 token、原始 prompt、生产日志原文。
   - 不改变现有 auth、tenant、quota、RAG 或 provider 行为。
 
@@ -33,9 +34,12 @@
   - 观测体系必须覆盖 API、streaming、provider、Celery worker、event bus、Redis/Postgres readiness、reaper 和 RAG/pgvector 依赖。
   - Grafana MCP 查询必须先满足授权、source/env/service/time/limit 边界,默认读取 redacted log content。
   - 告警规则必须给出可执行阈值、持续时间、严重级别和首要诊断路径。
-  - 文档必须通过离线 pytest 契约测试,防止退化成空文档或丢失关键 secret hygiene 约束。
+  - 仓库必须提交 `ops/observability/chat_server_overview_dashboard.json` 和 `ops/observability/chat_server_alert_rules.yml`,用 Prometheus/metrics 口径表达请求量、错误率、TTFT、stream gap、provider 429/5xx、Celery、reaper、readiness。
+  - `scripts/validate_observability_assets.py` 必须能离线校验资产结构和 secret hygiene,零外部依赖,退出码可用于后续 release gate。
+  - 文档与资产必须通过离线 pytest 契约测试,防止退化成空文档、空资产或丢失关键 secret hygiene 约束。
 - User/operator workflow:
   - Release operator 在部署前后读取 runbook,检查 `/readyz`、`/metrics`、核心面板和 bounded log query。
+  - Observability owner 在生产安装前先运行 `.venv/bin/python scripts/validate_observability_assets.py`,再把 dashboard JSON 和 alert rules YAML 导入对应平台。
   - On-call operator 收到告警后按严重级别进入 runbook 对应排障路径,优先确认 readiness、错误率、TTFT、stream token gap、provider 429/5xx、Celery backlog、reaper 状态。
   - Agent 代查日志时必须先声明 source/service/env/time window/limit,通过授权 Grafana MCP endpoint 查询,并只引用 `line_redacted` 或聚合结论。
 - State model:
@@ -66,6 +70,10 @@
 - Routes, commands, events, jobs, or UI surfaces:
   - `docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md` 是内部运维/Agent 观测告警入口。
   - `tests/test_observability_alerting_runbook_contract.py` 是离线文档契约测试。
+  - `ops/observability/chat_server_overview_dashboard.json` 是可提交 Grafana dashboard 资产。
+  - `ops/observability/chat_server_alert_rules.yml` 是可提交 Prometheus alert rules 资产。
+  - `scripts/validate_observability_assets.py` 是零外部依赖离线资产校验 CLI。
+  - `tests/test_observability_assets.py` 是 dashboard/rules/validator pytest 契约测试。
   - Grafana MCP 推荐接口为 bounded `POST /v1/logs`,请求必须包含 `source`、`service`、`env`、`time`、`limit`。
   - `GET /v1/logs/tail` 仅允许短时 live investigation;默认禁止无界 tail 和 broad LogQL。
   - `/readyz` 与 `/metrics` 是 runbook 中的本服务观测面,不在本切片中修改。
@@ -112,23 +120,31 @@
   - `docs/implementation-plans/2026-06-23-chat-server-observability-alerting-implementation-plan.md`
   - `docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md`
   - `tests/test_observability_alerting_runbook_contract.py`
+  - `ops/observability/chat_server_overview_dashboard.json`
+  - `ops/observability/chat_server_alert_rules.yml`
+  - `scripts/validate_observability_assets.py`
+  - `tests/test_observability_assets.py`
 - Data flow:
   - Chat Server emits readiness and metrics through existing runtime surfaces.
   - Production logs are queried through authorized Grafana MCP using bounded filters.
+  - Committed observability assets are validated offline, then imported by the production observability owner through the platform-specific Grafana/Prometheus workflow.
   - Operator correlates dashboard panels, `/readyz`, `/metrics`, redacted logs, run_id/trace_id and deployment event timeline.
   - Alert triage writes only sanitized evidence into incident notes or handoff summaries.
 - Transaction/concurrency boundaries:
   - 不涉及 runtime transaction 或 concurrency 变更。
   - 观测查询不得触发 write action、deployment rollback 或 provider config change;这些动作需要单独明确确认。
 - Runtime metrics:
+  - Dashboard asset: `ops/observability/chat_server_overview_dashboard.json`。
+  - Alert rules asset: `ops/observability/chat_server_alert_rules.yml`。
+  - Validator command: `.venv/bin/python scripts/validate_observability_assets.py`。
   - 请求量: `chat_requests_total` 或 HTTP request counter,按 route/status/runtime_mode/provider 分组。
   - 错误率: HTTP 5xx/4xx、chat acceptance failure、stream error event、run failed terminal state。
   - TTFT: `chat_ttft_seconds` p50/p95/p99,按 runtime_mode/provider/model 分组。
-  - 流式 token gap: token delta 间隔 p95/p99、last-token age、stream stall/error event。
+  - 流式 token gap: `chat_stream_token_gap_seconds` token delta 间隔 p95/p99、last-token age、`chat_stream_stalls_total` stream stall/error event。
   - Provider 429/5xx: `provider_errors_total`、provider backoff、rate-limit decisions、usage missing。
-  - Celery 队列: queue depth、oldest queued age、worker active/reserved/retry/failures。
+  - Celery 队列: `celery_queue_depth`、`celery_oldest_queued_age_seconds`、worker active/reserved/retry/failures。
   - Reaper: `reaper_runs_total`、`reaper_requeued_total`、`reaper_failed_total`、last successful scan age、stale runs inspected。
-  - Dependencies: `/readyz.checks.db`、`redis`、`event_bus`、`provider_secret`、`provider_limiter`、`reaper`。
+  - Dependencies: `/readyz.checks.db`、`redis`、`event_bus`、`provider_secret`、`provider_limiter`、`reaper`,以及部署/采集层映射出的 `chat_readyz_check{check=...}`。
 - Log queries:
   - Prefer bounded `POST /v1/logs` with explicit source/service/env/time/limit.
   - Use `line_redacted`, labels, timestamps, trace_id/run_id and status fields.
@@ -159,6 +175,7 @@
 - Expected gate(s):
   - `HARNESS-SPEC-FIRST-FEATURE`
   - Focused pytest for document contract.
+  - Focused pytest for observability assets and validator.
   - Harness spec/workflow checks if release gate is run.
 - Performance-sensitive class:
   - Low implementation risk because no runtime code changes.
@@ -170,10 +187,12 @@
   - Runbook must define runtime performance panels and alert thresholds for future production validation.
 - Focused verification commands:
   - `.venv/bin/python -m pytest tests/test_observability_alerting_runbook_contract.py -q`
+  - `.venv/bin/python -m pytest tests/test_observability_alerting_runbook_contract.py tests/test_observability_assets.py -q`
+  - `.venv/bin/python scripts/validate_observability_assets.py`
   - `scripts/check_spec_contract.sh`
   - `scripts/check_harness_workflows.sh`
 - Prerelease-grade verification commands:
-  - `make verify-release`
+  - `make verify-release` (includes the `observability_assets` validator gate)
 
 ## Acceptance Criteria
 
@@ -181,9 +200,13 @@
   - Spec declares `SPEC-CHAT-OBSERVABILITY-ALERTING-001` and `Workflow Class: HARNESS-SPEC-FIRST-FEATURE`。
   - Implementation plan references this spec ID and lists file-level steps, tests, release/rollback risks。
   - Runbook is Chinese, operator-facing, and includes Grafana MCP prerequisites, bounded `/v1/logs` query guidance, dashboard panels, alert rules, diagnostic paths, and secret redaction boundaries。
-  - Contract test reads spec/plan/runbook and fails if critical sections or terms disappear。
+  - Dashboard asset `ops/observability/chat_server_overview_dashboard.json` contains Prometheus panels for request rate, API error rate, TTFT, stream token gap, provider 429/5xx, Celery, reaper and readiness。
+  - Alert rules asset `ops/observability/chat_server_alert_rules.yml` contains Prometheus rules with severity, threshold expression, duration and runbook annotations。
+  - Validator `scripts/validate_observability_assets.py` validates dashboard/rules structure and secret hygiene offline with only Python stdlib。
+  - Contract tests read spec/plan/runbook/assets/validator and fail if critical sections or terms disappear。
 - Edge cases:
   - Test must not require network, Grafana MCP, DockerHost, provider credentials, database, Redis, or environment variables。
+  - Validator tests must use temporary fixtures for rejection cases and must not depend on Grafana or Prometheus binaries。
   - Runbook examples must use placeholders or env var names only。
   - Runbook must treat missing metrics/log authorization as `unknown`, not as healthy。
 - Compatibility:
@@ -198,16 +221,19 @@
   - This specification。
   - Implementation plan。
   - Observability and alerting runbook。
+  - Grafana dashboard JSON。
+  - Prometheus alert rules YAML。
+  - Offline observability asset validator。
   - Focused pytest output。
 
 ## Review Notes
 
 - Open questions:
-  - Final production dashboard backend, Alertmanager routing and on-call ownership are external to this repository。
+  - Final production dashboard import, Prometheus rule loading, Alertmanager routing and on-call ownership are external to this repository。
   - Exact service/job labels should be updated when production deployment naming is finalized。
   - Final threshold tuning needs real traffic baseline and provider quota data。
 - Accepted assumptions:
-  - A documentation-and-contract-test slice is acceptable before adding managed dashboards or alert rules。
+  - Committed dashboard/rules assets are acceptable repository artifacts before production installation and threshold tuning。
   - Grafana MCP redaction is the default evidence boundary; raw logs are not required for this runbook。
   - `SPEC-PROD-READINESS-001` remains authoritative for deploy/readiness/rollback mechanics。
 - Rejected alternatives:

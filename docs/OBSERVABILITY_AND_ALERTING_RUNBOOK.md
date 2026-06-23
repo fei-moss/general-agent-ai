@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本 runbook 给内部运维和值守 Agent 使用,覆盖 Chat Server 生产观测、Grafana MCP 日志查询、核心面板、告警阈值、排障路径和秘密脱敏边界。
+本 runbook 给内部运维和值守 Agent 使用,覆盖 Chat Server 生产观测、Grafana MCP 日志查询、核心面板、告警阈值、可提交观测资产、排障路径和秘密脱敏边界。
 
 它补充 `docs/PRODUCTION_READINESS_RUNBOOK.md`,不替代部署、回滚、备份或 release gate。遇到需要改配置、回滚、扩容、停 worker、切 provider 的动作时,先形成证据并取得明确操作确认。
 
@@ -101,7 +101,39 @@ curl -fsS "$GRAFANA_MCP_BASE_URL/v1/logs" \
 
 如果某个面板缺数据,状态记为 `unknown`,并通过 `/readyz` 与 bounded logs 交叉验证。不要把“没有数据”当成健康。
 
+## 可提交观测资产与离线校验
+
+本仓库提交两类观测资产,供生产 observability owner 在外部 Grafana/Prometheus 流程中导入:
+
+- Grafana dashboard JSON: `ops/observability/chat_server_overview_dashboard.json`
+- Prometheus alert rules YAML: `ops/observability/chat_server_alert_rules.yml`
+
+这些资产不包含真实 datasource secret、Grafana token、Prometheus 凭据、Alertmanager receiver 或生产日志原文。生产导入时需要由 owner 绑定实际 Prometheus datasource UID、`env`/`job` labels、rule group 加载位置和 Alertmanager routing。
+
+提交前必须离线校验资产结构和 secret hygiene:
+
+```bash
+.venv/bin/python scripts/validate_observability_assets.py
+```
+
+完整 focused 验证:
+
+```bash
+.venv/bin/python -m pytest tests/test_observability_alerting_runbook_contract.py tests/test_observability_assets.py -q
+```
+
+Validator 的职责:
+
+- 校验 dashboard JSON 可解析,包含 `Chat Server Observability` title、固定 uid、必需 panels 和 Prometheus expressions。
+- 校验 alert rules YAML 包含 `chat-server-observability` group、必需 alerts、`expr`、`for`、`severity`、`annotations` 和 `runbook_url`。
+- 校验资产覆盖请求量、错误率、TTFT、stream token gap、provider 429/5xx、Celery、reaper、readiness 的 metric family。
+- 拒绝明显 secret-like literal,例如 raw bearer token、常见 provider API key 形状、private key marker、token assignment 或 inline credential。
+
+Dashboard 中的 `chat_requests_total`、`chat_ttft_seconds_*`、`provider_errors_total`、`provider_rate_limit_decisions_total`、`redis_stream_events_total`、`reaper_*` 与当前 runtime/readiness 口径对齐。`chat_stream_token_gap_seconds_*`、`celery_queue_depth`、`celery_oldest_queued_age_seconds`、`chat_readyz_check` 是生产采集层或后续 runtime instrumentation 需要提供的 metric family;缺失时面板应显示 unknown,不得解释为健康。
+
 ## 告警规则
+
+Prometheus rules 的仓库资产是 `ops/observability/chat_server_alert_rules.yml`。下面表格是 operator-facing 合同;YAML 中每条 alert 必须保留 severity、PromQL expression、持续时间和 `docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md` runbook annotation。
 
 | 严重级别 | 条件 | 持续时间 | 首要排障路径 |
 | --- | --- | --- | --- |
