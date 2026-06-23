@@ -1,5 +1,10 @@
 # Chat Server Production Readiness Runbook
 
+## Related Runbooks
+
+- 生产观测、Grafana MCP 日志查询、告警阈值和排障路径: [OBSERVABILITY_AND_ALERTING_RUNBOOK.md](OBSERVABILITY_AND_ALERTING_RUNBOOK.md)
+- DockerHost Git pull 发布、同环境 redeploy、回滚、清理和审计: [DOCKERHOST_RELEASE_RUNBOOK.md](DOCKERHOST_RELEASE_RUNBOOK.md)
+
 ## Current Request Flow
 
 1. Client calls `POST /chat` with Authorization or `X-API-Key`.

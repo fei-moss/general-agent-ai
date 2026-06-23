@@ -6,6 +6,12 @@
 
 外部接入指南见 [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md)。
 
+生产运维文档:
+
+- [生产就绪总 runbook](docs/PRODUCTION_READINESS_RUNBOOK.md)
+- [生产观测与告警 runbook](docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md)
+- [DockerHost 发布与回滚 runbook](docs/DOCKERHOST_RELEASE_RUNBOOK.md)
+
 ## 快速启动(5 步)
 
 ```bash
