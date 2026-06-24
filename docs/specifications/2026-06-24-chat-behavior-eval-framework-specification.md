@@ -9,11 +9,13 @@
 - Current behavior:
   - `app/runtime/chat_behavior.py` contains deterministic v0 policy and guardrails.
   - `tests/test_chat_behavior_policy.py` and `tests/test_orchestrator.py` cover focused hard-coded examples.
+  - `tests/chat_eval/evaluator.py` validates JSONL case shape and deterministic guardrail expectations.
   - Existing `tests/rag_eval/` is retrieval-only and does not express answer behavior, refusal boundaries, output safety, or product-style expectations.
 - Problem:
   - Hard-coded unit tests do not scale well for iterative behavior tuning.
   - Future prompt/policy changes need a reusable case format that captures allowed/refused user intents, expected category, RAG requirements, desired answer traits, forbidden claims, and output safety checks.
-  - A deterministic local gate is needed before adding slower Promptfoo or LLM-judge workflows.
+  - Schema-only evals do not prove generated answers satisfy desired traits or avoid forbidden claims.
+  - A deterministic local answer-level gate is needed before adding slower Promptfoo or LLM-judge workflows.
 - Non-goals:
   - No external LLM judge, Promptfoo execution, provider calls, Langfuse integration, DB schema change, route change, or runtime behavior change in this phase.
   - No claim that deterministic cases fully prove semantic safety.
@@ -25,6 +27,8 @@
   - Engineers add or update JSONL cases under `tests/chat_eval/` when they want to tune chat behavior.
   - Each case states what the user asks, whether the input guardrail should allow/refuse it, the expected category, optional RAG/tool expectations, answer traits, forbidden answer claims, and output sample checks.
   - Focused pytest validates the case schema, coverage mix, and current deterministic guardrail behavior.
+  - Answer-level pytest runs allowed cases through the orchestrator with a zero-key deterministic `FunctionModel`, scores trait hit rate, rejects forbidden-claim hits, and can write a JSON report.
+  - Engineers can run the same golden set against multiple labeled policy variants to compare scores side by side before changing runtime policy.
 - State model:
   - Eval cases are static test fixtures.
   - No runtime state, DB state, or API state changes.
@@ -46,6 +50,7 @@
 - Routes, commands, events, jobs, or UI surfaces:
   - No public API changes.
   - New local command: `.venv/bin/python -m pytest tests/test_chat_behavior_eval.py -q`
+  - Optional local report entrypoint: call `tests.chat_eval.judge.judge_allowed_cases(..., artifact_path=Path(".artifacts/release/chat_behavior_judge.json"))`.
 - Request fields and validation:
   - Not applicable.
 - Response/envelope fields and types:
@@ -68,13 +73,14 @@
 - Historical data behavior:
   - Existing tests and eval fixtures are unaffected.
 - Performance-sensitive queries or write paths:
-  - Tests load a small JSONL fixture and call local deterministic policy functions only.
+  - Tests load a small JSONL fixture, call local deterministic policy functions, and run a zero-key in-memory orchestrator harness only.
 
 ## Architecture
 
 - Modules/files expected to change:
   - `tests/chat_eval/golden_cases.jsonl`
   - `tests/chat_eval/evaluator.py`
+  - `tests/chat_eval/judge.py`
   - `tests/test_chat_behavior_eval.py`
   - `docs/specifications/2026-06-24-chat-behavior-eval-framework-specification.md`
   - `docs/implementation-plans/2026-06-24-chat-behavior-eval-framework-implementation-plan.md`
@@ -84,6 +90,9 @@
   3. Input cases call `evaluate_user_message()`.
   4. Output sample cases call `evaluate_assistant_answer()`.
   5. Coverage gates assert that the fixture contains allow/refuse, false-positive, hidden-instruction, secret, real-money, RAG-required, and output-leak scenarios.
+  6. Allowed cases run through `AgentOrchestrator` with a deterministic `FunctionModel`.
+  7. The judge scores answer trait hit rate and forbidden-claim hits overall and by `area`.
+  8. Policy comparison runs the same cases for multiple `PolicyVariant` labels and reports the best score.
 - Transaction/concurrency boundaries:
   - None.
 - Observability/logging/metrics:
@@ -117,7 +126,8 @@
   - Cases cover allowed normal questions, false-positive traps, hidden instruction refusal, secret refusal, real-money direct-operation refusal, RAG-required allowed questions, and output-leak refusal.
   - Validator rejects duplicate ids, missing required fields, unsupported action/category values, and fixture text that contains real-looking secrets.
   - Focused pytest verifies current `chat_behavior` decisions against the golden cases.
-  - Answer traits and forbidden claims are represented in data even if full answer-level generation is future work.
+  - Answer-level judge runs allowed cases through orchestrator and reports trait hit rate, forbidden-claim hits, and area-level scores.
+  - Policy comparison accepts at least two `PolicyVariant` labels and emits side-by-side scores.
 - Edge cases:
   - A benign API key setup question remains allowed.
   - A password-manager documentation question remains allowed.
@@ -132,6 +142,7 @@
 - Evidence artifacts:
   - New spec/plan.
   - Golden cases fixture.
+  - Deterministic judge/report helper.
   - Focused pytest output.
   - Release harness output.
 
@@ -139,9 +150,9 @@
 
 - Open questions:
   - Exact MOSS production persona and legal/compliance phrasing still need product/legal input.
-  - LLM judge thresholds and human-labeled answer scoring remain future phases.
+  - LLM judge thresholds and human-labeled answer scoring remain future phases; deterministic keyword/trait scoring is only the first guardrail.
 - Accepted assumptions:
-  - Deterministic schema/guardrail tests are the first eval layer.
+  - Deterministic schema/guardrail tests plus zero-key orchestrator judge are the first eval layer.
   - JSONL is the right fixture shape because it can be reused by pytest and later Promptfoo-like tools.
 - Rejected alternatives:
   - Add Promptfoo to release gate now: rejected because external npm/network/provider dependencies would make the gate less deterministic.

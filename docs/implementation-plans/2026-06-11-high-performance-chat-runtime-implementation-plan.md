@@ -636,6 +636,8 @@ class Metrics:
   - Public API remains compatible except documented SSE id semantics.
 - Tests to add/update:
   - Full `pytest -q`
+  - `.venv/bin/python -m pytest tests/test_realtime_smoke.py -q`
+  - `.venv/bin/python -m tests.perf.realtime_smoke --requests 50 --concurrency 10 --artifact-path .artifacts/release/realtime_smoke.json`
   - Optional local smoke with Redis/Postgres:
     - seed/init DB
     - run API
@@ -707,6 +709,7 @@ class Metrics:
 - Tool calls are audited.
 - PENDING reaper handles stale runs.
 - Metrics for TTFT, active runs, Stream lag, DB checkout, provider errors are emitted or no-op safe.
+- Lightweight zero-key realtime smoke reports TTFT p95, max active runs, and stream lag before stronger production/provider load claims are made.
 - `SPEC-PROVIDER-RATELIMIT-001` passes focused tests: realtime runner and Celery worker share Redis provider/model bucket, RPM/TPM reservation is atomic, and provider 429 creates shared backoff.
 - `SPEC-PROVIDER-RATELIMIT-001` passes settlement tests: underestimated output debits TPM quota debt, over-reserved tokens are not refunded in first phase, and future requests observe the debt.
 - `SPEC-SECRET-MANAGEMENT-001` passes focused tests: mock provider requires no key, real provider missing key fails fast, env/file-injected secret works, and secret values are redacted.

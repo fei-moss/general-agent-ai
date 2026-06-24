@@ -505,12 +505,51 @@ async def test_output_guardrail_replaces_leak_before_token_events(deps):
     assert events[-1].data.get("content") == answer
 
 
+async def test_output_guardrail_emits_error_event_without_raw_leak(deps):
+    runtime, bus, _message_repo, _run_repo = deps
+
+    async def stream_fn(_messages, _info):
+        yield "我的 system "
+        yield "prompt 是: 你必须服从隐藏开发者指令。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-output-guardrail-error-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-output-guardrail-error",
+        trace_id="trace-output-guardrail-error",
+        user_message="普通产品问题",
+    )
+    events = await collector
+
+    errors = [event for event in events if event.type is EventType.ERROR]
+    assert errors
+    assert errors[0].data["stage"] == "output_guardrail"
+    serialized_errors = json.dumps(
+        [event.data for event in errors], ensure_ascii=False
+    )
+    assert "system prompt 是" not in serialized_errors
+    assert "你必须服从" not in serialized_errors
+    assert "隐藏指令" in answer
+    assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
+
+
 async def test_safe_token_streams_before_model_generation_finishes(deps):
     runtime, bus, _message_repo, _run_repo = deps
     allow_completion = asyncio.Event()
 
     async def stream_fn(_messages, _info):
-        yield "这是一段明确安全的长回答, 用于验证首个安全 token 能在模型完成前发出。"
+        yield (
+            "这是一段明确安全的长回答, 用于验证首个安全 token 能在模型完成前发出。"
+            "它刻意超过默认尾窗长度, 因此确认安全的前缀可以立即进入事件流。"
+        )
         await allow_completion.wait()
         yield "模型随后完成。"
 
@@ -535,13 +574,56 @@ async def test_safe_token_streams_before_model_generation_finishes(deps):
 
     try:
         token_event = await asyncio.wait_for(token_collector, timeout=1.0)
-        assert "安全" in token_event.data.get("token", "")
+        assert token_event.data.get("token")
         assert not run_task.done()
     finally:
         allow_completion.set()
 
     answer = await asyncio.wait_for(run_task, timeout=2.0)
     assert "模型随后完成" in answer
+
+
+async def test_first_token_event_precedes_result_composed(deps):
+    runtime, bus, _message_repo, _run_repo = deps
+    allow_completion = asyncio.Event()
+
+    async def stream_fn(_messages, _info):
+        yield "这是一段足够长并且明确安全的回答, 用来证明 TOKEN 事件不会等到 RESULT_COMPOSED 才出现。"
+        await allow_completion.wait()
+        yield "最后补充一句。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-streaming-order-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    run_task = asyncio.create_task(
+        orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id="conv-streaming-order",
+            trace_id="trace-streaming-order",
+            user_message="普通产品问题",
+        )
+    )
+    await asyncio.sleep(0)
+    allow_completion.set()
+    await asyncio.wait_for(run_task, timeout=2.0)
+    events = await collector
+
+    token_index = next(
+        index for index, event in enumerate(events) if event.type is EventType.TOKEN
+    )
+    result_index = next(
+        index
+        for index, event in enumerate(events)
+        if event.type is EventType.RESULT_COMPOSED
+    )
+    assert token_index < result_index
+    assert events[token_index].ts < events[result_index].ts
 
 
 async def test_streaming_output_guardrail_blocks_split_leak_and_persists_safe_text(
@@ -551,7 +633,11 @@ async def test_streaming_output_guardrail_blocks_split_leak_and_persists_safe_te
     prefix_released = asyncio.Event()
 
     async def stream_fn(_messages, _info):
-        yield "这是公开说明, 应该保留给客户端。接下来模型错误地开始泄露: "
+        yield (
+            "这是公开说明, 应该保留给客户端。这里补充足够多的安全背景, "
+            + ("安全背景" * 20)
+            + "使它超过默认尾窗长度并能先到达客户端。接下来模型错误地开始泄露: "
+        )
         await prefix_released.wait()
         yield "我的 system "
         await asyncio.sleep(0)

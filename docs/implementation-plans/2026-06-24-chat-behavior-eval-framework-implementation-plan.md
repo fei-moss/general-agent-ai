@@ -6,7 +6,7 @@
 - Spec ID: `SPEC-CHAT-BEHAVIOR-EVAL-001`
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Target branch/baseline: current `codex/zai-glm52-dockerhost` worktree with `SPEC-CHAT-BEHAVIOR-POLICY-001/v1`
-- Scope summary: Add deterministic, data-driven chat behavior golden cases under `tests/chat_eval/`, plus a local validator and pytest coverage so future chat tuning can be expressed as machine-readable cases.
+- Scope summary: Add deterministic, data-driven chat behavior golden cases under `tests/chat_eval/`, plus a local validator, answer-level judge, policy comparison helper, and pytest coverage so future chat tuning can be expressed as machine-readable cases.
 - Out of scope:
   - Runtime behavior changes, DB changes, public API changes, external LLM judge, Promptfoo execution, provider calls, Langfuse integration.
 
@@ -58,7 +58,27 @@
 - Rollback or compatibility note:
   - Test-only rollback.
 
-### Step 4: Harness Verification And Review
+### Step 4: Add Answer-Level Judge And Policy Comparison
+
+- Files/modules:
+  - `tests/chat_eval/judge.py`
+  - `tests/test_chat_behavior_eval.py`
+- Behavior change:
+  - Runs allowed golden cases through `AgentOrchestrator` with a zero-key deterministic `FunctionModel`.
+  - Scores answer-trait hit rate and forbidden-claim hits overall and by area.
+  - Accepts labeled `PolicyVariant` inputs so v1/v2 candidate runs can be compared against the same golden set.
+  - Can write a JSON report for release evidence without requiring provider secrets or network.
+- Data contract impact:
+  - None.
+- Tests to add/update:
+  - `test_allow_cases_meet_answer_traits_with_deterministic_judge`
+  - `test_policy_variant_comparison_reports_side_by_side_scores`
+- Verification command:
+  - `.venv/bin/python -m pytest tests/test_chat_behavior_eval.py -q`
+- Rollback or compatibility note:
+  - Test helper only; runtime behavior is unchanged.
+
+### Step 5: Harness Verification And Review
 
 - Files/modules:
   - All new spec/plan/test fixture files.
@@ -84,7 +104,7 @@
 - Migration/rebuild risks:
   - None.
 - Performance risks:
-  - Local JSONL parsing and deterministic function calls only.
+  - Local JSONL parsing, deterministic function calls, and in-memory orchestrator runs only.
 - Deployment/test-branch risks:
   - Release gate remains authoritative.
 - Unrelated local changes to avoid:
@@ -94,6 +114,7 @@
 
 - Spec and implementation plan exist and declare `Workflow Class: HARNESS-SPEC-FIRST-FEATURE`.
 - Golden cases fixture has at least 10 validated cases and required coverage axes.
+- Answer-level judge and policy comparison tests pass.
 - Focused eval tests pass.
 - Existing behavior policy tests pass.
 - Full pytest passes.

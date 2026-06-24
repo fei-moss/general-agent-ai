@@ -16,6 +16,11 @@ from tests.chat_eval.evaluator import (
     load_cases,
     validate_cases,
 )
+from tests.chat_eval.judge import (
+    PolicyVariant,
+    judge_allowed_cases,
+    compare_policy_variants,
+)
 
 
 @pytest.fixture(scope="module")
@@ -87,3 +92,42 @@ def test_allowed_cases_define_future_answer_level_oracles(cases):
         assert case.raw["answer_traits"], case.id
         assert case.raw["forbidden_claims"], case.id
         assert isinstance(case.raw["requires_rag"], bool), case.id
+
+
+async def test_allow_cases_meet_answer_traits_with_deterministic_judge(tmp_path):
+    report_path = tmp_path / "chat_behavior_judge.json"
+
+    report = await judge_allowed_cases(
+        load_cases(),
+        policy=PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v1"),
+        artifact_path=report_path,
+    )
+
+    assert report_path.exists()
+    assert report["policy"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v1"
+    assert report["case_count"] >= 5
+    assert report["forbidden_claim_hits"] == 0
+    assert report["trait_hit_rate"] >= 0.7
+    assert report["areas"]
+
+
+async def test_policy_variant_comparison_reports_side_by_side_scores():
+    report = await compare_policy_variants(
+        load_cases(),
+        policies=[
+            PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v1"),
+            PolicyVariant(
+                name="SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+                answer_suffix=" 建议将这些检查纳入 golden cases 回归。",
+            ),
+        ],
+    )
+
+    assert [item["policy"] for item in report["policies"]] == [
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v1",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+    ]
+    assert report["best_policy"] in {
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v1",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+    }

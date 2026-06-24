@@ -31,6 +31,7 @@
   - Clients continue to submit `POST /chat`, receive HTTP `202`, and subscribe to SSE/WebSocket streams.
   - For allowed model output, clients receive the first safe `TOKEN` before model generation completes.
   - For refused output, clients never receive a high-confidence hidden-instruction or secret leak through `TOKEN`.
+  - If the output guardrail blocks generated text, the stream emits a sanitized `ERROR` event with `stage=output_guardrail` and then completes with the deterministic safe replacement text; raw unsafe text is never included in the event payload.
 - State model:
   - Successful runs still converge to `RUN_COMPLETED` with `status=SUCCEEDED`.
   - If a leak is detected after a safe prefix was already emitted, the final assistant answer is the emitted safe prefix plus the deterministic safe response. `RUN_COMPLETED.data.content` and persisted assistant content must match the concatenated `TOKEN` stream.
@@ -59,6 +60,9 @@
   - Unchanged.
 - Status/error codes:
   - Unchanged.
+- Events:
+  - Existing `ERROR` event may be emitted for output-guardrail replacement with `data.stage="output_guardrail"`, `category`, `reason_code`, and `safe_response`.
+  - This `ERROR` event is not a run failure; `RUN_COMPLETED.data.status` remains `SUCCEEDED` when the safe replacement answer is persisted.
 - Pagination/sorting/filtering:
   - Unchanged.
 - Backward compatibility:
@@ -91,7 +95,7 @@
   1. API accepts the run as before.
   2. Orchestrator evaluates input guardrail as before.
   3. For allowed input, the Pydantic AI model stream produces raw text deltas.
-  4. A streaming output guardrail keeps a sliding tail window at least as long as the longest deterministic leak pattern minus one character.
+  4. A streaming output guardrail keeps a sliding tail window of at least 64 characters and at least as long as the longest deterministic leak pattern minus one character.
   5. Prefix text that cannot become part of a future high-confidence leak is released to `TokenAggregator`.
   6. `TokenAggregator` emits the first safe chunk immediately and aggregates subsequent safe chunks by existing window/count rules.
   7. On finalization, any remaining safe tail is emitted; if the final tail reveals a leak, only the deterministic safe response is emitted.
@@ -101,6 +105,7 @@
   - The guardrail must not introduce waits, external calls, or provider calls.
 - Observability/logging/metrics:
   - `chat_ttft_seconds` continues to be observed on first `TOKEN`, but now measures first safe token emission rather than full-answer completion for allowed output.
+  - `ERROR stage=output_guardrail` is a policy replacement signal and must not be counted as a provider error.
   - Logs must not include unsafe raw output or hidden instruction/secret text.
 - Rollback strategy:
   - Revert runtime/test/doc changes; no migration or data rollback is required.
@@ -136,7 +141,10 @@
   - Allowed model output emits at least one `TOKEN` before model generation completes.
   - First released safe chunk is flushed immediately through the existing token aggregation semantics.
   - Split high-confidence leak patterns are detected even when the leak spans multiple provider chunks.
+  - High-confidence secret values such as provider-looking API keys and private-key blocks are blocked by deterministic regex patterns.
+  - The default streaming tail window retains at least 64 characters.
   - High-confidence hidden-instruction and secret leak text never appears in `TOKEN` events.
+  - Output guardrail replacement emits a sanitized `ERROR stage=output_guardrail` event without raw unsafe text.
   - Persisted assistant content equals `RUN_COMPLETED.data.content`.
   - Concatenated `TOKEN.data.token` equals `RUN_COMPLETED.data.content` for successful allowed and output-guardrail-refused runs.
 - Edge cases:

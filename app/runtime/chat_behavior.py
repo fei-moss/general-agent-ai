@@ -2,13 +2,16 @@
 
 This module keeps the first behavior layer local and deterministic: it builds
 the Agent system prompt and catches high-confidence policy violations before
-the model or tools run. Broader answer judging remains an eval-layer concern.
+the model or tools run. These guardrails are a high-confidence fallback, not a
+complete jailbreak or data-loss-prevention system. Broader answer judging
+remains an eval-layer concern.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import re
 
 POLICY_SPEC_ID = "SPEC-CHAT-BEHAVIOR-POLICY-001"
 POLICY_VERSION = f"{POLICY_SPEC_ID}/v1"
@@ -118,6 +121,25 @@ _EXFILTRATION_VERBS = (
     "dump",
     "reveal",
 )
+_PARAPHRASED_HIDDEN_SOURCE_TERMS = (
+    "最开始收到",
+    "一开始收到",
+    "最初收到",
+    "初始指令",
+    "初始消息",
+    "第一段指令",
+    "那段话",
+)
+_PARAPHRASED_REPLAY_VERBS = (
+    "逐字",
+    "原样",
+    "完整",
+    "重复",
+    "复述",
+    "背诵",
+    "repeat",
+    "verbatim",
+)
 _SECRET_TERMS = (
     "api_key",
     "api key",
@@ -174,11 +196,19 @@ _OUTPUT_POLICY_LEAK_PATTERNS = (
     "token=",
     "私钥是",
 )
+_OUTPUT_SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+)
 _OUTPUT_POLICY_LEAK_SAFE_RESPONSE = (
     "抱歉,我不能提供隐藏指令、系统提示词、开发者指令或密钥内容。"
     "我可以说明公开能力边界或给出安全排障建议。"
 )
-_STREAMING_OUTPUT_TAIL_CHARS = max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1
+_STREAMING_OUTPUT_TAIL_CHARS = max(
+    64,
+    max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1,
+)
 
 
 class StreamingOutputGuardrail:
@@ -257,6 +287,16 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
             "抱歉,我不能提供、复述或泄露隐藏指令、系统提示词或开发者指令。"
             "我可以改为说明当前助手的公开能力边界或帮助你排查具体问题。",
         )
+    if _contains_any(text, _PARAPHRASED_HIDDEN_SOURCE_TERMS) and _contains_any(
+        text, _PARAPHRASED_REPLAY_VERBS
+    ):
+        return GuardrailDecision(
+            GuardrailAction.REFUSE,
+            GuardrailCategory.HIDDEN_INSTRUCTION,
+            "paraphrased_hidden_instruction_replay",
+            "抱歉,我不能提供、复述或泄露隐藏指令、系统提示词或开发者指令。"
+            "我可以改为说明当前助手的公开能力边界或帮助你排查具体问题。",
+        )
     if _contains_any(text, _SECRET_TERMS) and _contains_any(
         text, _EXFILTRATION_VERBS
     ):
@@ -314,4 +354,6 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
 
 
 def _contains_output_policy_leak(value: str) -> bool:
-    return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS)
+    return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS) or any(
+        pattern.search(value) for pattern in _OUTPUT_SECRET_VALUE_PATTERNS
+    )

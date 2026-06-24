@@ -130,9 +130,12 @@ class _EventEmitter:
             if self._accepted_at is not None:
                 self._metrics.observe_ttft(time.time() - self._accepted_at, labels)
         if type_ is EventType.ERROR:
+            stage = str(data.get("stage", "unknown"))
+            if stage == "output_guardrail":
+                return
             self._metrics.inc_counter(
                 "provider_errors_total",
-                {"stage": str(data.get("stage", "unknown"))},
+                {"stage": stage},
             )
 
 
@@ -458,6 +461,7 @@ class AgentOrchestrator:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
         aggregator = TokenAggregator()
         guardrail = StreamingOutputGuardrail()
+        output_guardrail_reported = False
         if not llm_started:
             await emitter.emit(EventType.LLM_GENERATING, {})
             llm_started = True
@@ -472,11 +476,25 @@ class AgentOrchestrator:
                     if token:
                         safe_chunk = guardrail.push(token)
                         if safe_chunk:
+                            output_guardrail_reported = (
+                                await self._emit_output_guardrail_blocked_once(
+                                    emitter,
+                                    guardrail,
+                                    output_guardrail_reported,
+                                )
+                            )
                             await self._emit_aggregated_token(
                                 emitter, aggregator, emitted_chunks, safe_chunk
                             )
                 safe_tail = guardrail.finish()
                 if safe_tail:
+                    output_guardrail_reported = (
+                        await self._emit_output_guardrail_blocked_once(
+                            emitter,
+                            guardrail,
+                            output_guardrail_reported,
+                        )
+                    )
                     await self._emit_aggregated_token(
                         emitter, aggregator, emitted_chunks, safe_tail
                     )
@@ -484,6 +502,27 @@ class AgentOrchestrator:
                     emitter, aggregator, emitted_chunks
                 )
         return llm_started
+
+    @staticmethod
+    async def _emit_output_guardrail_blocked_once(
+        emitter: _EventEmitter,
+        guardrail: StreamingOutputGuardrail,
+        already_reported: bool,
+    ) -> bool:
+        """Emit a sanitized output-guardrail ERROR once per model request."""
+        if already_reported or not guardrail.blocked:
+            return already_reported
+        decision = guardrail.decision
+        await emitter.emit(
+            EventType.ERROR,
+            {
+                "stage": "output_guardrail",
+                "category": decision.category.value,
+                "reason_code": decision.reason_code,
+                "safe_response": decision.safe_response,
+            },
+        )
+        return True
 
     async def _handle_tool_calls(
         self, node: Any, run: Any, emitter: _EventEmitter

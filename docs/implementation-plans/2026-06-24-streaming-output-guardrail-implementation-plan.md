@@ -24,6 +24,8 @@
 - Tests to add/update:
   - `StreamingOutputGuardrail` releases safe prefixes while retaining a tail window.
   - `StreamingOutputGuardrail` blocks a leak split across provider chunks.
+  - Default tail window retains at least 64 characters.
+  - Output guardrail emits a sanitized `ERROR stage=output_guardrail` without raw unsafe text when replacement happens.
   - Orchestrator emits a safe `TOKEN` before the model stream is allowed to finish.
   - Orchestrator never emits split leaked text and persists the same safe text it emits.
   - Existing output-guardrail replacement and TTFT metric tests remain green.
@@ -40,8 +42,10 @@
   - Extract output leak patterns used by `evaluate_assistant_answer()`.
   - Add a helper that:
     - stores only a bounded pending tail plus current provider chunk;
+    - retains at least a 64-character tail by default;
     - releases safe prefixes once they cannot become part of a future deterministic leak pattern;
     - detects high-confidence leaks across chunk boundaries;
+    - blocks high-confidence provider-looking secret values by deterministic regex;
     - finalizes remaining safe tail;
     - exposes the emitted safe answer for persistence.
 - Data contract impact:
@@ -60,6 +64,7 @@
 - Behavior change:
   - Move safe `TOKEN` emission into the model text stream loop.
   - Feed raw model deltas through the streaming output guardrail before `TokenAggregator`.
+  - Emit one sanitized `ERROR stage=output_guardrail` event when output replacement occurs, then continue with safe replacement text and `RUN_COMPLETED status=SUCCEEDED`.
   - Preserve `LLM_GENERATING`, tool events, provider quota acquisition/settlement, fallback answer, persistence, and terminal event behavior.
   - Build the final assistant answer from emitted safe chunks.
   - Remove or narrow the post-generation `_apply_output_guardrail()`/`_emit_token_chunks()` batch path so it no longer delays allowed output until completion.
@@ -124,6 +129,7 @@
   - None.
 - Performance risks:
   - Tail-window scanning must stay local and bounded.
+  - The 64-character default tail can delay very short safe outputs until finalization; longer safe prefixes still stream before model completion.
   - No external moderation call in the stream loop.
   - Focused test must prove token emission occurs before model completion.
 - Deployment/test-branch risks:

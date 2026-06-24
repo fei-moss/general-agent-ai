@@ -35,7 +35,7 @@
 - missing:
   - Final brand/persona copy for a production product assistant.
   - Full legal/compliance policy for regulated domains.
-  - Human-labeled answer-level eval rubric.
+  - Human-labeled or LLM-judge answer-level rubric beyond the deterministic local judge in `SPEC-CHAT-BEHAVIOR-EVAL-001`.
 - conflicts:
   - None blocking v0. The repo allows docs/tests freely and runtime edits with explicit task approval.
 - assumptions:
@@ -91,7 +91,8 @@
   - `RUN_COMPLETED.data.content` includes the refusal text for guardrail-refused runs.
 - Status/error codes:
   - No new HTTP status codes.
-  - Guardrail refusal is not surfaced as `ERROR` unless an unexpected internal exception occurs.
+  - Input guardrail refusal is not surfaced as `ERROR` unless an unexpected internal exception occurs.
+  - Output guardrail replacement may emit the existing `ERROR` event with `stage=output_guardrail` as a sanitized stream signal while the run still completes successfully.
 - Pagination/sorting/filtering:
   - Not applicable.
 - Backward compatibility:
@@ -133,6 +134,7 @@
   - Guardrail short-circuit must not hold DB sessions while waiting on external services because it performs no external calls.
 - Observability/logging/metrics:
   - Run plan records policy version and guardrail category/action/reason code.
+  - Deterministic output guardrail replacement uses `ERROR stage=output_guardrail` without raw unsafe text and is not counted as a provider error.
   - Logs must not include secrets, raw provider tokens, or hidden instructions.
 - Rollback strategy:
   - Revert runtime module changes and tests; no DB rollback required.
@@ -191,7 +193,7 @@
 
 - Open questions:
   - Final production brand/persona copy and regulated-domain policy require product/legal input before public launch.
-  - Answer-level LLM judge eval remains a future phase once labeled examples exist.
+  - LLM-judge eval remains a future phase once labeled examples exist; deterministic answer-level judge is covered by `SPEC-CHAT-BEHAVIOR-EVAL-001`.
 - Accepted assumptions:
   - v0 uses deterministic local policy checks.
   - Refusal is a successful assistant answer.
