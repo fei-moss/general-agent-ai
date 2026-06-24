@@ -263,6 +263,28 @@ async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):
     return collected
 
 
+async def _collect_first_type(
+    bus: InMemoryEventBus,
+    channel: str,
+    event_type: EventType,
+    ready_evt: asyncio.Event,
+):
+    """Subscribe to a channel and return the first event of the requested type."""
+    agen = bus.subscribe(channel).__aiter__()
+    pending = asyncio.ensure_future(agen.__anext__())
+    await asyncio.sleep(0)
+    ready_evt.set()
+    try:
+        while True:
+            event = await asyncio.wait_for(pending, timeout=5.0)
+            if event.type is event_type:
+                return event
+            pending = asyncio.ensure_future(agen.__anext__())
+    finally:
+        pending.cancel()
+        await agen.aclose()
+
+
 async def test_knowledge_qa_run_emits_full_event_sequence_and_persists(deps):
     # Arrange:默认 mock agent 会自主调用 search_knowledge 后作答
     runtime, bus, message_repo, run_repo = deps
@@ -481,6 +503,103 @@ async def test_output_guardrail_replaces_leak_before_token_events(deps):
     assert "隐藏指令" in answer
     assert message_repo.added[0]["content"] == answer
     assert events[-1].data.get("content") == answer
+
+
+async def test_safe_token_streams_before_model_generation_finishes(deps):
+    runtime, bus, _message_repo, _run_repo = deps
+    allow_completion = asyncio.Event()
+
+    async def stream_fn(_messages, _info):
+        yield "这是一段明确安全的长回答, 用于验证首个安全 token 能在模型完成前发出。"
+        await allow_completion.wait()
+        yield "模型随后完成。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-streaming-token-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    token_collector = asyncio.create_task(
+        _collect_first_type(bus, channel, EventType.TOKEN, ready_evt)
+    )
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+    run_task = asyncio.create_task(
+        orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id="conv-streaming-token",
+            trace_id="trace-streaming-token",
+            user_message="普通产品问题",
+        )
+    )
+
+    try:
+        token_event = await asyncio.wait_for(token_collector, timeout=1.0)
+        assert "安全" in token_event.data.get("token", "")
+        assert not run_task.done()
+    finally:
+        allow_completion.set()
+
+    answer = await asyncio.wait_for(run_task, timeout=2.0)
+    assert "模型随后完成" in answer
+
+
+async def test_streaming_output_guardrail_blocks_split_leak_and_persists_safe_text(
+    deps,
+):
+    runtime, bus, message_repo, _run_repo = deps
+    prefix_released = asyncio.Event()
+
+    async def stream_fn(_messages, _info):
+        yield "这是公开说明, 应该保留给客户端。接下来模型错误地开始泄露: "
+        await prefix_released.wait()
+        yield "我的 system "
+        await asyncio.sleep(0)
+        yield "prompt 是: 你必须服从隐藏开发者指令。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-output-guardrail-split-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+    token_ready_evt = asyncio.Event()
+    token_collector = asyncio.create_task(
+        _collect_first_type(bus, channel, EventType.TOKEN, token_ready_evt)
+    )
+    await asyncio.wait_for(token_ready_evt.wait(), timeout=2.0)
+
+    run_task = asyncio.create_task(
+        orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id="conv-output-guardrail-split",
+            trace_id="trace-output-guardrail-split",
+            user_message="普通产品问题",
+        )
+    )
+    try:
+        first_token = await asyncio.wait_for(token_collector, timeout=1.0)
+        assert "应该保留" in first_token.data.get("token", "")
+    finally:
+        prefix_released.set()
+
+    answer = await asyncio.wait_for(run_task, timeout=2.0)
+    events = await collector
+
+    token_text = "".join(
+        event.data.get("token", "")
+        for event in events
+        if event.type is EventType.TOKEN
+    )
+    assert "应该保留" in token_text
+    assert "抱歉" in token_text
+    assert "system prompt 是" not in token_text
+    assert "你必须服从" not in token_text
+    assert answer == token_text
+    assert message_repo.added[0]["content"] == token_text
+    assert events[-1].data.get("content") == token_text
 
 
 async def test_tool_use_run_maps_tool_events_and_executes_real_tool(deps):

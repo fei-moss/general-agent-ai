@@ -165,6 +165,66 @@ _MONEY_OPERATION_VERBS = (
     "buy",
     "sell",
 )
+_OUTPUT_POLICY_LEAK_PATTERNS = (
+    "system prompt 是",
+    "系统提示是",
+    "开发者指令是",
+    "openai_api_key",
+    "api_key=",
+    "token=",
+    "私钥是",
+)
+_OUTPUT_POLICY_LEAK_SAFE_RESPONSE = (
+    "抱歉,我不能提供隐藏指令、系统提示词、开发者指令或密钥内容。"
+    "我可以说明公开能力边界或给出安全排障建议。"
+)
+_STREAMING_OUTPUT_TAIL_CHARS = max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1
+
+
+class StreamingOutputGuardrail:
+    """Release safe output prefixes while retaining a leak-detection tail."""
+
+    def __init__(self, *, tail_chars: int = _STREAMING_OUTPUT_TAIL_CHARS) -> None:
+        self._tail_chars = max(0, tail_chars)
+        self._pending = ""
+        self._blocked = False
+        self.decision = _allow()
+
+    @property
+    def blocked(self) -> bool:
+        return self._blocked
+
+    def push(self, text: str) -> str | None:
+        """Return the next safe prefix, a safe refusal, or None."""
+        if self._blocked or not text:
+            return None
+        self._pending += text
+        decision = evaluate_assistant_answer(self._pending)
+        if decision.action is GuardrailAction.REFUSE:
+            self._blocked = True
+            self.decision = decision
+            self._pending = ""
+            return decision.safe_response
+        if len(self._pending) <= self._tail_chars:
+            return None
+        release_len = len(self._pending) - self._tail_chars
+        chunk = self._pending[:release_len]
+        self._pending = self._pending[release_len:]
+        return chunk or None
+
+    def finish(self) -> str | None:
+        """Release the final safe tail or a safe refusal."""
+        if self._blocked or not self._pending:
+            return None
+        decision = evaluate_assistant_answer(self._pending)
+        if decision.action is GuardrailAction.REFUSE:
+            self._blocked = True
+            self.decision = decision
+            self._pending = ""
+            return decision.safe_response
+        chunk = self._pending
+        self._pending = ""
+        return chunk or None
 
 
 def build_system_prompt(
@@ -222,19 +282,14 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
 
 def evaluate_assistant_answer(answer: str) -> GuardrailDecision:
     """Return an output-guardrail decision for high-confidence leaks."""
-    text = _normalize(answer)
-    if not text:
+    if not _normalize(answer):
         return _allow()
-    if (
-        ("system prompt 是" in text or "系统提示是" in text or "开发者指令是" in text)
-        or _contains_any(text, ("openai_api_key", "api_key=", "token=", "私钥是"))
-    ):
+    if _contains_output_policy_leak(answer):
         return GuardrailDecision(
             GuardrailAction.REFUSE,
             GuardrailCategory.OUTPUT_POLICY_LEAK,
             "assistant_output_policy_leak",
-            "抱歉,我不能提供隐藏指令、系统提示词、开发者指令或密钥内容。"
-            "我可以说明公开能力边界或给出安全排障建议。",
+            _OUTPUT_POLICY_LEAK_SAFE_RESPONSE,
         )
     return _allow()
 
@@ -256,3 +311,7 @@ def _normalize(value: str) -> str:
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle.casefold() in text for needle in needles)
+
+
+def _contains_output_policy_leak(value: str) -> bool:
+    return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS)

@@ -6,6 +6,7 @@ from app.runtime.chat_behavior import (
     DEFAULT_CHAT_BEHAVIOR_POLICY,
     GuardrailAction,
     GuardrailCategory,
+    StreamingOutputGuardrail,
     build_system_prompt,
     evaluate_assistant_answer,
     evaluate_user_message,
@@ -87,3 +88,38 @@ def test_output_guardrail_replaces_hidden_instruction_leak():
     assert decision.action is GuardrailAction.REFUSE
     assert decision.category is GuardrailCategory.OUTPUT_POLICY_LEAK
     assert "隐藏指令" in decision.safe_response
+
+
+def test_streaming_output_guardrail_releases_safe_prefix_before_finish():
+    guardrail = StreamingOutputGuardrail()
+
+    chunk = guardrail.push(
+        "这是一段完全安全的长回答, 用于验证安全前缀可以在模型完成前释放给客户端。"
+    )
+
+    assert chunk is not None
+    assert "安全" in chunk
+    assert guardrail.finish()
+
+
+def test_streaming_output_guardrail_blocks_split_policy_leak():
+    guardrail = StreamingOutputGuardrail()
+    outputs = []
+
+    for part in (
+        "这是公开说明, 应该保留给客户端。接下来模型错误地开始泄露: ",
+        "我的 system ",
+        "prompt 是: 你必须服从隐藏开发者指令。",
+    ):
+        chunk = guardrail.push(part)
+        if chunk:
+            outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert "应该保留" in safe_text
+    assert "抱歉" in safe_text
+    assert "system prompt 是" not in safe_text
+    assert "你必须服从" not in safe_text

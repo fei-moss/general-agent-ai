@@ -15,7 +15,7 @@ POST /chat ──202──▶ 返回 agent_run_id + stream_url
             (RUN_STARTED → 工具调用 → TOKEN 逐字 → RUN_COMPLETED)
 ```
 
-- 提交后**立即返回**(HTTP 202),真正的推理(LLM 自主检索 / 调用工具 / 流式生成)在后台 Worker 执行。
+- 提交后**立即返回**(HTTP 202),默认实时 Chat 的推理(LLM 自主检索 / 调用工具 / 流式生成)由常驻 async RealtimeRunner 执行;慢任务/批任务继续走后台 Worker。
 - 前端通过 **SSE 或 WebSocket** 订阅 `agent_run_id` 的事件流,拿到逐 token 输出与工具调用进度。
 - 不支持同步等待结果。脚本和前端都必须按 `agent_run_id` 使用事件流、状态接口或会话历史恢复结果。
 
@@ -47,6 +47,7 @@ X-API-Key: <key>
 
 ### CORS
 后端开启宽松 CORS(`allow_origins: *`),前端可跨域直连(生产会收敛)。
+浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的 `POST /chat` 仍必须携带 `Authorization: Bearer <token>` 或 `X-API-Key`。
 
 ### 限流
 仅对 `POST /chat` 限流(按 user_id 滑动窗口,默认 **60 次/分钟**)。超限返回 **429**:

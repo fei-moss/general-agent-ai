@@ -48,7 +48,7 @@ from app.runtime.chat_behavior import (
     DEFAULT_CHAT_BEHAVIOR_POLICY,
     GuardrailAction,
     GuardrailDecision,
-    evaluate_assistant_answer,
+    StreamingOutputGuardrail,
     evaluate_user_message,
 )
 from app.runtime.deps import RuntimeDeps
@@ -253,7 +253,7 @@ class AgentOrchestrator:
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
-        answer, token_chunks = await self._run_agent(
+        answer = await self._run_agent(
             agent_run_id,
             conversation_id,
             user_message,
@@ -263,8 +263,6 @@ class AgentOrchestrator:
             user_id,
             metadata,
         )
-        answer, token_chunks = self._apply_output_guardrail(answer, token_chunks)
-        await self._emit_token_chunks(emitter, token_chunks)
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
         completed = await self._try_run_repo(
@@ -294,7 +292,7 @@ class AgentOrchestrator:
         route_type: str,
         user_id: str | None,
         metadata: dict[str, Any],
-    ) -> tuple[str, list[str]]:
+    ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
         LLM 在 loop 中自主决定是否检索 / 调用工具;失败时降级为兜底文案,
@@ -321,8 +319,7 @@ class AgentOrchestrator:
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
-        tokens: list[str] = []
-        token_chunks: list[str] = []
+        emitted_chunks: list[str] = []
         llm_started = False
         quota_decision = await self._acquire_provider_quota(
             agent_run_id, user_message, route_type
@@ -340,20 +337,18 @@ class AgentOrchestrator:
                             node,
                             run,
                             emitter,
-                            tokens,
                             llm_started,
-                            token_chunks,
+                            emitted_chunks,
                         )
                     elif Agent.is_call_tools_node(node):
                         await self._handle_tool_calls(node, run, emitter)
             await self._settle_provider_usage(quota_decision, run, route_type)
-            answer = (run.result.output if run.result else "") or "".join(
-                tokens
-            )
-            return (
-                answer.strip() or self._empty_answer(user_message),
-                token_chunks,
-            )
+            if not emitted_chunks and run.result and run.result.output:
+                await self._emit_guarded_final_output(
+                    emitter, str(run.result.output), emitted_chunks
+                )
+            answer = "".join(emitted_chunks)
+            return answer if answer.strip() else self._empty_answer(user_message)
         except ProviderRateLimitError:
             raise
         except Exception as exc:
@@ -368,10 +363,8 @@ class AgentOrchestrator:
                     reason, retry_after_ms=provider_error.retry_after_ms
                 ) from exc
             await self._emit_error(emitter, "agent", exc)
-            return (
-                "".join(tokens).strip() or self._empty_answer(user_message),
-                token_chunks,
-            )
+            answer = "".join(emitted_chunks)
+            return answer if answer.strip() else self._empty_answer(user_message)
 
     async def _acquire_provider_quota(
         self, agent_run_id: str, user_message: str, route_type: str
@@ -459,12 +452,12 @@ class AgentOrchestrator:
         node: Any,
         run: Any,
         emitter: _EventEmitter,
-        tokens: list[str],
         llm_started: bool,
-        token_chunks: list[str],
+        emitted_chunks: list[str],
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
         aggregator = TokenAggregator()
+        guardrail = StreamingOutputGuardrail()
         if not llm_started:
             await emitter.emit(EventType.LLM_GENERATING, {})
             llm_started = True
@@ -477,13 +470,19 @@ class AgentOrchestrator:
             if final_found:
                 async for token in request_stream.stream_text(delta=True):
                     if token:
-                        tokens.append(token)
-                        chunk = aggregator.push(token)
-                        if chunk:
-                            token_chunks.append(chunk)
-                tail = aggregator.flush()
-                if tail:
-                    token_chunks.append(tail)
+                        safe_chunk = guardrail.push(token)
+                        if safe_chunk:
+                            await self._emit_aggregated_token(
+                                emitter, aggregator, emitted_chunks, safe_chunk
+                            )
+                safe_tail = guardrail.finish()
+                if safe_tail:
+                    await self._emit_aggregated_token(
+                        emitter, aggregator, emitted_chunks, safe_tail
+                    )
+                await self._flush_aggregated_tokens(
+                    emitter, aggregator, emitted_chunks
+                )
         return llm_started
 
     async def _handle_tool_calls(
@@ -639,24 +638,49 @@ class AgentOrchestrator:
         )
         return answer
 
-    @staticmethod
-    def _apply_output_guardrail(
-        answer: str, token_chunks: list[str]
-    ) -> tuple[str, list[str]]:
-        """Replace high-confidence policy leaks in model output."""
-        decision = evaluate_assistant_answer(answer)
-        if decision.action is GuardrailAction.REFUSE:
-            return decision.safe_response, [decision.safe_response]
-        return answer, token_chunks
+    async def _emit_guarded_final_output(
+        self,
+        emitter: _EventEmitter,
+        output: str,
+        emitted_chunks: list[str],
+    ) -> None:
+        """Fallback for completed model output that did not stream text deltas."""
+        aggregator = TokenAggregator()
+        guardrail = StreamingOutputGuardrail()
+        safe_chunk = guardrail.push(output)
+        if safe_chunk:
+            await self._emit_aggregated_token(
+                emitter, aggregator, emitted_chunks, safe_chunk
+            )
+        safe_tail = guardrail.finish()
+        if safe_tail:
+            await self._emit_aggregated_token(
+                emitter, aggregator, emitted_chunks, safe_tail
+            )
+        await self._flush_aggregated_tokens(emitter, aggregator, emitted_chunks)
 
     @staticmethod
-    async def _emit_token_chunks(
-        emitter: _EventEmitter, token_chunks: list[str]
+    async def _emit_aggregated_token(
+        emitter: _EventEmitter,
+        aggregator: TokenAggregator,
+        emitted_chunks: list[str],
+        text: str,
     ) -> None:
-        """Emit answer token chunks after output guardrail review."""
-        for chunk in token_chunks:
-            if chunk:
-                await emitter.emit(EventType.TOKEN, {"token": chunk})
+        chunk = aggregator.push(text)
+        if chunk:
+            await emitter.emit(EventType.TOKEN, {"token": chunk})
+            emitted_chunks.append(chunk)
+
+    @staticmethod
+    async def _flush_aggregated_tokens(
+        emitter: _EventEmitter,
+        aggregator: TokenAggregator,
+        emitted_chunks: list[str],
+    ) -> None:
+        chunk = aggregator.flush()
+        if chunk:
+            await emitter.emit(EventType.TOKEN, {"token": chunk})
+            emitted_chunks.append(chunk)
 
     async def _persist_answer(
         self, conversation_id: str, agent_run_id: str, answer: str

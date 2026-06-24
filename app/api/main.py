@@ -1,11 +1,12 @@
 """FastAPI 应用工厂与 ASGI 入口。
 
-create_app() 组装:lifespan 资源、CORS、三层中间件(trace/鉴权/限流)、
+create_app() 组装:lifespan 资源、三层中间件(trace/鉴权/限流)、CORS、
 全部业务路由。模块级 app 供 uvicorn 以 app.api.main:app 加载。
 
 中间件执行顺序(starlette 中后注册者先执行):
-注册顺序 RateLimit -> Auth -> TraceId,使运行时为 TraceId -> Auth -> RateLimit,
-即先建立 trace 上下文,再鉴权,最后限流。
+注册顺序 RateLimit -> Auth -> TraceId -> CORS,使运行时为 CORS -> TraceId
+-> Auth -> RateLimit。CORS 必须在最外层,才能先处理浏览器 preflight,
+并为鉴权/限流错误补齐跨域响应头。
 """
 
 from __future__ import annotations
@@ -31,8 +32,8 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    _add_cors(app)
     _add_middleware(app)
+    _add_cors(app)
     _add_routers(app)
     # 暴露端口配置供入口读取
     app.state.host = settings.app_host
@@ -41,7 +42,7 @@ def create_app() -> FastAPI:
 
 
 def _add_cors(app: FastAPI) -> None:
-    """启用宽松 CORS(demo 用,生产应收敛来源)。"""
+    """启用宽松 CORS(demo 用,生产应收敛来源);需最后注册成为最外层。"""
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

@@ -4,6 +4,7 @@
 
 - Spec ID: `SPEC-CHAT-BEHAVIOR-POLICY-001`
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
+- Boundary update: `SPEC-STREAMING-OUTPUT-GUARDRAIL-001` supersedes this spec's v0 full-output buffering tradeoff. Output guardrails must preserve the no-leak contract without delaying all allowed `TOKEN` emission until model generation completes.
 - PRD/source request: 将 2026-06-23 关于聊天效果调优、身份注入、拒答边界、guardrails、evals、tracing/prompt versioning 的引用调研结果, 按 Harness Driven Development 落地到 `general-agent-ai`。
 - Target baseline: `codex/zai-glm52-dockerhost` at `17970a23c45ca7be594e3832450a48b2c2774457`。
 - Current behavior:
@@ -111,7 +112,7 @@
 - Performance-sensitive queries or write paths:
   - Guardrail checks are local string/pattern checks and must run before provider quota acquisition.
   - No DB query is added before guardrail evaluation beyond existing orchestration state writes.
-  - v0 buffers assistant answer token chunks before client emission so output guardrail can prevent high-confidence leaks from reaching `TOKEN` events. This preserves event compatibility but trades off realtime token flush for safer first-phase behavior.
+  - Output guardrail must prevent high-confidence leaks from reaching `TOKEN` events. `SPEC-STREAMING-OUTPUT-GUARDRAIL-001` replaces the v0 full-answer buffering tradeoff with a sliding-tail streaming guardrail so allowed safe prefixes can flush before model generation completes.
 
 ## Architecture
 
@@ -126,7 +127,7 @@
   2. Orchestrator emits `RUN_STARTED`.
   3. Orchestrator evaluates input guardrail locally.
   4. If refused, orchestrator writes plan with policy version and guardrail metadata, persists safe answer, emits `RESULT_COMPOSED` and `RUN_COMPLETED`.
-  5. If allowed, orchestrator proceeds through existing history load, provider quota, and Pydantic AI loop. Assistant token chunks are buffered until the final answer passes output guardrail, then only safe token chunks are emitted before persistence and terminal event.
+  5. If allowed, orchestrator proceeds through existing history load, provider quota, and Pydantic AI loop. Assistant text deltas pass through the streaming output guardrail from `SPEC-STREAMING-OUTPUT-GUARDRAIL-001`; safe prefixes can emit as `TOKEN` during generation, and only safe final content is persisted and emitted in the terminal event.
 - Transaction/concurrency boundaries:
   - No new lock or transaction boundary.
   - Guardrail short-circuit must not hold DB sessions while waiting on external services because it performs no external calls.
@@ -200,4 +201,4 @@
   - Fine-tune first: rejected because behavior contracts and evals do not exist yet.
   - Add external moderation/judge dependency in release gate: rejected for deterministic local verification in v0.
 - Reviewer findings and resolution:
-  - Code review found that applying output guardrail only after streaming could leak unsafe `TOKEN` events. Resolution: buffer assistant token chunks until output guardrail passes, and emit only safe answer chunks.
+  - Code review found that applying output guardrail only after naive streaming could leak unsafe `TOKEN` events. Initial resolution buffered the full answer, but that regressed `SPEC-CHAT-RUNTIME-001` TTFT semantics. `SPEC-STREAMING-OUTPUT-GUARDRAIL-001` supersedes the full-buffering resolution with a bounded sliding-tail guardrail.

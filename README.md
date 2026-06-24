@@ -1,6 +1,6 @@
 # Agent Execution Platform
 
-一句话概述:这是一个**异步化的 Agent 执行平台**——客户端提交请求后 API 立即返回 `agent_run_id`(HTTP 202),真正的 **agentic 推理**(由 [PydanticAI](https://ai.pydantic.dev/) 驱动,LLM 在 loop 中自主决定检索知识库 / 调用工具 / 生成回答)在后台 Celery Worker 中执行,执行过程通过 SSE / WebSocket 以事件流实时推送;原生支持多 provider(claude / openai / qwen / zai / gemini),内置零依赖 mock 模型(FunctionModel)与 HashEmbedder,**无需任何 API key 即可端到端跑通**。
+一句话概述:这是一个**异步化的 Agent 执行平台**——客户端提交请求后 API 立即返回 `agent_run_id`(HTTP 202),默认实时 Chat 由常驻 async RealtimeRunner 执行真正的 **agentic 推理**(由 [PydanticAI](https://ai.pydantic.dev/) 驱动,LLM 在 loop 中自主决定检索知识库 / 调用工具 / 生成回答),慢任务/批任务继续走 Celery Worker;执行过程通过 SSE / WebSocket 以事件流实时推送;原生支持多 provider(claude / openai / qwen / zai / gemini),内置零依赖 mock 模型(FunctionModel)与 HashEmbedder,**无需任何 API key 即可端到端跑通**。
 
 详细设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -27,7 +27,7 @@ make up
 # 4. 启动 API(uvicorn)
 make run-api
 
-# 5. 另开终端启动 Worker(消费全部队列)
+# 5. 另开终端启动 Worker(消费慢任务/批任务队列;默认实时 Chat 不依赖它)
 make run-worker
 ```
 

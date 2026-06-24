@@ -4,7 +4,7 @@ POST /chat 流程:
 1. 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
 2. 创建或复用 conversation,写入用户消息。
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
-4. 投递 Celery run_agent_task。
+4. 按 route_type 分发:默认 realtime 交给常驻 Async Runner,慢任务/批任务投递 Celery。
 5. 立即返回 ChatAccepted(含 stream_url / ws_url)。
 
 API 层无状态:不在内存保存会话,全部经 DB/Redis。

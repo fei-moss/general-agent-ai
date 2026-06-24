@@ -7,6 +7,7 @@
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Target branch/baseline: `codex/zai-glm52-dockerhost` at `17970a23c45ca7be594e3832450a48b2c2774457`
 - Scope summary: Add a versioned chat behavior policy, deterministic input/output guardrails, run-plan policy metadata, and focused tests while preserving `/chat`, SSE/WS, DB schema, and provider configuration compatibility.
+- Superseded behavior note: `SPEC-STREAMING-OUTPUT-GUARDRAIL-001` replaces the full-answer output buffering tradeoff in this plan with a streaming sliding-tail guardrail.
 - Out of scope:
   - External judge/eval services, Promptfoo execution, Langfuse integration, NeMo Guardrails dependency, OpenAI Agents SDK migration, fine-tuning, DB migrations, API shape changes.
 
@@ -76,7 +77,7 @@
   - Strip client metadata keys that try to override policy/guardrail behavior from plan metadata.
   - Evaluate input guardrail immediately after `RUN_STARTED`, before history/model/provider/tool execution.
   - For refused input, mark running with plan, emit `RESULT_COMPOSED`, persist safe assistant response, mark succeeded, emit terminal success.
-  - For allowed model output, buffer assistant token chunks, run output guardrail, emit only safe token chunks, then persist and emit terminal event.
+  - For allowed model output, use the streaming output guardrail from `SPEC-STREAMING-OUTPUT-GUARDRAIL-001` so safe token chunks can emit during generation while unsafe chunks remain blocked.
 - Data contract impact:
   - Additive `agent_run.plan` keys only.
 - Tests to add/update:
@@ -118,7 +119,7 @@
 - Performance risks:
   - Guardrails are deterministic local string checks.
   - No external calls added to hot path.
-  - Output guardrail buffers final answer chunks before emitting `TOKEN`; this is an explicit v0 safety tradeoff and should be revisited when a streaming-safe output classifier exists.
+  - The original full-answer buffering tradeoff is superseded by `SPEC-STREAMING-OUTPUT-GUARDRAIL-001`; safe output should stream through a bounded deterministic tail window.
 - Deployment/test-branch risks:
   - Existing release gate remains authoritative.
 - Unrelated local changes to avoid:
