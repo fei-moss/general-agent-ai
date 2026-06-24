@@ -138,6 +138,7 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
         "hidden_instruction": 0,
         "secret_request": 0,
         "real_money_operation": 0,
+        "personal_wallet_data": 0,
         "output_policy_leak": 0,
         "false_positive_guard": 0,
     }

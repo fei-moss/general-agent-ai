@@ -237,7 +237,7 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
 
     assert plan["knowledge_base_id"] == "kb_internal"
     assert plan["metadata"] == {"mode": "realtime"}
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v1"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v2"
 
 
 async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):
@@ -392,7 +392,7 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v1"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v2"
     assert plan["guardrail"]["action"] == "refuse"
     assert plan["guardrail"]["category"] in {
         "hidden_instruction",
@@ -426,7 +426,7 @@ async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v1"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v2"
     assert plan["guardrail"]["action"] == "refuse"
     assert "policy_version" not in plan["metadata"]
     assert "disable_guardrails" not in plan["metadata"]
