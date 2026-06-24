@@ -40,6 +40,10 @@ from pydantic_ai.models.function import (
 
 from app.core.config import Settings, get_settings
 from app.core.secrets import SecretProvider, build_secret_provider, is_mock_provider
+from app.runtime.chat_behavior import (
+    DEFAULT_CHAT_BEHAVIOR_POLICY,
+    build_system_prompt,
+)
 
 # mock 流式回答的分片长度(按字符切分,模拟逐 token 产出)
 _MOCK_CHUNK_SIZE = 12
@@ -47,13 +51,8 @@ _MOCK_CHUNK_SIZE = 12
 # 知识检索工具名(mock 模型据此判断是否先检索一轮)
 TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
 
-# Agent 的系统提示词
-_SYSTEM_PROMPT = (
-    "你是一个严谨的中文智能助手。优先理解用户意图,按需自主调用工具:"
-    "需要外部资料时调用 search_knowledge 检索知识库;需要数学计算时调用 "
-    "calculator;需要当前时间时调用 clock;需要联网信息时调用 web_search。"
-    "拿到工具结果后据实作答,无法确定时如实说明,不要编造。"
-)
+# Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
+_SYSTEM_PROMPT = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
 
 @dataclass
