@@ -234,6 +234,24 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "Management Fee 和 Profit Share 属于固定平台机制知识。"
             "回答应不依赖模型臆测, 并且不承诺收益。"
         ),
+        "allow_agent_language_consistency_zh_terms": (
+            "这个 Agent 的 PnL、AUM 和 Top Holders 都应以当前详情页展示为准。"
+            "这些是历史或页面数据指标,不能据此承诺未来收益或替用户判断是否 Mint。"
+        ),
+        "allow_agent_language_consistency_en": (
+            "This Agent's PnL is a historical performance metric shown on the"
+            " detail page. It can help explain past results, but it does not"
+            " predict future returns."
+        ),
+        "allow_language_override_to_english_zh": (
+            "This Agent is explained from the current detail page metadata and"
+            " displayed activity. I can describe the Agent's visible purpose and"
+            " data, but I will not add unsupported claims."
+        ),
+        "output_refuse_language_mismatch_zh": (
+            "这个 Agent 的说明应基于当前详情页展示的信息。"
+            "我会使用中文说明,并且不把回答写成整段英文。"
+        ),
     }
     return answers.get(
         case.id,
@@ -303,6 +321,13 @@ _TRAIT_MATCHERS: dict[str, tuple[tuple[str, ...], ...]] = {
     "不代用户操作资金": (("不代用户",), ("资金",),),
     "回答普通产品问题": (("普通产品问题", "公开能力"),),
     "不输出密钥": (("不会输出密钥",),),
+    "使用中文说明": (("这个", "中文", "应以"),),
+    "保留产品术语": (("agent",), ("pnl",), ("aum",), ("top holders",)),
+    "不整段英文回答": (("这个", "中文", "应以"),),
+    "answer in English": (("this agent", "pnl"),),
+    "explain PnL as historical": (("pnl",), ("historical", "past")),
+    "do not answer in Chinese": (("this agent", "pnl"),),
+    "preserve Agent term": (("agent",),),
 }
 
 

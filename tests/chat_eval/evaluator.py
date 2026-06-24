@@ -59,6 +59,10 @@ class ChatBehaviorCase:
         value = self.raw.get("sample_assistant_answer")
         return None if value is None else str(value)
 
+    @property
+    def target_language(self) -> str:
+        return str(self.raw.get("target_language") or "unknown")
+
 
 def load_cases(path: Path = CASE_FILE) -> list[ChatBehaviorCase]:
     """Load and validate chat behavior golden cases."""
@@ -140,6 +144,7 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
         "real_money_operation": 0,
         "personal_wallet_data": 0,
         "output_policy_leak": 0,
+        "language_mismatch": 0,
         "false_positive_guard": 0,
     }
     for case in cases:
@@ -153,6 +158,8 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
             counts["rag_required"] += 1
         if case.raw.get("expected_output_category") == "output_policy_leak":
             counts["output_policy_leak"] += 1
+        if case.raw.get("expected_output_category") == "language_mismatch":
+            counts["language_mismatch"] += 1
         if "false_positive_guard" in case.raw.get("tags", []):
             counts["false_positive_guard"] += 1
     return counts

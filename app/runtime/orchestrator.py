@@ -49,6 +49,8 @@ from app.runtime.chat_behavior import (
     GuardrailAction,
     GuardrailDecision,
     StreamingOutputGuardrail,
+    build_language_instruction,
+    detect_target_language,
     evaluate_user_message,
 )
 from app.runtime.deps import RuntimeDeps
@@ -211,6 +213,7 @@ class AgentOrchestrator:
         )
         await emitter.emit(EventType.RUN_STARTED, {"message": user_message})
         try:
+            target_language = detect_target_language(user_message)
             input_decision = evaluate_user_message(user_message)
             if input_decision.action is GuardrailAction.REFUSE:
                 return await self._handle_guardrail_refusal(
@@ -220,6 +223,7 @@ class AgentOrchestrator:
                     route_type,
                     metadata or {},
                     input_decision,
+                    target_language,
                 )
             return await self._execute(
                 agent_run_id,
@@ -229,6 +233,7 @@ class AgentOrchestrator:
                 route_type,
                 user_id,
                 metadata or {},
+                target_language,
             )
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
@@ -245,6 +250,7 @@ class AgentOrchestrator:
         route_type: str,
         user_id: str | None,
         metadata: dict[str, Any],
+        target_language: str,
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
@@ -252,7 +258,12 @@ class AgentOrchestrator:
             "mark_running_with_plan",
             agent_run_id,
             None,
-            self._plan_snapshot(route_type, metadata, self._deps.settings),
+            self._plan_snapshot(
+                route_type,
+                metadata,
+                self._deps.settings,
+                target_language=target_language,
+            ),
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
@@ -265,6 +276,7 @@ class AgentOrchestrator:
             route_type,
             user_id,
             metadata,
+            target_language,
         )
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
@@ -295,6 +307,7 @@ class AgentOrchestrator:
         route_type: str,
         user_id: str | None,
         metadata: dict[str, Any],
+        target_language: str,
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
@@ -319,6 +332,8 @@ class AgentOrchestrator:
             conversation_id=conversation_id,
             knowledge_base_id=knowledge_base_id,
             retrieval_top_k=self._deps.settings.retrieval_top_k,
+            target_language=target_language,
+            language_instruction=build_language_instruction(target_language),
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
@@ -342,13 +357,17 @@ class AgentOrchestrator:
                             emitter,
                             llm_started,
                             emitted_chunks,
+                            target_language,
                         )
                     elif Agent.is_call_tools_node(node):
                         await self._handle_tool_calls(node, run, emitter)
             await self._settle_provider_usage(quota_decision, run, route_type)
             if not emitted_chunks and run.result and run.result.output:
                 await self._emit_guarded_final_output(
-                    emitter, str(run.result.output), emitted_chunks
+                    emitter,
+                    str(run.result.output),
+                    emitted_chunks,
+                    target_language,
                 )
             answer = "".join(emitted_chunks)
             return answer if answer.strip() else self._empty_answer(user_message)
@@ -457,10 +476,11 @@ class AgentOrchestrator:
         emitter: _EventEmitter,
         llm_started: bool,
         emitted_chunks: list[str],
+        target_language: str,
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
         aggregator = TokenAggregator()
-        guardrail = StreamingOutputGuardrail()
+        guardrail = StreamingOutputGuardrail(target_language=target_language)
         output_guardrail_reported = False
         if not llm_started:
             await emitter.emit(EventType.LLM_GENERATING, {})
@@ -625,7 +645,11 @@ class AgentOrchestrator:
 
     @staticmethod
     def _plan_snapshot(
-        route_type: str, metadata: dict[str, Any], settings: Any
+        route_type: str,
+        metadata: dict[str, Any],
+        settings: Any,
+        *,
+        target_language: str | None = None,
     ) -> dict[str, Any]:
         """Return an engine snapshot for run audit/debugging."""
         plan: dict[str, Any] = {
@@ -638,6 +662,8 @@ class AgentOrchestrator:
         if kb_id:
             plan["knowledge_base_id"] = kb_id
         plan["policy_version"] = DEFAULT_CHAT_BEHAVIOR_POLICY.version
+        if target_language:
+            plan["target_language"] = target_language
         return plan
 
     async def _handle_guardrail_refusal(
@@ -648,9 +674,15 @@ class AgentOrchestrator:
         route_type: str,
         metadata: dict[str, Any],
         decision: GuardrailDecision,
+        target_language: str,
     ) -> str:
         """Converge a deterministic policy refusal without calling the model."""
-        plan = self._plan_snapshot(route_type, metadata, self._deps.settings)
+        plan = self._plan_snapshot(
+            route_type,
+            metadata,
+            self._deps.settings,
+            target_language=target_language,
+        )
         plan["guardrail"] = decision.as_plan_metadata()
         await self._safe_run_repo(
             "mark_running_with_plan",
@@ -682,10 +714,11 @@ class AgentOrchestrator:
         emitter: _EventEmitter,
         output: str,
         emitted_chunks: list[str],
+        target_language: str,
     ) -> None:
         """Fallback for completed model output that did not stream text deltas."""
         aggregator = TokenAggregator()
-        guardrail = StreamingOutputGuardrail()
+        guardrail = StreamingOutputGuardrail(target_language=target_language)
         safe_chunk = guardrail.push(output)
         if safe_chunk:
             await self._emit_aggregated_token(
@@ -886,6 +919,9 @@ def _plan_metadata(settings: Any, metadata: dict[str, Any]) -> dict[str, Any]:
         "disable_guardrails",
         "disable_guardrail",
         "behavior_policy",
+        "target_language",
+        "language_policy",
+        "disable_language_guardrail",
     ):
         output.pop(reserved_key, None)
     return output

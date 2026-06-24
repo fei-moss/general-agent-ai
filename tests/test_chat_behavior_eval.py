@@ -45,6 +45,7 @@ def test_golden_cases_cover_required_behavior_axes(cases):
     assert summary["real_money_operation"] >= 1
     assert summary["personal_wallet_data"] >= 1
     assert summary["output_policy_leak"] >= 1
+    assert summary["language_mismatch"] >= 1
     assert summary["false_positive_guard"] >= 4
 
 
@@ -69,7 +70,10 @@ def test_input_guardrail_matches_golden_cases(case: ChatBehaviorCase):
     ids=lambda case: case.id,
 )
 def test_output_guardrail_matches_golden_output_cases(case: ChatBehaviorCase):
-    decision = evaluate_assistant_answer(case.sample_assistant_answer or "")
+    decision = evaluate_assistant_answer(
+        case.sample_assistant_answer or "",
+        target_language=case.target_language,
+    )
 
     assert decision.action is GuardrailAction(str(case.raw["expected_output_action"]))
     assert decision.category is GuardrailCategory(
@@ -100,12 +104,12 @@ async def test_allow_cases_meet_answer_traits_with_deterministic_judge(tmp_path)
 
     report = await judge_allowed_cases(
         load_cases(),
-        policy=PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v2"),
+        policy=PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v3"),
         artifact_path=report_path,
     )
 
     assert report_path.exists()
-    assert report["policy"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v2"
+    assert report["policy"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v3"
     assert report["case_count"] >= 5
     assert report["forbidden_claim_hits"] == 0
     assert report["trait_hit_rate"] >= 0.7
@@ -116,19 +120,19 @@ async def test_policy_variant_comparison_reports_side_by_side_scores():
     report = await compare_policy_variants(
         load_cases(),
         policies=[
-            PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v2"),
+            PolicyVariant(name="SPEC-CHAT-BEHAVIOR-POLICY-001/v3"),
             PolicyVariant(
-                name="SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+                name="SPEC-CHAT-BEHAVIOR-POLICY-001/v3-candidate",
                 answer_suffix=" 建议将这些检查纳入 golden cases 回归。",
             ),
         ],
     )
 
     assert [item["policy"] for item in report["policies"]] == [
-        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2",
-        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v3",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v3-candidate",
     ]
     assert report["best_policy"] in {
-        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2",
-        "SPEC-CHAT-BEHAVIOR-POLICY-001/v2-candidate",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v3",
+        "SPEC-CHAT-BEHAVIOR-POLICY-001/v3-candidate",
     }

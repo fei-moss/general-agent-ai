@@ -74,6 +74,8 @@ class AgentDeps:
     conversation_id: str = ""
     knowledge_base_id: str | None = None
     retrieval_top_k: int = 5
+    target_language: str = "unknown"
+    language_instruction: str = ""
 
 
 def build_agent(model: Model) -> Agent[AgentDeps, str]:
@@ -88,6 +90,11 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         output_type=str,
         system_prompt=_SYSTEM_PROMPT,
     )
+
+    @agent.instructions
+    def run_language_policy(ctx: RunContext[AgentDeps]) -> str:
+        """Inject per-run language policy without mutating user messages."""
+        return ctx.deps.language_instruction
 
     @agent.tool
     async def search_knowledge(
