@@ -234,7 +234,7 @@ cat /tmp/stream_false.json
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer smoke-user' \
-  -d '{"message":"用一句话回答: DockerHost chat smoke 是否连通?","stream":true,"metadata":{"release_smoke":true}}' \
+  -d '{"message":"用一句话说明世界杯预测需要哪些证据。","stream":true,"metadata":{"release_smoke":true}}' \
   | tee /tmp/chat_accepted.json
 
 export RUN_ID=$(jq -r '.agent_run_id' /tmp/chat_accepted.json)
@@ -273,6 +273,66 @@ websocat \
 ```
 
 如果没有 `websocat`,记录缺失原因,但至少必须完成 SSE smoke 和 `/runs/{agent_run_id}` 查询。WebSocket smoke 失败且 SSE 正常时,仍需记录为发布风险,由负责人决定是否 rollback 或继续。
+
+如果 DockerHost 公网域名上的 WebSocket 返回普通 HTTP `401/404`,先检查 API 日志。如果日志形如
+`GET /ws/<run_id>?token=... HTTP/1.1` 而不是 WebSocket upgrade,说明请求已到达 API,
+但 ingress 没有转发 Upgrade。此时必须补做容器内直连验证,以区分应用缺陷和平台 ingress 限制:
+
+```bash
+envctl exec --name "$ENV_NAME" --service api -- \
+  python - <<'PY'
+import asyncio
+import json
+
+import httpx
+import websockets
+
+
+async def main() -> None:
+    headers = {
+        "Authorization": "Bearer smoke-user",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "http://localhost:8080/chat",
+            headers=headers,
+            json={
+                "message": "请用一句话说明世界杯预测需要哪些证据。",
+                "stream": True,
+                "metadata": {"release_smoke": True, "route": "internal_ws"},
+            },
+        )
+        resp.raise_for_status()
+        run_id = resp.json()["agent_run_id"]
+
+    seen = []
+    async with websockets.connect(
+        f"ws://localhost:8080/ws/{run_id}?token=smoke-user",
+        open_timeout=15,
+        close_timeout=5,
+    ) as ws:
+        for _ in range(40):
+            event = json.loads(await asyncio.wait_for(ws.recv(), timeout=20))
+            event_type = event.get("type")
+            seen.append(str(event_type))
+            if event_type in {"RUN_COMPLETED", "ERROR"}:
+                break
+
+    print("ws_event_types", ",".join(dict.fromkeys(seen)))
+    print("ws_terminal_seen", any(t in {"RUN_COMPLETED", "ERROR"} for t in seen))
+
+
+asyncio.run(main())
+PY
+```
+
+通过标准:
+
+- 公网 WebSocket 成功时,必须看到 terminal event。
+- 公网 WebSocket 失败但容器内 `ws://localhost:8080/ws/<run_id>?token=smoke-user` 成功时,
+  应记录为 DockerHost ingress 风险,不能当作应用 WebSocket 路由失败。
+- 公网与容器内 WebSocket 都失败时,不得把 WebSocket 能力标记为已验证。
 
 ## 10. Worker 与 Reaper 验证
 
