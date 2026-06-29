@@ -1,6 +1,6 @@
 apiVersion: dockerhost/v1alpha1
 kind: DockerHostTemplate
-name: general-agent-ai-rag
+name: world-cup-chat-server
 version: 0.1.0
 composeFile: compose.yaml
 defaults:
@@ -27,4 +27,4 @@ services:
 managedVolumes:
   - name: postgres-data
     size: 10g
-    description: PostgreSQL pgvector data directory for each isolated RAG environment.
+    description: PostgreSQL pgvector data directory for each isolated World Cup Chat Server environment.

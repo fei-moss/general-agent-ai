@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
     """构建并返回配置完整的 FastAPI 应用。"""
     settings = get_settings()
     app = FastAPI(
-        title="General Agent AI",
+        title="World Cup Chat Server",
         version="0.1.0",
         lifespan=lifespan,
     )

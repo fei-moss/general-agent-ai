@@ -81,12 +81,12 @@ class _FakeDocumentRepo:
             id=document_id,
             knowledge_base_id="kb_1",
             owner_user_id="user_1",
-            raw_content="MOSS Agent does not use real capital.",
+            raw_content="World Cup forecast guidance must separate evidence, probabilities, and no-bet conditions.",
             mime_type="text/plain",
-            source_uri="https://moss-5.gitbook.io/moss/moss-agent-handbook",
+            source_uri="manual://world-cup-forecast/safety",
             meta={
-                "doc_id": "moss_product_safety",
-                "section": "product_safety",
+                "doc_id": "worldcup_forecast_safety",
+                "section": "forecast_safety",
             },
         )
 
@@ -241,6 +241,6 @@ async def test_ingestion_preserves_source_doc_id_in_chunk_metadata():
 
     assert chunk_count == 1
     metadata = vector_store.docs[0]["metadata"]
-    assert metadata["doc_id"] == "moss_product_safety"
+    assert metadata["doc_id"] == "worldcup_forecast_safety"
     assert metadata["db_document_id"] == "doc_db_1"
-    assert metadata["source_uri"] == "https://moss-5.gitbook.io/moss/moss-agent-handbook"
+    assert metadata["source_uri"] == "manual://world-cup-forecast/safety"

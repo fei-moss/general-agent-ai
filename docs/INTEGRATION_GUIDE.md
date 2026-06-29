@@ -1,4 +1,4 @@
-# Chat Server 接入指南
+# World Cup Chat Server 接入指南
 
 这份文档面向两类接入方：
 
@@ -9,14 +9,15 @@
 
 ## 1. 服务定位
 
-Chat Server 是一个中心化的 Agent Chat 服务。它负责：
+World Cup Chat Server 是一个中心化的世界杯比赛预测 Agent Chat 服务。它负责：
 
 - 接收聊天请求。
 - 维护用户、会话、消息、运行状态。
-- 调用底层模型，目前 DockerHost 测试环境使用 Z.AI `glm-5.2`。
+- 调用底层模型，DockerHost 测试环境可以使用 mock 或 Z.AI `glm-5.2`。
 - 支持 SSE / WebSocket 流式返回。
 - 支持按 `conversation_id` 继续上下文。
-- 普通聊天会按服务端配置透明使用内部 RAG 知识库。
+- 普通聊天会按服务端配置透明使用内部世界杯预测知识库。
+- 默认 Agent 输出只读赛前分析、证据账本、比分/WDL 概率、Polymarket 市场解释和 no-bet 条件；不代用户下单。
 - 暴露健康检查和 Prometheus metrics。
 
 接入方不需要自己保存完整消息历史，但应该保存当前用户正在使用的
@@ -24,16 +25,16 @@ Chat Server 是一个中心化的 Agent Chat 服务。它负责：
 
 ## 2. Base URL
 
-由运维提供环境地址。当前 DockerHost smoke 环境：
+由运维提供环境地址。DockerHost smoke 环境形态：
 
 ```text
-https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org
+https://api-<owner>-world-cup-chat-server.dkhost.vixmk-yo.org
 ```
 
 下文示例统一使用：
 
 ```bash
-export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org"
+export BASE_URL="https://api-<owner>-world-cup-chat-server.dkhost.vixmk-yo.org"
 ```
 
 DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
@@ -145,7 +146,7 @@ curl -sS -X POST "$BASE_URL/chat" \
   -H 'Authorization: Bearer alice.internal' \
   -H 'Idempotency-Key: chat-001' \
   -d '{
-    "message": "请用三句话介绍一下这个系统现在的能力。",
+    "message": "请用三句话介绍一下这个世界杯预测 Chat Server 的能力。",
     "stream": true,
     "metadata": {
       "mode": "realtime",

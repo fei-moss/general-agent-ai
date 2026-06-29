@@ -1,6 +1,6 @@
 # PROJECT CONTRACT
 
-This repository is an async Agent execution platform. Runtime correctness, bounded provider usage, secret hygiene, durable state, and streaming behavior outrank convenience.
+This repository is a World Cup match forecasting Chat Server built from the async Agent execution platform. Runtime correctness, bounded provider usage, secret hygiene, durable state, streaming behavior, and evidence-led forecasting outrank convenience.
 
 ## Build & Test Commands
 
@@ -29,6 +29,7 @@ scripts/check_harness_workflows.sh
 - `docs/specifications/` holds implementation source-of-truth specs after a request is converted.
 - `docs/implementation-plans/` holds file/module-level plans derived from specs.
 - New behavior must reference stable `SPEC-*` IDs and a `Workflow Class: HARNESS-*` binding.
+- World Cup forecasting behavior must preserve evidence-led reasoning: slate definition, evidence ledger, score/WDL probabilities, Polymarket executable price checks, risk conditions, and explicit no-bet outcomes.
 - Logs and errors must not expose provider secrets, API keys, raw tokens, or private credentials.
 
 ## DockerHost For Integration Environments
@@ -51,17 +52,17 @@ Important boundary:
 For a quick plain Postgres + Redis environment:
 
 ```bash
-envctl up --name <owner>-general-agent-ai-data --template postgres-redis
-envctl status --name <owner>-general-agent-ai-data
+envctl up --name <owner>-world-cup-chat-server-data --template postgres-redis
+envctl status --name <owner>-world-cup-chat-server-data
 ```
 
 Expose database/cache only while debugging from the Mac:
 
 ```bash
-envctl expose --name <owner>-general-agent-ai-data --service db --ttl 30m
-envctl expose --name <owner>-general-agent-ai-data --service cache --ttl 30m
-envctl unexpose --name <owner>-general-agent-ai-data --service db
-envctl unexpose --name <owner>-general-agent-ai-data --service cache
+envctl expose --name <owner>-world-cup-chat-server-data --service db --ttl 30m
+envctl expose --name <owner>-world-cup-chat-server-data --service cache --ttl 30m
+envctl unexpose --name <owner>-world-cup-chat-server-data --service db
+envctl unexpose --name <owner>-world-cup-chat-server-data --service cache
 ```
 
 For pgvector/RAG work, prefer a project `dockerhost/` adapter layer using a pgvector-enabled Postgres image rather than assuming the generic `postgres-redis` template has the extension installed. The adapter should:
@@ -76,16 +77,16 @@ For pgvector/RAG work, prefer a project `dockerhost/` adapter layer using a pgve
 Before deploying a project stack:
 
 ```bash
-envctl check-project --dir /Users/chris/AiProject/general-agent-ai
-envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost
+envctl check-project --dir /Users/chris/AiProject/world-cup-chat-server
+envctl validate-template --dir /Users/chris/AiProject/world-cup-chat-server/dockerhost
 ```
 
 Git pull deployment shape:
 
 ```bash
 envctl up \
-  --name <owner>-general-agent-ai-rag \
-  --git-url git@github.com:fei-moss/general-agent-ai.git \
+  --name <owner>-world-cup-chat-server \
+  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
   --git-ref <branch-or-commit> \
   --git-subdir dockerhost
 ```
@@ -94,19 +95,19 @@ Long-lived branch-space shape:
 
 ```bash
 envctl branch-space create \
-  --name <owner>-general-agent-ai-rag \
-  --git-url git@github.com:fei-moss/general-agent-ai.git \
+  --name <owner>-world-cup-chat-server \
+  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
   --git-ref <branch> \
   --git-subdir dockerhost
 
-envctl branch-space deploy --name <owner>-general-agent-ai-rag
-envctl branch-space status --name <owner>-general-agent-ai-rag
+envctl branch-space deploy --name <owner>-world-cup-chat-server
+envctl branch-space status --name <owner>-world-cup-chat-server
 ```
 
 Pass runtime secrets with `--secret-env KEY` or `--secret-file KEY=PATH`; avoid `--secret KEY=VALUE`. Destroy disposable environments when finished:
 
 ```bash
-envctl down --name <owner>-general-agent-ai-rag
+envctl down --name <owner>-world-cup-chat-server
 ```
 
 ## Forbidden
@@ -117,6 +118,8 @@ envctl down --name <owner>-general-agent-ai-rag
 - Do not store real provider secrets in code, tests, logs, Redis, Postgres, events, release artifacts, or docs.
 - Do not add runtime/API/DB behavior from chat alone once a matching spec exists.
 - Do not weaken `scripts/verify_release.sh`, AI boundary checks, or spec-contract checks to make local work easier.
+- Do not migrate Ask this Agent, MOSS, wallet/copy-trading, Mint/Redeem, or Agent detail-page positioning into default World Cup forecasting behavior.
+- Do not make unsupported betting claims: no guaranteed win, guaranteed profit, zero-risk,保本, or direct order execution without explicit user confirmation and a separate execution workflow.
 
 ## Testing Requirements
 
@@ -125,6 +128,7 @@ envctl down --name <owner>-general-agent-ai-rag
 - Provider-limit changes need quota, backoff, fail-closed, and usage-settlement tests.
 - Secret-management changes need redaction and missing-secret tests.
 - Release readiness is proven through `scripts/verify_release.sh`, not manual notes.
+- World Cup behavior changes need golden cases covering evidence ledger, probability mapping, Polymarket price/EV semantics, no-bet conditions, and real-money refusal boundaries.
 
 ## Harness Workflows
 

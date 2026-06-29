@@ -2,7 +2,7 @@
 
 Spec: `SPEC-DOCKERHOST-RELEASE-RUNBOOK-001`
 
-本 runbook 面向内部运维和授权 Agent,用于在 DockerHost 上执行 `general-agent-ai` 的 Git pull deployment、同环境 redeploy、回滚、清理和审计。这里不包含任何真实 secret。
+本 runbook 面向内部运维和授权 Agent,用于在 DockerHost 上执行 `world-cup-chat-server` 的 Git pull deployment、同环境 redeploy、回滚、清理和审计。这里不包含任何真实 secret。
 
 ## 0. 安全边界
 
@@ -36,9 +36,9 @@ envctl topology
 先明确环境名、Git URL 和候选 ref。Git ref 必须已经推送到远端,因为 DockerHost 当前部署模型是 Git pull deployment。
 
 ```bash
-export PROJECT_DIR=/Users/chris/AiProject/general-agent-ai
-export ENV_NAME=<owner>-general-agent-ai-rag
-export GIT_URL=git@github.com:fei-moss/general-agent-ai.git
+export PROJECT_DIR=/Users/chris/AiProject/world-cup-chat-server
+export ENV_NAME=<owner>-world-cup-chat-server
+export GIT_URL=git@github.com:fei-moss/world-cup-chat-server.git
 export GIT_REF=<branch-or-sha>
 
 git -C "$PROJECT_DIR" status --short
@@ -53,14 +53,14 @@ git ls-remote "$GIT_URL" "$GIT_REF"
 每次发布或 redeploy 前先验证 DockerHost adapter。任一命令失败都不得继续部署。
 
 ```bash
-envctl check-project --dir /Users/chris/AiProject/general-agent-ai
-envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost
+envctl check-project --dir /Users/chris/AiProject/world-cup-chat-server
+envctl validate-template --dir /Users/chris/AiProject/world-cup-chat-server/dockerhost
 ```
 
 可选本地结构检查:
 
 ```bash
-docker compose -f /Users/chris/AiProject/general-agent-ai/dockerhost/compose.yaml config
+docker compose -f /Users/chris/AiProject/world-cup-chat-server/dockerhost/compose.yaml config
 ```
 
 ## DockerHost Release CLI（默认 dry-run）
@@ -298,8 +298,8 @@ envctl logs --name "$ENV_NAME" --service api --tail 200
 ```bash
 export GIT_REF=<new-branch-or-sha>
 
-envctl check-project --dir /Users/chris/AiProject/general-agent-ai
-envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost
+envctl check-project --dir /Users/chris/AiProject/world-cup-chat-server
+envctl validate-template --dir /Users/chris/AiProject/world-cup-chat-server/dockerhost
 
 envctl up \
   --name "$ENV_NAME" \

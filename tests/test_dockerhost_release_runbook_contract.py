@@ -61,8 +61,8 @@ def test_runbook_contains_release_and_rollback_gates():
         runbook,
         [
             "envctl version",
-            "envctl check-project --dir /Users/chris/AiProject/general-agent-ai",
-            "envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost",
+            "envctl check-project --dir /Users/chris/AiProject/world-cup-chat-server",
+            "envctl validate-template --dir /Users/chris/AiProject/world-cup-chat-server/dockerhost",
             "envctl up",
             "--git-url",
             "--git-ref",

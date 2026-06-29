@@ -13,9 +13,9 @@ def test_deploy_dry_run_plans_ordered_release_steps_without_execution():
         [
             "deploy",
             "--name",
-            "chris-general-agent-ai-rag",
+            "chris-world-cup-chat-server",
             "--git-url",
-            "git@github.com:fei-moss/general-agent-ai.git",
+            "git@github.com:fei-moss/world-cup-chat-server.git",
             "--git-ref",
             "abc1234",
             "--base-url",
@@ -29,7 +29,7 @@ def test_deploy_dry_run_plans_ordered_release_steps_without_execution():
 
     assert audit["action"] == "deploy"
     assert audit["execute"] is False
-    assert audit["env_name"] == "chris-general-agent-ai-rag"
+    assert audit["env_name"] == "chris-world-cup-chat-server"
     assert audit["secrets"] == [
         {"mode": "secret-env", "name": "ZAI_API_KEY"},
         {"mode": "secret-file", "name": "GEMINI_API_KEY"},
@@ -113,9 +113,9 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
         [
             "redeploy",
             "--name",
-            "chris-general-agent-ai-rag",
+            "chris-world-cup-chat-server",
             "--git-url",
-            "git@github.com:fei-moss/general-agent-ai.git",
+            "git@github.com:fei-moss/world-cup-chat-server.git",
             "--git-ref",
             "feature/dockerhost",
             "--base-url",

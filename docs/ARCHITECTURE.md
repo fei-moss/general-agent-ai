@@ -1,6 +1,6 @@
-# Agent Execution Platform 架构设计文档
+# World Cup Chat Server 架构设计文档
 
-> 高性能 AI Chat 执行平台。
+> 高性能世界杯预测 AI Chat 执行平台。
 > 技术栈: Python 3.10 / FastAPI / SQLAlchemy 2.0 async / Pydantic AI / Redis Stream / Postgres / Celery / SSE + WebSocket。
 > 核心目标: 高并发、低 TTFT、实时流式响应、后台异步任务、水平扩展。
 

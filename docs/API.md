@@ -1,6 +1,6 @@
-# General Agent AI — 前端接口文档
+# World Cup Chat Server — 前端接口文档
 
-> 版本:0.1.0 ｜ 适用后端:PydanticAI 驱动的 agentic 执行平台
+> 版本:0.1.0 ｜ 适用后端:PydanticAI 驱动的世界杯预测 agentic 执行平台
 > 本文档面向前端对接,描述全部 HTTP 端点、事件流(SSE / WebSocket)、鉴权、错误码与集成示例。
 
 ## 0. 核心模型(必读)
@@ -109,7 +109,7 @@ X-RateLimit-Remaining: 0
 
 ```json
 {
-  "message": "帮我算一下 (123+456)*7 等于多少",
+    "message": "阿根廷 vs 法国这场世界杯比赛怎么做赛前预测?",
   "conversation_id": null,
   "stream": true
 }

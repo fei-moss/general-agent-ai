@@ -333,8 +333,9 @@ def _last_user_text(messages: list[ModelMessage]) -> str:
 def _mock_answer(question: str) -> str:
     """生成确定性中文回答(供离线演示)。"""
     if not question:
-        return "你好,我是内置的离线助手(mock),请告诉我你的问题。"
+        return "你好,我是世界杯预测 Chat Server 的内置离线助手(mock),请告诉我要分析的比赛。"
     return (
-        f"你问的是「{question}」。这是内置 mock 模型的确定性离线回答,"
-        "用于在无外部模型与 API key 时演示完整的 agentic 链路。"
+        f"你问的是「{question}」。这是世界杯预测 Chat Server 的确定性离线回答,"
+        "用于在无外部模型与 API key 时演示检索、工具调用、流式输出和运行状态收敛链路。"
+        "真实赛前结论需要补齐证据账本、比分概率分布、可执行 CLOB 价格和 no-bet 条件。"
     )

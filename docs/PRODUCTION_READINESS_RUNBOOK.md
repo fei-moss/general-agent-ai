@@ -1,4 +1,4 @@
-# Chat Server Production Readiness Runbook
+# World Cup Chat Server Production Readiness Runbook
 
 ## Related Runbooks
 
@@ -23,8 +23,8 @@ Use local secret env files only; do not put secrets in this repository.
 
 ```bash
 source /Users/chris/.codex-local/dockerhost/envctl_env.sh
-source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
-source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
+source /Users/chris/.codex-local/world-cup-chat-server/zai_env.sh
+source /Users/chris/.codex-local/world-cup-chat-server/gemini_env.sh
 
 export LLM_PROVIDER=zai
 export ZAI_MODEL=glm-5.2
@@ -44,8 +44,8 @@ export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
 
 envctl up \
-  --name chris-general-agent-ai-chat \
-  --git-url git@github.com:fei-moss/general-agent-ai.git \
+  --name chris-world-cup-chat-server \
+  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
@@ -62,7 +62,7 @@ export WORKER_CONCURRENCY=1
 ## Readiness And Metrics
 
 ```bash
-BASE_URL=https://api-chris-general-agent-ai-chat.dkhost.vixmk-yo.org
+BASE_URL=https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org
 curl -fsS "$BASE_URL/healthz"
 curl -fsS "$BASE_URL/readyz"
 curl -fsS "$BASE_URL/metrics" | head
@@ -76,7 +76,7 @@ curl -fsS "$BASE_URL/metrics" | head
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer smoke-user' \
-  -d '{"message":"用一句话回答: GLM-5.2 是否连通?","stream":true,"metadata":{"mode":"realtime"}}'
+  -d '{"message":"用一句话说明你会如何分析一场世界杯淘汰赛。","stream":true,"metadata":{"mode":"realtime"}}'
 ```
 
 Use the returned `stream_url`:
