@@ -26,8 +26,9 @@
   - Human-readable workflow guidance lives at `docs/harness-workflows.md`.
   - Article audit and conflict decisions live at `docs/harness-source-analysis.md`.
   - Virtual demand coverage lives at `docs/harness-virtual-requirements.json`.
+  - Harness self-spec evidence lives at `docs/specifications/harness_workflows/`.
   - Every non-template specification under `docs/specifications/` and every implementation plan under `docs/implementation-plans/` declares exactly one `Workflow Class: HARNESS-*` binding.
-  - The validator fails if a workflow class is malformed, undocumented, uses an unknown pattern, lacks source traceability, lacks context/tool/state/artifact strategy, lacks stop conditions, lacks evidence, or is bound by a spec/plan but missing from the manifest.
+  - The validator fails if a workflow class is malformed, undocumented, uses an unknown pattern, lacks official source traceability, lacks adopted principle bindings, lacks context/tool/state/artifact strategy, lacks stop conditions, lacks evidence, or is bound by a spec/plan but missing from the manifest.
   - The validator fails if a virtual requirement points to an unknown workflow or requires a pattern/strategy the workflow does not declare.
   - `scripts/verify_release.sh` runs the workflow validator and its focused tests before Python import smoke and pytest.
   - `AGENTS.md` is the checked-in project instruction source; `CLAUDE.md` is a symlink to it to avoid rule drift.
@@ -39,13 +40,14 @@
 ## Workflow Class Manifest Contract
 
 - Manifest version is `1`.
-- Manifest includes `source_reading_set` with P0/P1 article identifiers, priorities, URLs, and read status.
-- Manifest includes `principles` with `source_ids` and adopted decisions.
+- Manifest includes `source_set` with official OpenAI, Codex, Anthropic, and Claude source identifiers, providers, URLs, and adoption status.
+- Manifest includes `adopted_principles` with `source_ids` and summaries.
 - Each workflow class has:
   - `id` beginning with `HARNESS-`
   - `name`
   - `purpose`
   - `source_ids`
+  - `principle_ids`
   - `use_when`
   - `patterns`
   - `context_strategy`
@@ -62,6 +64,7 @@
   - `classifier-routing`
   - `fanout-barrier-synthesis`
   - `adversarial-verification`
+  - `generate-filter`
   - `tournament-selection`
   - `loop-until-done`
   - `quarantine`
@@ -69,15 +72,28 @@
   - `worktree-isolation`
   - `token-budget`
   - `resumable-evidence`
+  - `source-traceability`
   - `progressive-disclosure`
   - `agentic-search`
   - `task-graph`
+  - `cache-safe-prefix`
   - `cache-safe-forking`
   - `stable-tool-prefix`
   - `deferred-tool-loading`
+  - `artifact-review`
   - `human-in-loop-artifacts`
+  - `agent-legibility`
+  - `runtime-feedback`
+  - `trajectory-review`
+  - `eval-improvement-loop`
+  - `mechanical-invariants`
   - `concrete-feedback`
   - `visual-feedback`
+  - `sandbox-boundary`
+  - `hook-gate`
+  - `context-reset`
+  - `skill-packaging`
+  - `human-escalation`
   - `generate-and-filter`
 - Evidence paths must live under `.artifacts/`.
 - Verification primary commands must be tool-neutral scripts or make targets, not Codex/Claude-only instructions.
@@ -85,21 +101,17 @@
 
 ## Source Coverage Contract
 
-Required P0 sources:
+Required official sources:
 
-- `dynamic-workflows`
-- `skills`
-- `prompt-caching`
-- `seeing-like-agent`
-- `agent-sdk`
-
-Required P1 sources:
-
-- `session-management`
-- `html-artifacts`
-- `tasks`
-- `playgrounds`
-- `prototyping`
+- `openai-harness-engineering`
+- `openai-codex-agent-loop`
+- `openai-codex-manual`
+- `claude-dynamic-workflows`
+- `claude-long-running-agents`
+- `claude-long-running-apps`
+- `claude-skills`
+- `claude-prompt-caching`
+- `claude-html-artifacts`
 
 The framework must explicitly resolve conflicts among these sources rather than silently merging incompatible guidance.
 
@@ -116,6 +128,8 @@ The framework must explicitly resolve conflicts among these sources rather than 
 - incident triage
 - rubric/tournament exploration
 - multi-session task graph
+- runtime legibility
+- eval improvement loop
 - interactive artifact
 - skill evolution
 
@@ -126,6 +140,8 @@ The framework must explicitly resolve conflicts among these sources rather than 
   - a workflow missing `stop_conditions` fails;
   - an unknown pattern fails;
   - missing source traceability fails;
+  - unknown principle bindings fail;
+  - missing source-analysis references fail;
   - missing context/tool/state/artifact strategy fails;
   - mid-session tool mutation fails;
   - virtual requirements with unknown workflow fail;
@@ -133,7 +149,8 @@ The framework must explicitly resolve conflicts among these sources rather than 
   - an implementation plan without `Workflow Class` fails.
 - `scripts/check_harness_workflows.sh` writes `.artifacts/release/harness_workflows.json` or the configured artifact path.
 - `make verify-release` includes `harness_workflows` and `harness_workflow_tests` in `summary.json`.
-- `docs/harness-workflows.json` validates with 10 P0/P1 sources and 11 workflow classes.
+- `docs/harness-workflows.json` validates with 9 official sources, 11 adopted principles, and at least 13 workflow classes.
 - `docs/harness-virtual-requirements.json` validates all required synthetic demands against declared workflow patterns and strategies.
+- `docs/specifications/harness_workflows/` references `SPEC-HARNESS-WORKFLOW-001` and declares the Harness workflow binding.
 - Existing runtime and provider specs/plans are bound to `HARNESS-SPEC-FIRST-FEATURE`.
 - The project instruction source is discoverable through both `AGENTS.md` and `CLAUDE.md`.

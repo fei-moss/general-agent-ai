@@ -6,14 +6,16 @@ PYTHON_BIN="${PYTHON:-${PY:-python3}}"
 
 MANIFEST="${HARNESS_WORKFLOW_MANIFEST:-$ROOT_DIR/docs/harness-workflows.json}"
 DOC="${HARNESS_WORKFLOW_DOC:-$ROOT_DIR/docs/harness-workflows.md}"
+SOURCE_DOC="${HARNESS_WORKFLOW_SOURCE_DOC:-$ROOT_DIR/docs/harness-source-analysis.md}"
 VIRTUAL_REQUIREMENTS="${HARNESS_WORKFLOW_VIRTUAL_REQUIREMENTS:-$ROOT_DIR/docs/harness-virtual-requirements.json}"
+SPEC_DIR="${HARNESS_WORKFLOW_SPEC_DIR:-$ROOT_DIR/docs/specifications/harness_workflows}"
 SPECS_ROOT="${HARNESS_WORKFLOW_SPECS_ROOT:-$ROOT_DIR/docs/specifications}"
 PLANS_ROOT="${HARNESS_WORKFLOW_PLANS_ROOT:-$ROOT_DIR/docs/implementation-plans}"
 ARTIFACT_DIR="${HARNESS_WORKFLOW_ARTIFACT_DIR:-${VERIFY_ARTIFACT_DIR:-$ROOT_DIR/.artifacts/release}}"
 
 mkdir -p "$ARTIFACT_DIR"
 
-"$PYTHON_BIN" - "$MANIFEST" "$DOC" "$VIRTUAL_REQUIREMENTS" "$SPECS_ROOT" "$PLANS_ROOT" "$ARTIFACT_DIR" <<'PY'
+"$PYTHON_BIN" - "$MANIFEST" "$DOC" "$SOURCE_DOC" "$VIRTUAL_REQUIREMENTS" "$SPEC_DIR" "$SPECS_ROOT" "$PLANS_ROOT" "$ARTIFACT_DIR" <<'PY'
 import json
 import re
 import sys
@@ -21,15 +23,18 @@ from pathlib import Path
 
 manifest_path = Path(sys.argv[1])
 doc_path = Path(sys.argv[2])
-virtual_requirements_path = Path(sys.argv[3])
-specs_root = Path(sys.argv[4])
-plans_root = Path(sys.argv[5])
-artifact_dir = Path(sys.argv[6])
+source_doc_path = Path(sys.argv[3])
+virtual_requirements_path = Path(sys.argv[4])
+spec_dir = Path(sys.argv[5])
+specs_root = Path(sys.argv[6])
+plans_root = Path(sys.argv[7])
+artifact_dir = Path(sys.argv[8])
 
 allowed_patterns = {
     "classifier-routing",
     "fanout-barrier-synthesis",
     "adversarial-verification",
+    "generate-filter",
     "tournament-selection",
     "generate-and-filter",
     "loop-until-done",
@@ -38,22 +43,43 @@ allowed_patterns = {
     "worktree-isolation",
     "token-budget",
     "resumable-evidence",
+    "source-traceability",
     "progressive-disclosure",
     "agentic-search",
     "task-graph",
+    "cache-safe-prefix",
     "cache-safe-forking",
     "stable-tool-prefix",
     "deferred-tool-loading",
+    "artifact-review",
     "human-in-loop-artifacts",
+    "agent-legibility",
+    "runtime-feedback",
+    "trajectory-review",
+    "eval-improvement-loop",
+    "mechanical-invariants",
     "concrete-feedback",
     "visual-feedback",
+    "sandbox-boundary",
+    "hook-gate",
+    "context-reset",
+    "skill-packaging",
+    "human-escalation",
 }
+allowed_source_providers = {"OpenAI", "Anthropic"}
+allowed_source_statuses = {"adopted", "reference"}
+spec_id = "SPEC-HARNESS-WORKFLOW-001"
 
 binding_re = re.compile(r"Workflow Class:\s*`?(HARNESS-[A-Z0-9-]+)`?")
 errors: list[str] = []
 workflow_ids: list[str] = []
 source_ids: set[str] = set()
+source_urls: dict[str, str] = {}
 principle_ids: list[str] = []
+principle_id_set: set[str] = set()
+principle_source_bindings: dict[str, list[str]] = {}
+workflow_source_bindings: dict[str, list[str]] = {}
+workflow_principle_bindings: dict[str, list[str]] = {}
 spec_bindings: dict[str, str] = {}
 plan_bindings: dict[str, str] = {}
 virtual_cases: dict[str, str] = {}
@@ -85,6 +111,7 @@ def require_list(obj: dict, key: str, context: str) -> None:
 
 
 doc_text = load_text(doc_path, "workflow document")
+source_doc_text = load_text(source_doc_path, "workflow source analysis document")
 
 if manifest_path.exists():
     try:
@@ -99,55 +126,69 @@ else:
 if manifest.get("version") != 1:
     errors.append("workflow manifest version must be 1")
 
-sources = manifest.get("source_reading_set")
+sources = manifest.get("source_set")
 if not isinstance(sources, list) or not sources:
-    errors.append("workflow manifest requires a non-empty source_reading_set list")
+    errors.append("workflow manifest requires a non-empty source_set list")
     sources = []
 
 for index, source in enumerate(sources):
-    context = f"source_reading_set[{index}]"
+    context = f"source_set[{index}]"
     if not isinstance(source, dict):
         errors.append(f"{context} must be an object")
         continue
     source_id = source.get("id")
-    if not non_empty_string(source_id):
-        errors.append(f"{context} requires non-empty string field 'id'")
+    if not non_empty_string(source_id) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(source_id)):
+        errors.append(f"{context}.id must be a kebab-case string")
     elif source_id in source_ids:
         errors.append(f"duplicate source id: {source_id}")
     else:
         source_ids.add(str(source_id))
-    for key in ("title", "url", "status"):
+    for key in ("title", "url"):
         require_string(source, key, context)
-    if source.get("priority") not in {"P0", "P1", "P2"}:
-        errors.append(f"{context} priority must be P0, P1, or P2")
+    if source.get("provider") not in allowed_source_providers:
+        errors.append(f"{context}.provider must be one of {sorted(allowed_source_providers)}")
+    if source.get("status") not in allowed_source_statuses:
+        errors.append(f"{context}.status must be one of {sorted(allowed_source_statuses)}")
     if non_empty_string(source.get("url")) and not str(source["url"]).startswith(("https://", "http://")):
         errors.append(f"{context} url must be absolute: {source['url']}")
-    if source.get("status") not in {"read", "read-public-text", "read-official-mirror"}:
-        errors.append(f"{context} status must be read, read-public-text, or read-official-mirror")
+    if non_empty_string(source.get("url")):
+        source_urls[str(source_id)] = str(source["url"])
+    if source_doc_text and non_empty_string(source_id) and str(source_id) not in source_doc_text:
+        errors.append(f"{source_id} is not documented in {source_doc_path}")
+    if source_doc_text and non_empty_string(source.get("url")) and str(source["url"]) not in source_doc_text:
+        errors.append(f"{source_id} URL is not documented in {source_doc_path}: {source['url']}")
 
-principles = manifest.get("principles")
+principles = manifest.get("adopted_principles")
 if not isinstance(principles, list) or not principles:
-    errors.append("workflow manifest requires a non-empty principles list")
+    errors.append("workflow manifest requires a non-empty adopted_principles list")
     principles = []
 
 for index, principle in enumerate(principles):
-    context = f"principles[{index}]"
+    context = f"adopted_principles[{index}]"
     if not isinstance(principle, dict):
         errors.append(f"{context} must be an object")
         continue
     principle_id = principle.get("id")
-    if not non_empty_string(principle_id):
-        errors.append(f"{context} requires non-empty string field 'id'")
+    if not non_empty_string(principle_id) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(principle_id)):
+        errors.append(f"{context}.id must be a kebab-case string")
+    elif principle_id in principle_id_set:
+        errors.append(f"duplicate principle id: {principle_id}")
     else:
         principle_ids.append(str(principle_id))
-    require_string(principle, "decision", context)
+        principle_id_set.add(str(principle_id))
+    require_string(principle, "summary", context)
     principle_sources = principle.get("source_ids")
     if not non_empty_list(principle_sources):
-        errors.append(f"{context} requires non-empty list field 'source_ids'")
+        errors.append(f"{context}.source_ids must be a non-empty array")
+        principle_sources = []
     elif isinstance(principle_sources, list):
         for source_id in principle_sources:
             if source_id not in source_ids:
-                errors.append(f"{context} references unknown source id: {source_id}")
+                errors.append(f"{context}.source_ids contains unknown source id: {source_id}")
+    if non_empty_string(principle_id):
+        principle_source_bindings[str(principle_id)] = [str(source_id) for source_id in principle_sources]
+    if source_doc_text and non_empty_string(principle_id) and str(principle_id) not in source_doc_text:
+        errors.append(f"{principle_id} is not documented in {source_doc_path}")
 
 classes = manifest.get("workflow_classes")
 if not isinstance(classes, list) or not classes:
@@ -177,7 +218,7 @@ for index, workflow in enumerate(classes):
 
     for key in ("name", "purpose"):
         require_string(workflow, key, context)
-    for key in ("source_ids", "use_when", "patterns", "stop_conditions", "evidence", "human_escalation"):
+    for key in ("source_ids", "principle_ids", "use_when", "patterns", "stop_conditions", "evidence", "human_escalation"):
         require_list(workflow, key, context)
 
     workflow_sources = workflow.get("source_ids", [])
@@ -185,6 +226,20 @@ for index, workflow in enumerate(classes):
         for source_id in workflow_sources:
             if source_id not in source_ids:
                 errors.append(f"{workflow_id} references unknown source id: {source_id}")
+    else:
+        workflow_sources = []
+    if non_empty_string(workflow_id):
+        workflow_source_bindings[str(workflow_id)] = [str(source_id) for source_id in workflow_sources]
+
+    workflow_principles = workflow.get("principle_ids", [])
+    if isinstance(workflow_principles, list):
+        for principle_id in workflow_principles:
+            if principle_id not in principle_id_set:
+                errors.append(f"{workflow_id} references unknown principle id: {principle_id}")
+    else:
+        workflow_principles = []
+    if non_empty_string(workflow_id):
+        workflow_principle_bindings[str(workflow_id)] = [str(principle_id) for principle_id in workflow_principles]
 
     if doc_text and non_empty_string(workflow_id) and str(workflow_id) not in doc_text:
         errors.append(f"{workflow_id} is not documented in {doc_path}")
@@ -194,6 +249,8 @@ for index, workflow in enumerate(classes):
         for pattern in patterns:
             if pattern not in allowed_patterns:
                 errors.append(f"{workflow_id} uses unknown pattern: {pattern}")
+            if doc_text and pattern not in doc_text:
+                errors.append(f"{workflow_id} uses undocumented pattern: {pattern}")
     else:
         patterns = []
 
@@ -283,6 +340,24 @@ for index, workflow in enumerate(classes):
         errors.append(f"{workflow_id} budget.parallelism must be non-empty")
 
 
+if workflow_ids and "HARNESS-FOCUSED-CHANGE" not in workflow_ids:
+    errors.append("workflow manifest must include HARNESS-FOCUSED-CHANGE as the default class")
+
+if not spec_dir.is_dir():
+    errors.append(f"workflow spec dir does not exist: {spec_dir}")
+else:
+    spec_files = [path for path in spec_dir.iterdir() if path.is_file()]
+    if not spec_files:
+        errors.append(f"workflow spec dir has no files: {spec_dir}")
+    elif not any(spec_id in path.read_text(encoding="utf-8") for path in spec_files):
+        errors.append(f"workflow spec files must reference {spec_id}")
+    harness_file = spec_dir / "harness.md"
+    if not harness_file.is_file():
+        errors.append(f"workflow spec dir must include harness.md: {spec_dir}")
+    elif not binding_re.search(harness_file.read_text(encoding="utf-8")):
+        errors.append(f"workflow spec harness.md must declare Workflow Class: `HARNESS-*`")
+
+
 def markdown_files(root: Path, label: str) -> list[Path]:
     if not root.exists():
         errors.append(f"{label} root not found: {root}")
@@ -363,13 +438,23 @@ summary = {
     "status": "failed" if errors else "passed",
     "manifest": str(manifest_path),
     "document": str(doc_path),
+    "source_document": str(source_doc_path),
     "virtual_requirements": str(virtual_requirements_path),
+    "workflow_spec_dir": str(spec_dir),
+    "source_count": len(source_ids),
     "source_ids": sorted(source_ids),
+    "source_urls": source_urls,
+    "principle_count": len(principle_ids),
     "principle_ids": principle_ids,
+    "principle_source_bindings": principle_source_bindings,
+    "workflow_count": len(workflow_ids),
     "workflow_ids": workflow_ids,
+    "workflow_source_bindings": workflow_source_bindings,
+    "workflow_principle_bindings": workflow_principle_bindings,
     "spec_bindings": spec_bindings,
     "plan_bindings": plan_bindings,
     "virtual_cases": virtual_cases,
+    "allowed_patterns": sorted(allowed_patterns),
     "errors": errors,
 }
 (artifact_dir / "harness_workflows.json").write_text(
@@ -382,5 +467,9 @@ if errors:
         print(f"ERROR: {error}", file=sys.stderr)
     sys.exit(1)
 
-print(f"harness workflow validation passed: {len(workflow_ids)} workflows, {len(spec_bindings)} specs, {len(plan_bindings)} plans")
+print(
+    f"harness workflow validation passed: {len(workflow_ids)} workflows, "
+    f"{len(source_ids)} sources, {len(principle_ids)} principles, "
+    f"{len(spec_bindings)} specs, {len(plan_bindings)} plans"
+)
 PY

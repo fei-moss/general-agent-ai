@@ -4,7 +4,7 @@
 
 - Specification: `docs/specifications/2026-06-16-harness-workflow-upgrade-specification.md`
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
-- Scope summary: Add dynamic Harness workflow classes, require specs/plans to bind to them, encode P0/P1 article-derived principles, wire source/strategy/virtual-demand validation into release verification, and add the project instruction entrypoint.
+- Scope summary: Add source-backed Harness workflow classes, require specs/plans to bind to them, encode official source and adopted principle bindings, wire source/strategy/virtual-demand validation into release verification, and keep the project instruction entrypoint aligned.
 - Out of scope:
   - Business runtime behavior changes.
   - CI provider migration.
@@ -19,8 +19,8 @@
   - `docs/harness-workflows.json`
   - `docs/harness-source-analysis.md`
 - Behavior change:
-  - Define reusable workflow classes for focused edits, spec-first features, wide refactors, deep verification, research synthesis, security review, incident triage, exploration tournaments, long-run task graphs, interactive artifacts, and skill evolution.
-  - Trace P0/P1 sources and adopted principles in the manifest.
+  - Define reusable workflow classes for focused edits, spec-first features, wide refactors, deep verification, research synthesis, security review, incident triage, exploration tournaments, long-run task graphs, runtime legibility, eval improvement loops, interactive artifacts, and skill evolution.
+  - Trace official OpenAI, Codex, Anthropic, and Claude sources plus adopted principles in the manifest.
   - Record conflict decisions in source analysis.
 - Verification:
   - `scripts/check_harness_workflows.sh`
@@ -31,7 +31,7 @@
   - `scripts/check_harness_workflows_test.sh`
   - `scripts/check_harness_workflows.sh`
 - Behavior change:
-  - Validate manifest structure, source traceability, principles, strategy fields, pattern vocabulary, quarantine consistency, evidence paths, tool-neutral verification commands, virtual demand coverage, and spec/plan workflow bindings.
+  - Validate manifest structure, official source traceability, adopted principle bindings, strategy fields, pattern vocabulary, quarantine consistency, evidence paths, tool-neutral verification commands, Harness self-spec evidence, virtual demand coverage, and spec/plan workflow bindings.
 - Verification:
   - `bash scripts/check_harness_workflows_test.sh`
 
@@ -40,7 +40,7 @@
 - Files/modules:
   - `docs/harness-virtual-requirements.json`
 - Behavior change:
-  - Use synthetic demands to prove the framework covers small edits, API changes, refactors, claim verification, research, security, incidents, tournaments, long-running task graphs, interactive artifacts, and skill evolution.
+  - Use synthetic demands to prove the framework covers small edits, API changes, refactors, claim verification, research, security, incidents, tournaments, long-running task graphs, runtime legibility, eval improvement loops, interactive artifacts, and skill evolution.
 - Verification:
   - `scripts/check_harness_workflows.sh`
 
