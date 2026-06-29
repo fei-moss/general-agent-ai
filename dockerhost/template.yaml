@@ -1,0 +1,30 @@
+apiVersion: dockerhost/v1alpha1
+kind: DockerHostTemplate
+name: general-agent-ai-rag
+version: 0.1.0
+composeFile: compose.yaml
+defaults:
+  idleTTL: 2h
+  exposeTTL: 30m
+services:
+  - name: api
+    kind: web
+    containerPort: 8080
+    protocol: http
+    domainTemplate: "{{ .Service }}-{{ .Env }}.{{ .BaseDomain }}"
+  - name: db
+    kind: tcp
+    containerPort: 5432
+    protocol: postgres
+    exposePolicy: on-demand
+    pool: postgres
+  - name: cache
+    kind: tcp
+    containerPort: 6379
+    protocol: redis
+    exposePolicy: on-demand
+    pool: redis
+managedVolumes:
+  - name: postgres-data
+    size: 10g
+    description: PostgreSQL pgvector data directory for each isolated RAG environment.

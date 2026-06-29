@@ -1,0 +1,251 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: dockerhost/Dockerfile
+    environment:
+      APP_PORT: "8080"
+      LOG_LEVEL: INFO
+      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/agent
+      REDIS_URL: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://cache:6379/1
+      CELERY_RESULT_BACKEND: redis://cache:6379/2
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY_FILE: ${OPENAI_API_KEY_FILE:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_API_KEY_FILE: ${DASHSCOPE_API_KEY_FILE:-}
+      ZAI_BASE_URL: ${ZAI_BASE_URL:-https://api.z.ai/api/paas/v4/}
+      ZAI_MODEL: ${ZAI_MODEL:-glm-5.2}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      ZAI_API_KEY_FILE: ${ZAI_API_KEY_FILE:-}
+      ZAI_THINKING_TYPE: ${ZAI_THINKING_TYPE:-enabled}
+      ZAI_REASONING_EFFORT: ${ZAI_REASONING_EFFORT:-max}
+      ZAI_TOOL_STREAM: ${ZAI_TOOL_STREAM:-true}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_API_KEY_FILE: ${ANTHROPIC_API_KEY_FILE:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_FILE: ${GEMINI_API_KEY_FILE:-}
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      RAG_VECTOR_STORE: ${RAG_VECTOR_STORE:-pgvector}
+      RAG_ADMIN_USER_IDS: ${RAG_ADMIN_USER_IDS:-}
+      RAG_DEFAULT_KNOWLEDGE_BASE_ID: ${RAG_DEFAULT_KNOWLEDGE_BASE_ID:-}
+      RAG_INTERNAL_OWNER_USER_ID: ${RAG_INTERNAL_OWNER_USER_ID:-}
+      RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID: ${RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID:-false}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-2}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-256}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_API_KEY_FILE: ${EMBEDDING_API_KEY_FILE:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_SECRET_STRICT: "true"
+      PROVIDER_RATE_LIMITS_JSON: ${PROVIDER_RATE_LIMITS_JSON:-{}}
+      PROVIDER_DEFAULT_RPM: ${PROVIDER_DEFAULT_RPM:-100000}
+      PROVIDER_DEFAULT_TPM: ${PROVIDER_DEFAULT_TPM:-1000000}
+      PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-1024}
+      RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
+      STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      REAPER_ENABLED: ${REAPER_ENABLED:-true}
+      REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
+      REAPER_STALE_AFTER_S: ${REAPER_STALE_AFTER_S:-300}
+      REAPER_MAX_ATTEMPTS: ${REAPER_MAX_ATTEMPTS:-3}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2).read()\"",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: dockerhost/Dockerfile
+    command:
+      [
+        "python",
+        "-m",
+        "celery",
+        "-A",
+        "app.tasks.celery_app:celery_app",
+        "worker",
+        "-l",
+        "info",
+        "--pool",
+        "${WORKER_POOL:-prefork}",
+        "--concurrency",
+        "${WORKER_CONCURRENCY:-2}",
+        "-Q",
+        "q.run,q.intent,q.rag,q.tool,q.llm,q.compose",
+      ]
+    environment:
+      LOG_LEVEL: INFO
+      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/agent
+      REDIS_URL: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://cache:6379/1
+      CELERY_RESULT_BACKEND: redis://cache:6379/2
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY_FILE: ${OPENAI_API_KEY_FILE:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_API_KEY_FILE: ${DASHSCOPE_API_KEY_FILE:-}
+      ZAI_BASE_URL: ${ZAI_BASE_URL:-https://api.z.ai/api/paas/v4/}
+      ZAI_MODEL: ${ZAI_MODEL:-glm-5.2}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      ZAI_API_KEY_FILE: ${ZAI_API_KEY_FILE:-}
+      ZAI_THINKING_TYPE: ${ZAI_THINKING_TYPE:-enabled}
+      ZAI_REASONING_EFFORT: ${ZAI_REASONING_EFFORT:-max}
+      ZAI_TOOL_STREAM: ${ZAI_TOOL_STREAM:-true}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_API_KEY_FILE: ${ANTHROPIC_API_KEY_FILE:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_FILE: ${GEMINI_API_KEY_FILE:-}
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      RAG_VECTOR_STORE: ${RAG_VECTOR_STORE:-pgvector}
+      RAG_ADMIN_USER_IDS: ${RAG_ADMIN_USER_IDS:-}
+      RAG_DEFAULT_KNOWLEDGE_BASE_ID: ${RAG_DEFAULT_KNOWLEDGE_BASE_ID:-}
+      RAG_INTERNAL_OWNER_USER_ID: ${RAG_INTERNAL_OWNER_USER_ID:-}
+      RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID: ${RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID:-false}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-2}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-256}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_API_KEY_FILE: ${EMBEDDING_API_KEY_FILE:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_SECRET_STRICT: "true"
+      PROVIDER_RATE_LIMITS_JSON: ${PROVIDER_RATE_LIMITS_JSON:-{}}
+      PROVIDER_DEFAULT_RPM: ${PROVIDER_DEFAULT_RPM:-100000}
+      PROVIDER_DEFAULT_TPM: ${PROVIDER_DEFAULT_TPM:-1000000}
+      PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-1024}
+      RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
+      STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      REAPER_ENABLED: ${REAPER_ENABLED:-true}
+      REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
+      REAPER_STALE_AFTER_S: ${REAPER_STALE_AFTER_S:-300}
+      REAPER_MAX_ATTEMPTS: ${REAPER_MAX_ATTEMPTS:-3}
+      WORKER_POOL: ${WORKER_POOL:-prefork}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -m celery -A app.tasks.celery_app:celery_app inspect ping --timeout=5 >/tmp/celery-ping.log 2>&1 || exit 1",
+        ]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 30s
+
+  reaper:
+    build:
+      context: ..
+      dockerfile: dockerhost/Dockerfile
+    command:
+      [
+        "python",
+        "-m",
+        "app.tasks.reaper",
+        "--interval-s",
+        "${REAPER_INTERVAL_S:-30}",
+        "--stale-after-s",
+        "${REAPER_STALE_AFTER_S:-300}",
+        "--max-attempts",
+        "${REAPER_MAX_ATTEMPTS:-3}",
+      ]
+    environment:
+      LOG_LEVEL: INFO
+      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/agent
+      REDIS_URL: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://cache:6379/1
+      CELERY_RESULT_BACKEND: redis://cache:6379/2
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      ZAI_MODEL: ${ZAI_MODEL:-glm-5.2}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      ZAI_API_KEY_FILE: ${ZAI_API_KEY_FILE:-}
+      PROVIDER_SECRET_STRICT: "true"
+      PROVIDER_RATE_LIMITS_JSON: ${PROVIDER_RATE_LIMITS_JSON:-{}}
+      PROVIDER_DEFAULT_RPM: ${PROVIDER_DEFAULT_RPM:-100000}
+      PROVIDER_DEFAULT_TPM: ${PROVIDER_DEFAULT_TPM:-1000000}
+      PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-1024}
+      RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
+      STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      REAPER_ENABLED: ${REAPER_ENABLED:-true}
+      REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
+      REAPER_STALE_AFTER_S: ${REAPER_STALE_AFTER_S:-300}
+      REAPER_MAX_ATTEMPTS: ${REAPER_MAX_ATTEMPTS:-3}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -m app.tasks.reaper --once --dry-run --stale-after-s ${REAPER_STALE_AFTER_S:-300} --max-attempts ${REAPER_MAX_ATTEMPTS:-3} >/tmp/reaper-health.log 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 12s
+      retries: 4
+      start_period: 30s
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agent
+    expose:
+      - "5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../app/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  postgres-data:

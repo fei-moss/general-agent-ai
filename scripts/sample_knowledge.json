@@ -1,0 +1,32 @@
+[
+  {
+    "id": "kb_001",
+    "title": "什么是通用 Agent",
+    "text": "通用 Agent 是一种能够理解自然语言意图、规划多步骤任务、调用工具并整合检索知识来完成目标的智能体。它通常包含意图识别、检索增强生成(RAG)、工具调用与结果组合四个核心阶段。",
+    "tags": ["agent", "overview"]
+  },
+  {
+    "id": "kb_002",
+    "title": "检索增强生成 RAG",
+    "text": "RAG(Retrieval-Augmented Generation)先把用户问题向量化,在向量库中检索语义最相近的若干文档片段,再把这些片段作为上下文拼入提示词,交给大模型生成有依据的答案,从而降低幻觉并支持私有知识问答。",
+    "tags": ["rag", "retrieval"]
+  },
+  {
+    "id": "kb_003",
+    "title": "事件流与流式输出",
+    "text": "系统通过 Redis Pub/Sub 按 agent_run_id 划分频道广播 AgentEvent 事件,客户端可经 SSE 或 WebSocket 订阅。事件按 seq 单调递增,支持断线后从指定序号回放,常见类型包括 RUN_STARTED、TOKEN、RESULT_COMPOSED 与 RUN_COMPLETED。",
+    "tags": ["events", "streaming"]
+  },
+  {
+    "id": "kb_004",
+    "title": "Celery 异步任务编排",
+    "text": "长耗时的 Agent 运行被拆分为 intent、rag、tool、llm 等子任务,通过 Celery 投递到 q.intent / q.rag / q.tool / q.llm 队列异步执行。每个子任务的状态记录在 task_state 表,失败时按 attempt 计数进行退避重试与恢复。",
+    "tags": ["celery", "tasks"]
+  },
+  {
+    "id": "kb_005",
+    "title": "Mock LLM 与 Hash Embedder",
+    "text": "为保证零外部依赖即可端到端演示,系统内置 MockLLMProvider(流式逐 token 回显并基于 RAG 上下文套用模板回答)与 HashEmbedder(用哈希生成确定性向量,无需任何模型权重)。通过环境变量 LLM_PROVIDER 可切换到真实的 OpenAI 兼容或 Anthropic 后端。",
+    "tags": ["mock", "llm", "embedding"]
+  }
+]

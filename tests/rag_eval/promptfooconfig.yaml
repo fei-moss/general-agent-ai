@@ -1,0 +1,21 @@
+description: "SPEC-RAG-EVAL-001 retrieval-only RAG eval"
+
+prompts:
+  - "{{query}}"
+
+providers:
+  - id: "file://provider.py"
+    label: "local-rag-retriever"
+    config:
+      pythonExecutable: ".venv/bin/python"
+      corpus_path: "corpus.jsonl"
+      embedding_provider: "hash"
+      embedding_model: "hash"
+      embedding_dim: 256
+      rag_chunk_size: 512
+      rag_chunk_overlap: 80
+      retrieval_top_k: 3
+      timeout_s: 30
+
+tests:
+  - "file://test_cases.py:generate_tests"

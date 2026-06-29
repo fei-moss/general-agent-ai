@@ -1,0 +1,56 @@
+{
+  "canonical_source_policy": {
+    "excluded_as_duplicates": [
+      "handbook_zh translations",
+      "moss-handbook-korean translations"
+    ],
+    "included_priorities": [
+      "P0",
+      "P1",
+      "P2"
+    ],
+    "primary_language": "en",
+    "source_index": "https://moss-5.gitbook.io/moss/llms.txt"
+  },
+  "coverage_contract_id": "SPEC-RAG-EVAL-001-MOSS-COVERAGE",
+  "embedding_target": {
+    "dimension": 256,
+    "model": "gemini-embedding-2",
+    "provider": "gemini",
+    "requires_allowed_network": true
+  },
+  "knowledge_base": {
+    "description": "Expanded reviewed source-backed MOSS Wiki corpus for retrieval evaluation and persistent RAG ingestion.",
+    "name": "MOSS Wiki",
+    "source_root_url": "https://moss-5.gitbook.io/moss",
+    "visibility": "internal_eval_seed"
+  },
+  "manifest_id": "moss-wiki-rag-seed-v2",
+  "source_files": [
+    {
+      "path": "tests/rag_eval/moss_corpus.jsonl",
+      "role": "corpus",
+      "row_count": 40,
+      "sha256": "e699dec690acbc33e73fc4f707eec01bc23f5a40611d25145bccbb95da8fe310"
+    },
+    {
+      "path": "tests/rag_eval/moss_golden_queries.jsonl",
+      "role": "golden_queries",
+      "row_count": 79,
+      "sha256": "f127ef7b150d33e8a169953a116f063457e7c68bab2ffb53a22c5e5a02959a0c"
+    },
+    {
+      "path": "tests/rag_eval/moss_golden_query_review.jsonl",
+      "role": "review_evidence",
+      "row_count": 79,
+      "sha256": "e7e5e2ddba4dcb7a6df7d1e3eee7cad97c5f7311ed5d1404acaf24b3e465e7af"
+    },
+    {
+      "path": "tests/rag_eval/moss_coverage_contract.json",
+      "role": "coverage_contract",
+      "row_count": null,
+      "sha256": "3cbcf5673dd2e18876e2938f2988d1016f9d018949c716d22ade2a456f82ca9c"
+    }
+  ],
+  "spec_id": "SPEC-RAG-EVAL-001"
+}

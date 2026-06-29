@@ -1,0 +1,21 @@
+description: "SPEC-RAG-EVAL-001 MOSS Wiki reviewed semantic retrieval eval"
+
+prompts:
+  - "{{query}}"
+
+providers:
+  - id: "file://provider.py"
+    label: "moss-rag-retriever"
+    config:
+      pythonExecutable: ".venv/bin/python"
+      corpus_path: "moss_corpus.jsonl"
+      embedding_provider: "gemini"
+      embedding_model: "gemini-embedding-2"
+      embedding_dim: 256
+      rag_chunk_size: 512
+      rag_chunk_overlap: 80
+      retrieval_top_k: 5
+      timeout_s: 60
+
+tests:
+  - "file://moss_test_cases.py:generate_tests"

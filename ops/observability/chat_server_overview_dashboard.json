@@ -1,0 +1,390 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [
+    {
+      "title": "Runbook",
+      "type": "link",
+      "url": "docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum by (route, status, runtime_mode) (rate(chat_requests_total{job=~\"$job\", env=~\"$env\"}[5m]))",
+          "legendFormat": "{{route}} {{status}} {{runtime_mode}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "sum(rate(chat_requests_total{job=~\"$job\", env=~\"$env\", status=~\"5..\"}[5m])) / clamp_min(sum(rate(chat_requests_total{job=~\"$job\", env=~\"$env\"}[5m])), 1)",
+          "legendFormat": "5xx ratio",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(chat_requests_total{job=~\"$job\", env=~\"$env\", status=~\"4..\"}[5m])) / clamp_min(sum(rate(chat_requests_total{job=~\"$job\", env=~\"$env\"}[5m])), 1)",
+          "legendFormat": "4xx ratio",
+          "refId": "B"
+        }
+      ],
+      "title": "API error rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "max by (provider, model, runtime_mode) (quantile_over_time(0.95, chat_ttft_seconds_last{job=~\"$job\", env=~\"$env\"}[10m]))",
+          "legendFormat": "p95 {{provider}} {{model}} {{runtime_mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (provider, model, runtime_mode) (rate(chat_ttft_seconds_sum{job=~\"$job\", env=~\"$env\"}[5m])) / clamp_min(sum by (provider, model, runtime_mode) (rate(chat_ttft_seconds_count{job=~\"$job\", env=~\"$env\"}[5m])), 1)",
+          "legendFormat": "avg {{provider}} {{model}} {{runtime_mode}}",
+          "refId": "B"
+        }
+      ],
+      "title": "TTFT p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "max by (route, runtime_mode) (quantile_over_time(0.95, chat_stream_token_gap_seconds_last{job=~\"$job\", env=~\"$env\"}[5m]))",
+          "legendFormat": "p95 {{route}} {{runtime_mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (route, runtime_mode) (rate(chat_stream_stalls_total{job=~\"$job\", env=~\"$env\"}[5m]))",
+          "legendFormat": "stalls {{route}} {{runtime_mode}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Stream token gap p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum by (provider, model) (rate(provider_errors_total{job=~\"$job\", env=~\"$env\", status_code=\"429\"}[5m]))",
+          "legendFormat": "429 {{provider}} {{model}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (provider, model) (rate(provider_errors_total{job=~\"$job\", env=~\"$env\", status_code=~\"5..\"}[5m]))",
+          "legendFormat": "5xx {{provider}} {{model}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (provider, model, reason) (rate(provider_rate_limit_decisions_total{job=~\"$job\", env=~\"$env\", reason=~\"RATE_LIMITED|BACKING_OFF|UNAVAILABLE\"}[5m]))",
+          "legendFormat": "limit {{provider}} {{model}} {{reason}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Provider 429 and 5xx",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "max by (queue) (celery_queue_depth{job=~\"$job\", env=~\"$env\"})",
+          "legendFormat": "depth {{queue}}",
+          "refId": "A"
+        },
+        {
+          "expr": "max by (queue) (celery_oldest_queued_age_seconds{job=~\"$job\", env=~\"$env\"})",
+          "legendFormat": "oldest age {{queue}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (queue, state) (rate(celery_tasks_total{job=~\"$job\", env=~\"$env\", state=~\"retry|failure\"}[5m]))",
+          "legendFormat": "{{state}} {{queue}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Celery queue health",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "sum(rate(reaper_runs_total{job=~\"$job\", env=~\"$env\"}[5m]))",
+          "legendFormat": "runs",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(reaper_requeued_total{job=~\"$job\", env=~\"$env\"}[15m]))",
+          "legendFormat": "requeued 15m",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(reaper_failed_total{job=~\"$job\", env=~\"$env\"}[15m]))",
+          "legendFormat": "failed 15m",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(reaper_inspected_total{job=~\"$job\", env=~\"$env\"}[5m]))",
+          "legendFormat": "inspected",
+          "refId": "D"
+        }
+      ],
+      "title": "Reaper recovery",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "not ready"
+                },
+                "1": {
+                  "text": "ready"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "min by (instance, check) (chat_readyz_check{job=~\"$job\", env=~\"$env\", check=~\"db|redis|event_bus|provider_secret|provider_limiter|reaper\"})",
+          "legendFormat": "{{instance}} {{check}}",
+          "refId": "A"
+        },
+        {
+          "expr": "min by (instance) (up{job=~\"$job\", env=~\"$env\"})",
+          "legendFormat": "scrape {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Readiness checks",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "chat-server",
+    "observability",
+    "SPEC-CHAT-OBSERVABILITY-ALERTING-001"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus datasource",
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, env)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Environment",
+        "multi": true,
+        "name": "env",
+        "query": {
+          "query": "label_values(up, env)",
+          "refId": "env"
+        },
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "chat-.*",
+          "value": "chat-.*"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, job)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Job",
+        "multi": true,
+        "name": "job",
+        "query": {
+          "query": "label_values(up, job)",
+          "refId": "job"
+        },
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Chat Server Observability",
+  "uid": "chat-server-observability",
+  "version": 1
+}

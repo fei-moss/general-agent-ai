@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "virtual-small-doc-fix",
+      "request": "Fix a typo in README and run the normal release gate.",
+      "expected_workflow": "HARNESS-FOCUSED-CHANGE",
+      "required_patterns": ["stable-tool-prefix", "resumable-evidence"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Small edits should not pay for unnecessary workflow fan-out."
+    },
+    {
+      "id": "virtual-api-behavior",
+      "request": "Add a new run status field to the API response and persistence model.",
+      "expected_workflow": "HARNESS-SPEC-FIRST-FEATURE",
+      "required_patterns": ["classifier-routing", "adversarial-verification", "concrete-feedback"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Runtime and API behavior must be spec-first and verified through concrete release evidence."
+    },
+    {
+      "id": "virtual-user-to-account-refactor",
+      "request": "Rename the User domain model to Account across routes, tasks, tests, docs, and event payloads.",
+      "expected_workflow": "HARNESS-WIDE-REFACTOR",
+      "required_patterns": ["fanout-barrier-synthesis", "worktree-isolation", "task-graph"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "A broad rename needs slice isolation, durable task state, synthesis, and adversarial review."
+    },
+    {
+      "id": "virtual-claim-verification",
+      "request": "Verify every factual claim in a release note against code, tests, and logs before publishing.",
+      "expected_workflow": "HARNESS-DEEP-VERIFICATION",
+      "required_patterns": ["adversarial-verification", "agentic-search", "concrete-feedback"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Claim checking must split extraction, evidence lookup, source criticism, and synthesis."
+    },
+    {
+      "id": "virtual-source-backed-research",
+      "request": "Research why provider latency increased by combining code paths, logs, metrics, and vendor notes.",
+      "expected_workflow": "HARNESS-RESEARCH-SYNTHESIS",
+      "required_patterns": ["fanout-barrier-synthesis", "agentic-search", "progressive-disclosure"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Research should fan out by source family and return only cited synthesis."
+    },
+    {
+      "id": "virtual-security-review",
+      "request": "Review a proposed auth middleware change and validate whether it can be bypassed.",
+      "expected_workflow": "HARNESS-SECURITY-REVIEW",
+      "required_patterns": ["quarantine", "adversarial-verification", "concrete-feedback"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Security work needs discovery, validation, and remediation review in separate contexts."
+    },
+    {
+      "id": "virtual-recurring-incidents",
+      "request": "Mine the last six months of incidents, dedupe them, and identify recurring root causes with owners.",
+      "expected_workflow": "HARNESS-INCIDENT-TRIAGE",
+      "required_patterns": ["classifier-routing", "loop-until-done", "quarantine"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Incident triage reads untrusted evidence, dedupes at scale, and escalates without privileged writes."
+    },
+    {
+      "id": "virtual-cli-name-selection",
+      "request": "Generate many names for a CLI tool and choose the top three through rubric-based comparison.",
+      "expected_workflow": "HARNESS-EXPLORATION-TOURNAMENT",
+      "required_patterns": ["tournament-selection", "generate-and-filter", "human-in-loop-artifacts"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Taste-based selection is better handled by alternatives, rubric, and tournament judgment."
+    },
+    {
+      "id": "virtual-multi-session-platform-upgrade",
+      "request": "Coordinate a platform upgrade across several sessions where subtasks have blockers and dependencies.",
+      "expected_workflow": "HARNESS-LONG-RUN-TASK-GRAPH",
+      "required_patterns": ["task-graph", "loop-until-done", "resumable-evidence"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Long-running work needs durable task metadata, dependencies, blockers, and resumable evidence."
+    },
+    {
+      "id": "virtual-feature-flag-editor",
+      "request": "Build a one-off HTML editor for feature flags that warns about dependency conflicts and exports a JSON diff.",
+      "expected_workflow": "HARNESS-INTERACTIVE-ARTIFACT",
+      "required_patterns": ["human-in-loop-artifacts", "visual-feedback", "concrete-feedback"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Interactive artifacts are the right fit when a human must tune structured data and export changes."
+    },
+    {
+      "id": "virtual-recurring-review-comments",
+      "request": "Mine repeated review corrections and turn the survivors into a reusable repo skill with gotchas and scripts.",
+      "expected_workflow": "HARNESS-SKILL-EVOLUTION",
+      "required_patterns": ["progressive-disclosure", "agentic-search", "adversarial-verification"],
+      "required_strategies": ["context_strategy", "tool_policy", "state_strategy", "artifact_strategy"],
+      "rationale": "Skill evolution should ground rules in real corrections and test that they change future behavior."
+    }
+  ]
+}
