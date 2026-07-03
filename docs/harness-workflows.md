@@ -1,156 +1,196 @@
 # Harness Workflows
 
-This project has two Harness layers:
+This project has two harness layers:
 
-1. **Release harness:** hard, tool-neutral verification in `scripts/verify_release.sh`.
-2. **Task workflow harness:** documented `HARNESS-*` execution shapes for choosing when AI work should stay focused and when it should use specs, parallel agents, worktrees, adversarial review, loops, quarantine, runtime feedback, eval improvement, artifacts, or skills.
+1. **Release harness:** hard, tool-neutral checks in `scripts/verify_release.sh`.
+2. **Task workflow harness:** a documented execution shape for choosing when to use one agent, many agents, worktrees, adversarial verification, loops, task ledgers, agent-legible runtime surfaces, skills, or quarantined readers.
 
-Dynamic workflows guide how work is performed. They do not replace release gates, owner approval, provider guardrails, secret hygiene, or `.ai-boundaries.yml`.
+Dynamic task workflows can improve broad or adversarial AI work, but they do not replace the release harness. The final prerelease authority remains `scripts/verify_release.sh`.
 
 ## Source Traceability
 
-The workflow catalog is derived from official OpenAI, Codex, Anthropic, and Claude sources. The traceable source and principle matrix lives in `docs/harness-source-analysis.md`.
+The workflow catalog is derived from official Claude Code, Anthropic, OpenAI, and Codex sources. The traceable source and principle matrix lives in `docs/harness-source-analysis.md`.
 
 Every workflow class in `docs/harness-workflows.json` must declare:
 
 - `source_ids`: official sources that justify the workflow.
 - `principle_ids`: adopted principles from the source analysis.
-- context, tool, state, artifact, isolation, verification, budget, evidence, and escalation strategies.
+- `agent_team`: whether an Agent Team is recommended, optional, or usually avoided, with use cases, avoid cases, coordination shape, and evidence expectations.
 
-The validator checks those IDs and references so the project does not drift into undocumented agent folklore.
+The validator checks those IDs so this project does not drift into undocumented agent folklore.
 
 ## Core Patterns
 
 | Pattern | Meaning |
 | --- | --- |
-| `classifier-routing` | Classify the task before choosing workflow, model, agent, or next action. |
+| `classifier-routing` | Use a classifier step to choose workflow class, model, agent, or next action. |
 | `fanout-barrier-synthesis` | Split work into parallel slices, wait for all results, then synthesize. |
-| `adversarial-verification` | Verify outputs with a separate pass or agent against a rubric. |
+| `adversarial-verification` | Verify outputs with a separate agent or pass against a rubric. |
 | `generate-filter` | Generate multiple candidates, filter against constraints, then keep only reviewed winners. |
-| `generate-and-filter` | Project-local alias for generate and filter workflows. |
 | `tournament-selection` | Let multiple alternatives compete through pairwise or rubric-based judgment. |
 | `loop-until-done` | Repeat until a stop condition is met, not for a fixed number of passes. |
-| `quarantine` | Separate agents that read untrusted content from agents that perform privileged writes. |
+| `quarantine` | Separate agents that read untrusted content from agents that perform privileged actions. |
 | `model-routing` | Choose model intelligence based on expected complexity and tool-call shape. |
 | `worktree-isolation` | Run broad or risky slices in isolated git worktrees before synthesis. |
 | `token-budget` | Declare budget and parallelism before increasing compute. |
 | `resumable-evidence` | Write durable artifacts so interrupted work can be resumed or audited. |
 | `source-traceability` | Preserve source IDs, source URLs, and principle IDs for workflow design choices. |
-| `progressive-disclosure` | Keep entry instructions small and load references, scripts, or details only when needed. |
-| `agentic-search` | Search files, logs, sources, and runtime state transparently before adding opaque retrieval. |
-| `task-graph` | Track long work as explicit tasks, blockers, owners, dependencies, and evidence. |
+| `progressive-disclosure` | Keep entry instructions small and load references, scripts, and details only when needed. |
 | `cache-safe-prefix` | Preserve stable instructions, tool surfaces, and append-only context where possible. |
-| `cache-safe-forking` | Project-local alias for cache-safe context handoff and delegation. |
-| `stable-tool-prefix` | Keep tool surfaces stable inside a session; route dynamic behavior through messages or deferred loading. |
-| `deferred-tool-loading` | Load heavy tool schemas only after a lightweight selector chooses them. |
-| `artifact-review` | Produce dense review artifacts for human and verifier inspection when complexity justifies them. |
-| `human-in-loop-artifacts` | Use reviewable artifacts when humans need to inspect, compare, tune, or export decisions. |
+| `task-graph` | Track long work as an explicit graph or ledger of tasks, blockers, owners, and evidence. |
+| `artifact-review` | Produce dense review artifacts, including HTML when useful, for human and verifier inspection. |
 | `agent-legibility` | Make app state, repo maps, logs, metrics, traces, and UI state easy for agents to inspect. |
 | `runtime-feedback` | Let agents run the system, interact with it, and inspect feedback from the real runtime. |
-| `trajectory-review` | Review the action sequence and decisions, not only the final diff. |
+| `trajectory-review` | Review the agent's action sequence and decisions, not only the final diff. |
 | `eval-improvement-loop` | Convert repeated failures into evals, tests, scripts, hooks, or skill improvements. |
 | `mechanical-invariants` | Encode repeated correctness rules in scripts, linters, tests, or CI gates. |
-| `concrete-feedback` | Prefer tests, linters, screenshots, state assertions, and release gates before fuzzy judging. |
-| `visual-feedback` | Use screenshots or interactive checks when visual output affects correctness. |
 | `sandbox-boundary` | Keep autonomy inside explicit filesystem, network, command, approval, and credential boundaries. |
+| `permission-classifier` | Classify actions by risk before deciding whether they can run automatically, require approval, or are forbidden. |
+| `credential-vaulting` | Keep secrets outside prompts, docs, logs, and artifacts; pass only scoped references to runtime commands. |
+| `session-interface` | Separate reasoning, execution, transport, state persistence, replay, and operator controls in long-running or remote sessions. |
+| `agent-native-telemetry` | Emit agent-legible events, state transitions, risk signals, and pause or kill evidence. |
+| `tool-context-economy` | Design tools and MCP surfaces to return compact, task-shaped context instead of noisy raw state. |
+| `eval-noise-calibration` | Separate model behavior from flaky infrastructure, evaluator bias, and harness noise before changing gates. |
 | `hook-gate` | Use lifecycle hooks or equivalent mechanical checks for repeated safety or quality gates. |
 | `context-reset` | Use fresh sessions, compaction checkpoints, or handoff notes to avoid stale context. |
 | `skill-packaging` | Turn repeated workflows into focused skills with triggers, references, scripts, and tests. |
 | `human-escalation` | Route product, safety, credential, or irreversible decisions to a human instead of hiding assumptions. |
 
+## Agent Team Suitability
+
+Agent Teams are recommended when they create independent work or independent judgment. They are not required for every workflow, and forcing them onto tight sequential work usually adds coordination cost without improving correctness.
+
+Each workflow class declares one suitability level:
+
+| Suitability | Meaning |
+| --- | --- |
+| `recommended` | Prefer an Agent Team when local resources and task boundaries allow it. Keep one synthesis owner. |
+| `optional` | Consider an Agent Team only after the task splits into independent slices, reviewers, or hypotheses. |
+| `avoid` | Stay single-agent unless the task grows beyond the focused-change assumptions. |
+
+Use Agent Teams for:
+
+- independent implementation slices or package-level refactors
+- breadth-first research across unrelated source families
+- separate claim extraction, source review, and adversarial verification
+- candidate generation plus rubric-based judging
+- long-running task graph nodes with clear owners and stop conditions
+
+Avoid Agent Teams when:
+
+- the change fits in one context window with obvious verification
+- the work is strongly sequential or depends on one evolving product decision
+- sensitive credentials, live incident chronology, or fragile local runtime state should stay under one operator
+- the coordination overhead is larger than the expected quality gain
+
+The lead agent remains responsible for synthesis, final review, release evidence, and explaining why an Agent Team was used or skipped when the workflow was not a focused change.
+
+
+## Repository Extension Patterns
+
+| Pattern | Meaning |
+| --- | --- |
+| `human-in-loop-artifacts` | Use reviewable artifacts when humans need to inspect, compare, tune, or export decisions. |
+| `visual-feedback` | Use screenshots or interactive checks when visual output affects correctness. |
+| `concrete-feedback` | Prefer tests, linters, screenshots, state assertions, and release gates before fuzzy judging. |
+| `generate-and-filter` | Repository-local alias for generate-filter workflows used by interactive review artifacts. |
+
 ## Workflow Classes
 
 ### HARNESS-FOCUSED-CHANGE
 
-Use for narrow edits that fit in one context window and do not change runtime semantics. Keep execution linear, run focused verification, then run the release harness.
+Use for narrow changes that fit in one context window. Keep execution linear, run focused verification, then run the release harness.
 
 ### HARNESS-SPEC-FIRST-FEATURE
 
-Use for behavior, API, runtime, task, config, provider-limit, secret-management, persistence, prompt, or event-contract changes. Write or update the spec first, plan from the spec, implement, review, and prove readiness with release evidence.
+Use when a request changes behavior, public contracts, jobs, schemas, prompts, or business logic. Write or update the spec first, plan from the spec, implement, review, and prove readiness with release evidence.
 
 ### HARNESS-WIDE-REFACTOR
 
-Use for broad naming, call-site, module, package, or generated-example refactors. Slice the work, use isolated worktrees when useful, review each slice, synthesize, and run release verification.
+Use for broad call-site, module, package, or naming changes. Split the refactor into slices, run isolated worktrees when possible, review each slice, then synthesize and run the release harness.
 
 ### HARNESS-DEEP-VERIFICATION
 
-Use when specs, reports, release notes, or architecture claims must be checked against code, logs, docs, or external evidence before publication or release.
+Use when claims must be checked before publication or release. Extract claims, verify each claim independently, review source quality separately, and remove or mark unsupported claims.
 
 ### HARNESS-RESEARCH-SYNTHESIS
 
-Use for broad source-backed research, including architecture investigations and operational reviews. Fan out evidence collection, verify source quality, synthesize with citations or local references, and preserve uncertainty.
+Use for broad source-backed research. Fan out evidence collection, verify source quality, synthesize with citations or local file references, and preserve uncertainty instead of collapsing contradictions.
 
 ### HARNESS-SECURITY-REVIEW
 
-Use for threat modeling, secret-hygiene review, exploitability analysis, auth review, or remediation review. Quarantine untrusted inputs and separate discovery, validation, remediation, and review.
+Use for security review, threat modeling, exploit validation, or fix review. Separate discovery, exploitability analysis, validation, and remediation review. Quarantine untrusted inputs and escalate suspected production secrets or active exploits.
+
+### HARNESS-AUTONOMY-GOVERNANCE
+
+Use when changing Coding Agent permissions, automatic action modes, sandbox policy, remote or managed execution, credential boundaries, prompt-injection exposure, telemetry, or operator pause/kill controls. Classify actions by risk, prove the sandbox and credential scope, and require independent review before increasing unattended autonomy.
 
 ### HARNESS-INCIDENT-TRIAGE
 
-Use for logs, alerts, recurring incidents, production symptoms, or root-cause analysis. Classify, dedupe, investigate, and escalate with bounded evidence.
+Use for logs, tickets, alerts, recurring root causes, or incident streams. Classify, dedupe, investigate, and escalate with bounded evidence. Use loops only with explicit stop conditions.
 
 ### HARNESS-EXPLORATION-TOURNAMENT
 
-Use for naming, architecture alternatives, API designs, product direction, or strategy options when multiple plausible answers need rubric-driven selection.
+Use for naming, design direction, architecture alternatives, or strategy options. Generate alternatives, judge them against a rubric, and record why the winner beat close competitors.
 
 ### HARNESS-LONG-RUN-TASK-GRAPH
 
-Use for multi-session or multi-subagent work where tasks have dependencies, blockers, owners, status, evidence, and resumable handoff needs.
+Use for multi-session, multi-agent, or long-running work where context can rot or partial completion can hide. Maintain a task graph or ledger with status, evidence, blockers, next action, and clean handoff notes.
 
 ### HARNESS-RUNTIME-LEGIBILITY
 
-Use when changing development environments, app startup, observability, UI feedback, logs, traces, metrics, local smoke paths, or other surfaces that make the running system legible to agents and humans.
+Use when changing development environments, app startup, observability, UI feedback, logs, traces, metrics, local smoke paths, or other surfaces that make the project legible to agents. The workflow proves that an agent can start, inspect, and validate the running system.
 
 ### HARNESS-EVAL-IMPROVEMENT-LOOP
 
-Use when repeated agent mistakes, prompt failures, flaky workflows, or review escapes should become durable tests, evals, scripts, hooks, skills, or checklist changes.
+Use when repeated agent mistakes, prompt failures, flaky workflows, or review escapes need to become durable tests, evals, hooks, scripts, or checklist changes. Review trajectories, capture examples, improve the gate, and rerun the verifier.
 
 ### HARNESS-INTERACTIVE-ARTIFACT
 
-Use when a human needs an HTML or playground-style surface to compare, tune, inspect, or export structured decisions. This is a project extension of the artifact-review pattern.
+Use when a human needs an HTML or playground-style surface to compare, tune, inspect, or export structured decisions. This repository extension uses artifact review, visual feedback, and exportable evidence while keeping release readiness under `scripts/verify_release.sh`.
 
 ### HARNESS-SKILL-EVOLUTION
 
-Use when repeated corrections, runbooks, templates, scripts, and gotchas should become reusable skills or project guidance.
+Use when a repeated workflow should become a reusable skill, plugin, reference, or deterministic script. Keep the skill focused, use progressive disclosure, test trigger behavior, and avoid turning the entry point into an encyclopedia.
 
-## Binding Rule
+## Choosing A Workflow
 
-Every non-template specification under `docs/specifications/` and every implementation plan under `docs/implementation-plans/` must include:
+Start with `HARNESS-FOCUSED-CHANGE`. Escalate only when the task has one of these properties:
 
-```text
-Workflow Class: `HARNESS-...`
-```
+- Many independent slices can run in parallel.
+- The task is long enough that one context may hide partial completion.
+- The result needs independent verification.
+- The input includes untrusted public or production content.
+- The task increases agent autonomy, changes permission or sandbox boundaries, or introduces remote/managed execution.
+- The amount of work is unknown and needs a loop with a stop condition.
+- The answer depends on qualitative ranking or competing alternatives.
+- Model cost or intelligence should be routed by complexity.
+- The runtime, UI, logs, metrics, traces, or local environment must become easier for agents to inspect.
+- Repeated agent failures should become evals, scripts, hooks, or skills.
+- The work needs a durable task graph, compaction checkpoint, or handoff ledger.
 
-`scripts/check_harness_workflows.sh` enforces that each binding points to a workflow class in `docs/harness-workflows.json`.
-
-## Harness Self-Spec
-
-The workflow framework itself is covered by `SPEC-HARNESS-WORKFLOW-001` under `docs/specifications/harness_workflows/`. That directory records invariants, behavior scenarios, performance expectations, and the Harness binding for future workflow changes.
-
-## Virtual Requirement Tests
-
-`docs/harness-virtual-requirements.json` contains synthetic requests that exercise the framework:
-
-- small focused edit
-- API or runtime behavior change
-- broad refactor
-- factual claim verification
-- source-backed research
-- security review
-- incident triage
-- naming tournament
-- multi-session task graph
-- runtime legibility
-- eval improvement loop
-- interactive feature-flag editor
-- recurring-review skill evolution
-
-The validator fails if a virtual request points to a missing workflow, requires a pattern the workflow does not declare, or expects missing context, tool, state, or artifact strategy.
+After choosing the workflow class, read its `agent_team` block. Use that block to decide whether to stay single-agent, add a reviewer, split into parallel slice agents, or run candidate/judge agents. The decision should follow the task shape and available verification, not a blanket rule.
 
 ## Evidence Contract
 
-Workflow evidence should live under `.artifacts/` and may include release summaries, focused test logs, per-slice notes, task ledgers, claim verification tables, source lists, review rubrics, runtime smoke logs, screenshots, traces, metrics snapshots, trajectory review notes, eval output, skill trigger tests, and unresolved blocker lists.
+Each workflow class in `docs/harness-workflows.json` declares required evidence paths. Evidence should live under `.artifacts/` and may include:
 
-Chat summaries are useful context, but they are not release evidence. The final prerelease authority remains `scripts/verify_release.sh`.
+- release summaries from `scripts/verify_release.sh`
+- per-slice logs
+- task graphs or handoff ledgers
+- claim verification tables
+- review rubrics
+- source lists
+- runtime smoke logs, screenshots, traces, or metrics snapshots
+- trajectory review notes
+- eval or hook regression output
+- skill trigger tests
+- synthesis notes
+- unresolved blocker lists
+
+Chat summaries are useful context, but they are not release evidence.
+
+Every non-template markdown specification under `docs/specifications/` and every implementation plan under `docs/implementation-plans/` must include a `Workflow Class: HARNESS-*` binding. `docs/harness-virtual-requirements.json` remains the regression set for expected workflow routing. This makes the workflow choice part of new-demand development instead of an optional chat convention.
 
 ## Guardrails
 
@@ -159,6 +199,7 @@ Chat summaries are useful context, but they are not release evidence. The final 
 - Workflow scripts and AI-tool wrappers must not become the only enforcement point.
 - A workflow that consumes untrusted content must not directly perform privileged writes.
 - A workflow that uses extra parallelism must declare budget and stop conditions first.
+- A workflow should not spawn an Agent Team unless the `agent_team` suitability and current task shape justify the coordination cost.
 - Source traceability supports but does not replace current-state verification.
-- Cache-safe context practices must never override sandbox, approval, credential, provider-limit, or release-gate boundaries.
-- Rich artifacts are review aids, not substitutes for specs, tests, and release evidence.
+- Cache-safe context practices must never override sandbox, approval, credential, or release-gate boundaries.
+- Rich artifacts are review aids; they are not a substitute for spec, tests, and release evidence.

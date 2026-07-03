@@ -23,6 +23,55 @@
       "status": "adopted"
     },
     {
+      "id": "openai-codex-maxxing",
+      "provider": "OpenAI",
+      "title": "Codex-maxxing for long-running work",
+      "url": "https://openai.com/index/codex-maxxing-long-running-work/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-codex-safety-governance",
+      "provider": "OpenAI",
+      "title": "Running Codex safely at OpenAI",
+      "url": "https://openai.com/index/running-codex-safely/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-codex-windows-sandbox",
+      "provider": "OpenAI",
+      "title": "Building a safe, effective sandbox for Codex on Windows",
+      "url": "https://openai.com/index/building-a-safe-effective-sandbox-for-codex-on-windows/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-agent-computer-environment",
+      "provider": "OpenAI",
+      "title": "From model to agent: Equipping the Responses API with a computer environment",
+      "url": "https://openai.com/index/from-model-to-agent-equipping-the-responses-api-with-a-computer-environment/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-agentic-websockets",
+      "provider": "OpenAI",
+      "title": "Speeding up agentic workflows with WebSockets in the Responses API",
+      "url": "https://openai.com/index/speeding-up-agentic-workflows-with-websockets-in-the-responses-api/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-prompt-injection",
+      "provider": "OpenAI",
+      "title": "Designing AI agents to resist indirect prompt injection",
+      "url": "https://openai.com/index/designing-agents-to-resist-prompt-injection/",
+      "status": "adopted"
+    },
+    {
+      "id": "openai-agent-misalignment-monitoring",
+      "provider": "OpenAI",
+      "title": "How we monitor internal coding agents for misalignment",
+      "url": "https://openai.com/index/how-we-monitor-internal-coding-agents-misalignment/",
+      "status": "adopted"
+    },
+    {
       "id": "claude-dynamic-workflows",
       "provider": "Anthropic",
       "title": "A harness for every task: dynamic workflows in Claude Code",
@@ -44,6 +93,13 @@
       "status": "adopted"
     },
     {
+      "id": "claude-multi-agent-research",
+      "provider": "Anthropic",
+      "title": "How we built our multi-agent research system",
+      "url": "https://www.anthropic.com/engineering/multi-agent-research-system",
+      "status": "reference"
+    },
+    {
       "id": "claude-skills",
       "provider": "Anthropic",
       "title": "Lessons from building Claude Code: how we use skills",
@@ -63,6 +119,69 @@
       "title": "Using Claude Code: the unreasonable effectiveness of HTML",
       "url": "https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html",
       "status": "adopted"
+    },
+    {
+      "id": "claude-code-best-practices",
+      "provider": "Anthropic",
+      "title": "Claude Code: Best practices for agentic coding",
+      "url": "https://code.claude.com/docs/en/best-practices",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-auto-mode",
+      "provider": "Anthropic",
+      "title": "How we built Claude Code's auto mode",
+      "url": "https://www.anthropic.com/engineering/claude-code-auto-mode",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-sandboxing",
+      "provider": "Anthropic",
+      "title": "Beyond permission prompts: making Claude Code more secure and autonomous with sandboxing",
+      "url": "https://www.anthropic.com/engineering/claude-code-sandboxing",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-managed-agents",
+      "provider": "Anthropic",
+      "title": "Scaling Managed Agents: Decoupling the brain from the hands",
+      "url": "https://www.anthropic.com/engineering/managed-agents",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-context-engineering",
+      "provider": "Anthropic",
+      "title": "Effective context engineering for AI agents",
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-tool-design",
+      "provider": "Anthropic",
+      "title": "Writing effective tools for agents - with agents",
+      "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-code-execution-mcp",
+      "provider": "Anthropic",
+      "title": "Code execution with MCP: Building more efficient agents",
+      "url": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-infrastructure-noise",
+      "provider": "Anthropic",
+      "title": "Quantifying infrastructure noise in Claude Code",
+      "url": "https://www.anthropic.com/engineering/infrastructure-noise",
+      "status": "adopted"
+    },
+    {
+      "id": "claude-agent-evals",
+      "provider": "Anthropic",
+      "title": "Demystifying evals for AI agents",
+      "url": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+      "status": "adopted"
     }
   ],
   "adopted_principles": [
@@ -71,7 +190,8 @@
       "summary": "Workflow design choices must point to official sources and adopted principles.",
       "source_ids": [
         "openai-harness-engineering",
-        "claude-dynamic-workflows"
+        "claude-dynamic-workflows",
+        "claude-code-best-practices"
       ]
     },
     {
@@ -95,8 +215,10 @@
       "summary": "Repos should expose state, logs, metrics, traces, UI feedback, and run commands to agents.",
       "source_ids": [
         "openai-harness-engineering",
+        "openai-codex-safety-governance",
         "claude-long-running-agents",
-        "claude-long-running-apps"
+        "claude-long-running-apps",
+        "claude-managed-agents"
       ]
     },
     {
@@ -104,7 +226,8 @@
       "summary": "Long work needs explicit task state, blockers, evidence, and resumable handoffs.",
       "source_ids": [
         "claude-long-running-agents",
-        "claude-long-running-apps"
+        "claude-long-running-apps",
+        "openai-codex-maxxing"
       ]
     },
     {
@@ -113,7 +236,18 @@
       "source_ids": [
         "claude-dynamic-workflows",
         "claude-long-running-apps",
-        "openai-codex-manual"
+        "openai-codex-manual",
+        "claude-agent-evals"
+      ]
+    },
+    {
+      "id": "agent-team-suitability",
+      "summary": "Agent teams are recommended when work decomposes into independent slices or verification roles, and skipped when coordination overhead exceeds value.",
+      "source_ids": [
+        "openai-harness-engineering",
+        "claude-dynamic-workflows",
+        "claude-multi-agent-research",
+        "claude-managed-agents"
       ]
     },
     {
@@ -121,7 +255,9 @@
       "summary": "Stable prefixes, stable tool surfaces, append-only updates, and compaction hygiene protect long workflows.",
       "source_ids": [
         "claude-prompt-caching",
-        "openai-codex-agent-loop"
+        "openai-codex-agent-loop",
+        "openai-codex-maxxing",
+        "claude-context-engineering"
       ]
     },
     {
@@ -129,7 +265,8 @@
       "summary": "Repeated workflows should become focused skills with concise triggers and lazily loaded references or scripts.",
       "source_ids": [
         "claude-skills",
-        "openai-codex-manual"
+        "openai-codex-manual",
+        "claude-code-best-practices"
       ]
     },
     {
@@ -137,7 +274,13 @@
       "summary": "Untrusted readers, privileged actors, sandbox boundaries, and hook gates stay separate.",
       "source_ids": [
         "claude-dynamic-workflows",
-        "openai-codex-manual"
+        "openai-codex-manual",
+        "openai-codex-safety-governance",
+        "openai-codex-windows-sandbox",
+        "openai-prompt-injection",
+        "openai-agent-misalignment-monitoring",
+        "claude-auto-mode",
+        "claude-sandboxing"
       ]
     },
     {
@@ -145,7 +288,8 @@
       "summary": "Repeated agent failures and repo drift should become mechanical checks or cleanup loops.",
       "source_ids": [
         "openai-harness-engineering",
-        "claude-skills"
+        "claude-skills",
+        "claude-infrastructure-noise"
       ]
     },
     {
@@ -155,29 +299,128 @@
         "claude-html-artifacts",
         "claude-long-running-apps"
       ]
+    },
+    {
+      "id": "autonomy-governance",
+      "summary": "Higher autonomy requires explicit permission classifiers, sandbox constraints, credential boundaries, telemetry, and human escalation paths.",
+      "source_ids": [
+        "openai-codex-safety-governance",
+        "openai-codex-windows-sandbox",
+        "openai-prompt-injection",
+        "claude-auto-mode",
+        "claude-sandboxing"
+      ]
+    },
+    {
+      "id": "session-interface-decoupling",
+      "summary": "Long-running or remote agents should separate reasoning, execution environment, transport, state persistence, and replayable session control.",
+      "source_ids": [
+        "openai-agent-computer-environment",
+        "openai-agentic-websockets",
+        "claude-managed-agents"
+      ]
+    },
+    {
+      "id": "tool-context-economy",
+      "summary": "Tools, MCP servers, and code-execution surfaces should expose compact, task-shaped context instead of forcing agents to parse noisy raw state.",
+      "source_ids": [
+        "openai-agent-computer-environment",
+        "claude-code-best-practices",
+        "claude-context-engineering",
+        "claude-tool-design",
+        "claude-code-execution-mcp"
+      ]
+    },
+    {
+      "id": "eval-infrastructure-calibration",
+      "summary": "Agent evals must separate model behavior from infrastructure noise, flaky harnesses, and evaluator bias before they drive product or gate decisions.",
+      "source_ids": [
+        "openai-codex-agent-loop",
+        "openai-agent-misalignment-monitoring",
+        "claude-infrastructure-noise",
+        "claude-agent-evals"
+      ]
+    },
+    {
+      "id": "operational-telemetry",
+      "summary": "Autonomous agent systems need auditable event streams, risk signals, pause/kill paths, and owner-visible state transitions.",
+      "source_ids": [
+        "openai-codex-safety-governance",
+        "openai-agent-misalignment-monitoring",
+        "openai-harness-engineering",
+        "claude-managed-agents"
+      ]
     }
   ],
   "workflow_classes": [
     {
       "id": "HARNESS-FOCUSED-CHANGE",
       "name": "Focused Change",
-      "purpose": "Use the default release harness for small, well-scoped edits.",
+      "purpose": "Use the default single-agent release harness for small, well-scoped changes.",
       "source_ids": [
         "openai-codex-manual",
         "openai-harness-engineering"
       ],
+      "principle_ids": [
+        "release-gate-hard-authority",
+        "map-not-encyclopedia",
+        "sandbox-and-quarantine",
+        "agent-team-suitability"
+      ],
       "use_when": [
         "The task fits in one context window.",
-        "No API, runtime, persistence, provider, secret, task, or event semantics change.",
-        "Focused verification and release verification are sufficient."
+        "The affected files and verification command are obvious.",
+        "No adversarial review, large fan-out, or repeated loop is needed."
       ],
       "patterns": [
         "token-budget",
         "resumable-evidence",
-        "stable-tool-prefix",
         "progressive-disclosure",
         "sandbox-boundary"
       ],
+      "isolation": {
+        "worktree": "optional",
+        "context": "single-agent",
+        "quarantine_untrusted_inputs": false
+      },
+      "verification": {
+        "primary_command": "scripts/verify_release.sh",
+        "adversarial_review": false,
+        "rubric": [
+          "Specification still matches implementation.",
+          "Focused tests and release gate pass.",
+          "No unrelated files are staged or modified."
+        ]
+      },
+      "stop_conditions": [
+        "Focused verification passes.",
+        "Release harness passes or a blocker is reported."
+      ],
+      "evidence": [
+        ".artifacts/release/summary.json"
+      ],
+      "budget": {
+        "token_budget": "bounded-by-task",
+        "parallelism": "none"
+      },
+      "human_escalation": [
+        "Approval-required or forbidden paths are touched.",
+        "The implementation exposes product semantics that are not in the spec."
+      ],
+      "agent_team": {
+        "suitability": "avoid",
+        "rationale": "Small scoped tasks usually lose more time to coordination than they gain from extra agents.",
+        "use_when": [
+          "Keep one lead agent when the task fits in one context window and verification is obvious."
+        ],
+        "avoid_when": [
+          "Do not create an Agent Team only to satisfy process when no independent slice or reviewer is needed."
+        ],
+        "coordination": "single-lead-agent-with-focused-verification",
+        "evidence": [
+          "Record the Agent Team decision only when the task looks larger than focused-change but is intentionally kept single-agent."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "continue only while the same task context is still load-bearing",
         "context_rot": "start a fresh session for genuinely new tasks",
@@ -198,66 +441,83 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/release/summary.json"
-      },
-      "isolation": {
-        "worktree": "optional",
-        "context": "single-agent",
-        "quarantine_untrusted_inputs": false
-      },
-      "verification": {
-        "primary_command": "scripts/verify_release.sh",
-        "adversarial_review": false,
-        "rubric": [
-          "No unrelated files are changed.",
-          "Focused tests and release gate pass.",
-          "Docs or comments match final behavior."
-        ]
-      },
-      "stop_conditions": [
-        "Focused verification passes.",
-        "Release harness passes or a blocker is reported."
-      ],
-      "evidence": [
-        ".artifacts/release/summary.json"
-      ],
-      "budget": {
-        "token_budget": "bounded-by-task",
-        "parallelism": "none"
-      },
-      "human_escalation": [
-        "Approval-required paths are touched.",
-        "A behavior change is discovered."
-      ],
-      "principle_ids": [
-        "release-gate-hard-authority",
-        "map-not-encyclopedia",
-        "sandbox-and-quarantine"
-      ]
+      }
     },
     {
       "id": "HARNESS-SPEC-FIRST-FEATURE",
       "name": "Spec-first Feature",
-      "purpose": "Turn requests into spec-backed implementation, review, and release evidence.",
+      "purpose": "Turn a feature request or PRD into a spec-backed implementation and release evidence.",
       "source_ids": [
         "openai-codex-manual",
         "openai-harness-engineering",
         "claude-dynamic-workflows"
       ],
+      "principle_ids": [
+        "source-traceability",
+        "release-gate-hard-authority",
+        "external-evaluator-loop",
+        "agent-team-suitability"
+      ],
       "use_when": [
-        "The task changes API, runtime, event, task, config, provider, secret, DB, or persistence behavior.",
-        "Acceptance criteria need to be made executable.",
-        "The work must survive future AI-tool handoffs."
+        "The task changes behavior, public contracts, jobs, schemas, prompts, or business logic.",
+        "Acceptance criteria need to be made executable before implementation.",
+        "The change must survive future AI-tool handoffs."
       ],
       "patterns": [
         "classifier-routing",
         "adversarial-verification",
-        "resumable-evidence",
-        "token-budget",
-        "concrete-feedback",
-        "stable-tool-prefix",
         "source-traceability",
-        "artifact-review"
+        "progressive-disclosure",
+        "artifact-review",
+        "resumable-evidence",
+        "token-budget"
       ],
+      "isolation": {
+        "worktree": "optional",
+        "context": "spec-plan-implementation-review",
+        "quarantine_untrusted_inputs": false
+      },
+      "verification": {
+        "primary_command": "scripts/verify_release.sh",
+        "adversarial_review": true,
+        "rubric": [
+          "Spec IDs are present and referenced by changed behavior.",
+          "Implementation follows the spec rather than raw chat.",
+          "Review finds no untested contract, migration, money, or observability regression."
+        ]
+      },
+      "stop_conditions": [
+        "Spec, plan, code, review, and harness evidence are aligned.",
+        "Unresolved product gaps are escalated instead of hidden in code."
+      ],
+      "evidence": [
+        ".artifacts/release/spec_contract.json",
+        ".artifacts/release/summary.json"
+      ],
+      "budget": {
+        "token_budget": "explicit-for-large-features",
+        "parallelism": "low"
+      },
+      "human_escalation": [
+        "A public API, money movement, schema, migration, or approval-required path changes.",
+        "Spec-contract exemption would be required."
+      ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Feature work benefits from a second agent only after the spec exposes independent implementation, review, or verification roles.",
+        "use_when": [
+          "Use a reviewer agent for contract, migration, money, or observability risk.",
+          "Use slice agents when the approved plan separates cleanly by module or workflow."
+        ],
+        "avoid_when": [
+          "Stay single-agent while product semantics are still ambiguous or the spec is not reviewed.",
+          "Avoid parallel implementation when every task depends on the same evolving context."
+        ],
+        "coordination": "lead-agent-owns-spec-and-synthesizes-reviewed-slices",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep per-agent findings and synthesis notes with the spec or release evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "write or update the spec before implementation and start fresh if the task changes",
         "context_rot": "compact with explicit spec ids, excluded approaches, and remaining acceptance criteria",
@@ -278,67 +538,82 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/release/summary.json"
-      },
+      }
+    },
+    {
+      "id": "HARNESS-WIDE-REFACTOR",
+      "name": "Wide Refactor",
+      "purpose": "Coordinate broad mechanical or semantic changes across many files without losing coverage.",
+      "source_ids": [
+        "openai-codex-manual",
+        "openai-harness-engineering",
+        "claude-dynamic-workflows"
+      ],
+      "principle_ids": [
+        "external-evaluator-loop",
+        "continuous-garbage-collection",
+        "sandbox-and-quarantine",
+        "agent-team-suitability"
+      ],
+      "use_when": [
+        "The change touches many call sites, modules, packages, or generated examples.",
+        "Independent fixes can be run in parallel.",
+        "Cross-contamination between attempts would reduce review quality."
+      ],
+      "patterns": [
+        "fanout-barrier-synthesis",
+        "adversarial-verification",
+        "worktree-isolation",
+        "mechanical-invariants",
+        "token-budget",
+        "resumable-evidence"
+      ],
       "isolation": {
-        "worktree": "optional",
-        "context": "spec-plan-implementation-review",
+        "worktree": "required",
+        "context": "one-agent-per-slice-plus-synthesis",
         "quarantine_untrusted_inputs": false
       },
       "verification": {
         "primary_command": "scripts/verify_release.sh",
         "adversarial_review": true,
         "rubric": [
-          "Spec IDs and workflow class are present.",
-          "Implementation follows the spec rather than raw chat.",
-          "Review finds no untested contract, auth, event, provider, secret, or persistence regression."
+          "Each slice has focused verification.",
+          "Synthesis merges only reviewed changes.",
+          "The final tree has no stale names, partial migrations, or skipped call sites."
         ]
       },
       "stop_conditions": [
-        "Spec, implementation plan, code, review, and harness evidence align.",
-        "Unresolved product or operational gaps are escalated instead of hidden in code."
+        "All slices are complete or explicitly deferred.",
+        "Synthesis and adversarial review find no remaining stale references.",
+        "Release harness passes."
       ],
       "evidence": [
-        ".artifacts/release/spec_contract.json",
-        ".artifacts/release/harness_workflows.json",
+        ".artifacts/harness/wide-refactor/",
         ".artifacts/release/summary.json"
       ],
       "budget": {
-        "token_budget": "explicit-for-large-features",
-        "parallelism": "low"
+        "token_budget": "explicit",
+        "parallelism": "bounded-by-local-resources"
       },
       "human_escalation": [
-        "Public API, runtime orchestration, provider limits, secrets, persistence, or approval-required files change.",
-        "A spec-contract exemption would be required."
+        "Merge conflicts cross module ownership boundaries.",
+        "The refactor changes behavior not covered by the spec."
       ],
-      "principle_ids": [
-        "source-traceability",
-        "release-gate-hard-authority",
-        "external-evaluator-loop"
-      ]
-    },
-    {
-      "id": "HARNESS-WIDE-REFACTOR",
-      "name": "Wide Refactor",
-      "purpose": "Coordinate broad mechanical or semantic refactors without losing coverage.",
-      "source_ids": [
-        "openai-codex-manual",
-        "openai-harness-engineering",
-        "claude-dynamic-workflows"
-      ],
-      "use_when": [
-        "Many call sites, routes, tasks, runtime modules, or docs must change.",
-        "Independent slices can be reviewed separately.",
-        "One context window would hide partial completion."
-      ],
-      "patterns": [
-        "fanout-barrier-synthesis",
-        "adversarial-verification",
-        "worktree-isolation",
-        "task-graph",
-        "token-budget",
-        "resumable-evidence",
-        "mechanical-invariants"
-      ],
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Wide refactors naturally split by package, call-site family, or mechanical slice, then require synthesis and stale-reference review.",
+        "use_when": [
+          "Use one agent per independent refactor slice when ownership and verification are separable.",
+          "Use an independent reviewer agent to look for missed call sites and behavior drift."
+        ],
+        "avoid_when": [
+          "Skip Agent Team when the refactor is a small deterministic formatter or rename handled by one mechanical command."
+        ],
+        "coordination": "parallel-slice-agents-plus-main-thread-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, store per-slice outputs and synthesis notes under the wide-refactor evidence path."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "one orchestrator context plus clean worker contexts per slice",
         "context_rot": "keep only slice summaries, conflicts, and unresolved blockers in the parent",
@@ -359,56 +634,26 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/harness/wide-refactor/"
-      },
-      "isolation": {
-        "worktree": "required",
-        "context": "one-agent-per-slice-plus-synthesis",
-        "quarantine_untrusted_inputs": false
-      },
-      "verification": {
-        "primary_command": "scripts/verify_release.sh",
-        "adversarial_review": true,
-        "rubric": [
-          "Every slice has focused verification.",
-          "Synthesis merges only reviewed changes.",
-          "No stale names, partial migrations, or skipped call sites remain."
-        ]
-      },
-      "stop_conditions": [
-        "All slices are complete or explicitly deferred.",
-        "Synthesis and adversarial review find no stale references.",
-        "Release harness passes."
-      ],
-      "evidence": [
-        ".artifacts/harness/wide-refactor/",
-        ".artifacts/release/summary.json"
-      ],
-      "budget": {
-        "token_budget": "explicit",
-        "parallelism": "bounded-by-local-resources"
-      },
-      "human_escalation": [
-        "The refactor changes behavior not covered by the spec.",
-        "Merge conflicts cross module ownership boundaries."
-      ],
-      "principle_ids": [
-        "external-evaluator-loop",
-        "continuous-garbage-collection",
-        "sandbox-and-quarantine"
-      ]
+      }
     },
     {
       "id": "HARNESS-DEEP-VERIFICATION",
       "name": "Deep Verification",
-      "purpose": "Verify technical, release, or architecture claims with independent checks.",
+      "purpose": "Verify factual, technical, or release claims with independent checkers before publication or release.",
       "source_ids": [
         "openai-codex-agent-loop",
         "openai-codex-manual",
         "claude-dynamic-workflows"
       ],
+      "principle_ids": [
+        "source-traceability",
+        "external-evaluator-loop",
+        "sandbox-and-quarantine",
+        "agent-team-suitability"
+      ],
       "use_when": [
-        "A spec, architecture note, release note, or report makes factual claims.",
-        "A wrong claim would create implementation or operational risk.",
+        "A report, PR description, spec, or release note makes factual claims.",
+        "The cost of a wrong claim is high.",
         "Source quality and traceability matter."
       ],
       "patterns": [
@@ -416,34 +661,11 @@
         "adversarial-verification",
         "quarantine",
         "loop-until-done",
-        "agentic-search",
-        "concrete-feedback",
-        "resumable-evidence",
-        "token-budget",
+        "trajectory-review",
         "source-traceability",
-        "trajectory-review"
+        "resumable-evidence",
+        "token-budget"
       ],
-      "context_strategy": {
-        "session_boundary": "separate claim extraction, source lookup, and final synthesis",
-        "context_rot": "drop raw source noise after extracting cited findings",
-        "cache_policy": "keep source tools stable and pass fresh evidence in messages",
-        "subagent_policy": "use one subagent per claim or source family when coverage matters"
-      },
-      "tool_policy": {
-        "surface": "source search, repo search, bounded fetchers, and evidence tables",
-        "progressive_disclosure": true,
-        "tool_mutation": "stable-prefix-or-deferred-loading"
-      },
-      "state_strategy": {
-        "task_graph": "optional",
-        "dependencies": true,
-        "resume": true
-      },
-      "artifact_strategy": {
-        "human_review": "markdown",
-        "export": "markdown",
-        "evidence": ".artifacts/harness/deep-verification/"
-      },
       "isolation": {
         "worktree": "optional",
         "context": "one-agent-per-claim-plus-source-review",
@@ -472,50 +694,32 @@
         "parallelism": "medium"
       },
       "human_escalation": [
-        "Required evidence is unavailable.",
+        "A required source is unavailable.",
         "The workflow cannot distinguish evidence from inference."
       ],
-      "principle_ids": [
-        "source-traceability",
-        "external-evaluator-loop",
-        "sandbox-and-quarantine"
-      ]
-    },
-    {
-      "id": "HARNESS-RESEARCH-SYNTHESIS",
-      "name": "Research Synthesis",
-      "purpose": "Fan out research, source fetching, source criticism, and synthesis into a cited deliverable.",
-      "source_ids": [
-        "openai-harness-engineering",
-        "openai-codex-agent-loop",
-        "claude-dynamic-workflows"
-      ],
-      "use_when": [
-        "The task requires broad evidence collection.",
-        "Multiple sources, code paths, logs, or docs need independent exploration.",
-        "The output must separate findings, assumptions, and uncertainty."
-      ],
-      "patterns": [
-        "classifier-routing",
-        "fanout-barrier-synthesis",
-        "adversarial-verification",
-        "quarantine",
-        "model-routing",
-        "agentic-search",
-        "progressive-disclosure",
-        "resumable-evidence",
-        "token-budget",
-        "source-traceability",
-        "artifact-review"
-      ],
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Claim extraction, source-quality review, and adversarial verification are distinct roles that reduce self-confirmation risk.",
+        "use_when": [
+          "Use separate agents for claim extraction, source validation, and contradiction search.",
+          "Use quarantine readers when inputs are untrusted."
+        ],
+        "avoid_when": [
+          "Stay single-agent only for a tiny claim set with direct primary evidence and low publication risk."
+        ],
+        "coordination": "claim-checkers-plus-source-reviewer-plus-synthesis-owner",
+        "evidence": [
+          "Record the Agent Team decision; when used, preserve claim tables, source reviews, and synthesis notes."
+        ]
+      },
       "context_strategy": {
-        "session_boundary": "separate source collection, source criticism, and final synthesis",
-        "context_rot": "carry forward only cited findings and unresolved contradictions",
-        "cache_policy": "do not rewrite static instructions during source collection",
-        "subagent_policy": "use subagents for independent source families or code areas"
+        "session_boundary": "separate claim extraction, source lookup, and final synthesis",
+        "context_rot": "drop raw source noise after extracting cited findings",
+        "cache_policy": "keep source tools stable and pass fresh evidence in messages",
+        "subagent_policy": "use one subagent per claim or source family when coverage matters"
       },
       "tool_policy": {
-        "surface": "web, repo, file system, data, and monitoring search through progressive disclosure",
+        "surface": "source search, repo search, bounded fetchers, and evidence tables",
         "progressive_disclosure": true,
         "tool_mutation": "stable-prefix-or-deferred-loading"
       },
@@ -527,8 +731,40 @@
       "artifact_strategy": {
         "human_review": "markdown",
         "export": "markdown",
-        "evidence": ".artifacts/harness/research-synthesis/"
-      },
+        "evidence": ".artifacts/harness/deep-verification/"
+      }
+    },
+    {
+      "id": "HARNESS-RESEARCH-SYNTHESIS",
+      "name": "Research Synthesis",
+      "purpose": "Fan out research, source fetching, source criticism, and synthesis into a cited deliverable.",
+      "source_ids": [
+        "openai-harness-engineering",
+        "openai-codex-agent-loop",
+        "claude-dynamic-workflows"
+      ],
+      "principle_ids": [
+        "source-traceability",
+        "external-evaluator-loop",
+        "artifact-review-surface",
+        "agent-team-suitability"
+      ],
+      "use_when": [
+        "The task requires broad evidence collection.",
+        "Multiple sources or code paths need independent exploration.",
+        "The output must separate findings, assumptions, and uncertainty."
+      ],
+      "patterns": [
+        "classifier-routing",
+        "fanout-barrier-synthesis",
+        "adversarial-verification",
+        "quarantine",
+        "model-routing",
+        "source-traceability",
+        "artifact-review",
+        "resumable-evidence",
+        "token-budget"
+      ],
       "isolation": {
         "worktree": "optional",
         "context": "parallel-research-plus-cited-synthesis",
@@ -559,11 +795,42 @@
         "Research scope is ambiguous enough to change the answer.",
         "Freshness requirements cannot be met."
       ],
-      "principle_ids": [
-        "source-traceability",
-        "external-evaluator-loop",
-        "artifact-review-surface"
-      ]
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Broad research is breadth-first and benefits from independent source collection, criticism, and synthesis.",
+        "use_when": [
+          "Use parallel researchers for independent source families, products, repos, or hypotheses.",
+          "Use a separate verifier to challenge source quality and unsupported inference."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team for narrow lookups where one primary source directly answers the question."
+        ],
+        "coordination": "parallel-researchers-plus-verifier-plus-cited-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep source lists, verifier notes, and synthesis notes under research evidence."
+        ]
+      },
+      "context_strategy": {
+        "session_boundary": "separate source collection, source criticism, and final synthesis",
+        "context_rot": "carry forward only cited findings and unresolved contradictions",
+        "cache_policy": "do not rewrite static instructions during source collection",
+        "subagent_policy": "use subagents for independent source families or code areas"
+      },
+      "tool_policy": {
+        "surface": "web, repo, file system, data, and monitoring search through progressive disclosure",
+        "progressive_disclosure": true,
+        "tool_mutation": "stable-prefix-or-deferred-loading"
+      },
+      "state_strategy": {
+        "task_graph": "optional",
+        "dependencies": true,
+        "resume": true
+      },
+      "artifact_strategy": {
+        "human_review": "markdown",
+        "export": "markdown",
+        "evidence": ".artifacts/harness/research-synthesis/"
+      }
     },
     {
       "id": "HARNESS-SECURITY-REVIEW",
@@ -572,12 +839,24 @@
       "source_ids": [
         "openai-codex-manual",
         "openai-harness-engineering",
-        "claude-dynamic-workflows"
+        "openai-codex-safety-governance",
+        "openai-codex-windows-sandbox",
+        "openai-prompt-injection",
+        "claude-dynamic-workflows",
+        "claude-sandboxing"
+      ],
+      "principle_ids": [
+        "sandbox-and-quarantine",
+        "autonomy-governance",
+        "operational-telemetry",
+        "external-evaluator-loop",
+        "release-gate-hard-authority",
+        "agent-team-suitability"
       ],
       "use_when": [
-        "The task asks for security review, threat modeling, exploit validation, or fix review.",
+        "The task asks for security review, threat modeling, or exploit validation.",
         "Findings need independent confirmation.",
-        "Untrusted inputs, logs, tickets, or external content may be inspected."
+        "Untrusted inputs or logs may be inspected."
       ],
       "patterns": [
         "classifier-routing",
@@ -585,12 +864,59 @@
         "adversarial-verification",
         "quarantine",
         "worktree-isolation",
-        "concrete-feedback",
-        "resumable-evidence",
-        "token-budget",
         "sandbox-boundary",
-        "hook-gate"
+        "permission-classifier",
+        "credential-vaulting",
+        "hook-gate",
+        "resumable-evidence",
+        "token-budget"
       ],
+      "isolation": {
+        "worktree": "required",
+        "context": "discovery-validation-remediation-review",
+        "quarantine_untrusted_inputs": true
+      },
+      "verification": {
+        "primary_command": "scripts/verify_release.sh",
+        "adversarial_review": true,
+        "rubric": [
+          "Discovery findings are validated independently.",
+          "Exploitability is separated from remediation.",
+          "Untrusted inputs cannot drive privileged writes directly."
+        ]
+      },
+      "stop_conditions": [
+        "Findings are confirmed, rejected, or escalated.",
+        "Remediation is reviewed against the original finding.",
+        "Release harness passes for any code changes."
+      ],
+      "evidence": [
+        ".artifacts/harness/security-review/",
+        ".artifacts/release/summary.json"
+      ],
+      "budget": {
+        "token_budget": "explicit",
+        "parallelism": "medium"
+      },
+      "human_escalation": [
+        "Secrets, exploit proofs, or production credentials are encountered.",
+        "A fix would change auth, money movement, or production security posture."
+      ],
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Security work benefits from separating discovery, exploitability analysis, remediation, and fix review, especially with untrusted inputs.",
+        "use_when": [
+          "Use distinct agents for finding discovery, exploitability validation, and remediation review.",
+          "Use quarantined readers for public reports, logs, or suspicious files."
+        ],
+        "avoid_when": [
+          "Stay single-agent for a narrow fix review when the finding, patch, and test are already tightly scoped."
+        ],
+        "coordination": "quarantined-discovery-plus-validator-plus-remediation-reviewer",
+        "evidence": [
+          "Record the Agent Team decision; when used, store discovery, validation, remediation, and synthesis notes separately."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "separate untrusted evidence readers from privileged fixers",
         "context_rot": "carry only validated findings and reproduction steps into remediation",
@@ -611,57 +937,135 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/harness/security-review/"
-      },
+      }
+    },
+    {
+      "id": "HARNESS-AUTONOMY-GOVERNANCE",
+      "name": "Autonomy Governance",
+      "purpose": "Design or change Coding Agent autonomy, permissions, sandboxing, remote execution, credential boundaries, and operator controls.",
+      "source_ids": [
+        "openai-codex-safety-governance",
+        "openai-codex-windows-sandbox",
+        "openai-prompt-injection",
+        "openai-agent-misalignment-monitoring",
+        "openai-agent-computer-environment",
+        "openai-agentic-websockets",
+        "claude-auto-mode",
+        "claude-sandboxing",
+        "claude-managed-agents"
+      ],
+      "principle_ids": [
+        "autonomy-governance",
+        "sandbox-and-quarantine",
+        "session-interface-decoupling",
+        "operational-telemetry",
+        "external-evaluator-loop",
+        "agent-team-suitability"
+      ],
+      "use_when": [
+        "A task changes agent permissions, approval modes, auto mode, sandbox policy, or shell/network boundaries.",
+        "A task introduces remote, managed, browser, computer-use, or persistent-session execution for agents.",
+        "A task handles credential scoping, kill or pause controls, audit trails, or prompt-injection exposure for agent workflows."
+      ],
+      "patterns": [
+        "permission-classifier",
+        "sandbox-boundary",
+        "credential-vaulting",
+        "session-interface",
+        "agent-native-telemetry",
+        "quarantine",
+        "human-escalation",
+        "adversarial-verification",
+        "resumable-evidence",
+        "token-budget"
+      ],
       "isolation": {
-        "worktree": "required",
-        "context": "discovery-validation-remediation-review",
+        "worktree": "optional",
+        "context": "policy-design-risk-review-operator-control-verification",
         "quarantine_untrusted_inputs": true
       },
       "verification": {
         "primary_command": "scripts/verify_release.sh",
         "adversarial_review": true,
         "rubric": [
-          "Findings include an attack path and affected asset.",
-          "A separate validator confirms exploitability and severity.",
-          "Fixes are reviewed for bypasses and regressions."
+          "Permission classes, deny conditions, credential scope, and network or filesystem boundaries are explicit.",
+          "Operator-visible telemetry, pause or kill paths, and audit evidence are documented when autonomy increases.",
+          "Prompt-injection, untrusted input, and privilege escalation paths are reviewed separately from implementation convenience."
         ]
       },
       "stop_conditions": [
-        "No open high-confidence findings remain untriaged.",
-        "Validated fixes pass focused tests and release harness.",
-        "Unvalidated findings are clearly marked."
+        "Autonomy boundaries and escalation paths are documented before implementation ships.",
+        "A reviewer can tell which actions are automatic, which require approval, and which are forbidden.",
+        "Release harness passes for any code or policy changes."
       ],
       "evidence": [
-        ".artifacts/harness/security-review/",
+        ".artifacts/harness/autonomy-governance/",
         ".artifacts/release/summary.json"
       ],
       "budget": {
         "token_budget": "explicit",
-        "parallelism": "bounded-by-risk"
+        "parallelism": "low-to-medium"
       },
       "human_escalation": [
-        "A production secret, customer data, or active exploit is suspected.",
-        "A fix touches auth, provider secrets, runtime orchestration, or approval-required paths."
+        "A change grants unattended write, network, credential, deployment, trading, or production access.",
+        "A sandbox, approval, or audit control cannot be mechanically enforced."
       ],
-      "principle_ids": [
-        "sandbox-and-quarantine",
-        "external-evaluator-loop",
-        "release-gate-hard-authority"
-      ]
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Autonomy changes benefit from separating policy design, threat review, implementation, and operator-experience verification.",
+        "use_when": [
+          "Use a policy reviewer for permission classes, sandbox boundaries, and credential scope.",
+          "Use a verifier agent to challenge prompt-injection, privilege escalation, and missing telemetry paths."
+        ],
+        "avoid_when": [
+          "Stay single-agent only for a narrow documentation clarification that does not increase autonomy or touch controls."
+        ],
+        "coordination": "policy-lead-plus-security-reviewer-plus-runtime-verifier-with-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep policy notes, risk review, runtime verifier output, and synthesis notes under autonomy evidence."
+        ]
+      },
+      "context_strategy": {
+        "session_boundary": "separate policy design, threat review, implementation, and operator verification",
+        "context_rot": "carry only permission classes, credential scopes, telemetry decisions, and unresolved risks forward",
+        "cache_policy": "keep policy vocabulary stable; pass environment-specific status as messages or artifacts",
+        "subagent_policy": "use independent reviewers for threat modeling and operator-control verification when feasible"
+      },
+      "tool_policy": {
+        "surface": "AGENTS.md, .ai-boundaries.yml, runbooks, scripts, audit artifacts, and release harness",
+        "progressive_disclosure": true,
+        "tool_mutation": "stable-prefix-or-deferred-loading"
+      },
+      "state_strategy": {
+        "task_graph": "optional",
+        "dependencies": true,
+        "resume": true
+      },
+      "artifact_strategy": {
+        "human_review": "markdown",
+        "export": "markdown",
+        "evidence": ".artifacts/harness/autonomy-governance/"
+      }
     },
     {
       "id": "HARNESS-INCIDENT-TRIAGE",
       "name": "Incident Triage",
-      "purpose": "Classify, dedupe, investigate, and escalate operational incidents without mixing untrusted evidence and privileged action.",
+      "purpose": "Classify, dedupe, investigate, and escalate operational evidence without losing chronology or source quality.",
       "source_ids": [
         "openai-harness-engineering",
         "openai-codex-manual",
         "claude-dynamic-workflows"
       ],
+      "principle_ids": [
+        "agent-legible-environment",
+        "external-evaluator-loop",
+        "sandbox-and-quarantine",
+        "agent-team-suitability"
+      ],
       "use_when": [
-        "The task involves logs, tickets, incidents, alerts, or recurring root causes.",
-        "The workflow may need to repeat until no new errors appear.",
-        "Some evidence comes from production or external systems."
+        "The task involves logs, alerts, tickets, or incident reports.",
+        "Multiple symptoms may share a root cause.",
+        "Investigation needs bounded loops and escalation thresholds."
       ],
       "patterns": [
         "classifier-routing",
@@ -669,12 +1073,57 @@
         "loop-until-done",
         "quarantine",
         "model-routing",
-        "agentic-search",
-        "resumable-evidence",
-        "token-budget",
         "runtime-feedback",
-        "human-escalation"
+        "human-escalation",
+        "resumable-evidence",
+        "token-budget"
       ],
+      "isolation": {
+        "worktree": "optional",
+        "context": "triage-investigation-escalation",
+        "quarantine_untrusted_inputs": true
+      },
+      "verification": {
+        "primary_command": "scripts/verify_release.sh",
+        "adversarial_review": true,
+        "rubric": [
+          "Symptoms are deduped before root-cause claims.",
+          "Log and metric evidence is bounded by time, source, and service.",
+          "Escalation conditions are explicit."
+        ]
+      },
+      "stop_conditions": [
+        "Root cause is proven or the next diagnostic gap is explicit.",
+        "No unbounded log scan remains.",
+        "Release harness passes for any code changes."
+      ],
+      "evidence": [
+        ".artifacts/harness/incident-triage/",
+        ".artifacts/release/summary.json"
+      ],
+      "budget": {
+        "token_budget": "explicit",
+        "parallelism": "low-to-medium"
+      },
+      "human_escalation": [
+        "Production credentials or raw sensitive logs are needed.",
+        "A remediation requires deployment, migration, or owner approval."
+      ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Incident work sometimes benefits from parallel hypothesis checks, but live chronology and operational context can make one lead safer.",
+        "use_when": [
+          "Use multiple agents for independent hypotheses, log families, or suspected services after time bounds are clear.",
+          "Use a verifier agent before claiming root cause or release readiness."
+        ],
+        "avoid_when": [
+          "Avoid parallel agents when the incident is actively changing, credentials are sensitive, or chronology must stay under one operator."
+        ],
+        "coordination": "single-incident-lead-with-optional-hypothesis-agents-and-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep hypothesis evidence, rejected paths, and synthesis notes under incident evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "separate log readers, hypothesis generators, and acting agents",
         "context_rot": "keep hypotheses, evidence, and disconfirming facts; drop raw log noise",
@@ -695,68 +1144,82 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/harness/incident-triage/"
-      },
+      }
+    },
+    {
+      "id": "HARNESS-EXPLORATION-TOURNAMENT",
+      "name": "Exploration Tournament",
+      "purpose": "Explore competing names, designs, architectures, or strategies and select against a rubric.",
+      "source_ids": [
+        "claude-dynamic-workflows",
+        "claude-html-artifacts",
+        "openai-codex-manual"
+      ],
+      "principle_ids": [
+        "external-evaluator-loop",
+        "artifact-review-surface",
+        "cache-safe-context",
+        "agent-team-suitability"
+      ],
+      "use_when": [
+        "The task has multiple plausible qualitative answers.",
+        "A single path chosen too early would reduce quality.",
+        "The winner needs reasons, tradeoffs, and close runner-up comparisons."
+      ],
+      "patterns": [
+        "tournament-selection",
+        "generate-filter",
+        "adversarial-verification",
+        "model-routing",
+        "artifact-review",
+        "token-budget",
+        "resumable-evidence"
+      ],
       "isolation": {
         "worktree": "optional",
-        "context": "classify-dedupe-investigate-escalate",
-        "quarantine_untrusted_inputs": true
+        "context": "candidate-generation-judging-synthesis",
+        "quarantine_untrusted_inputs": false
       },
       "verification": {
         "primary_command": "scripts/verify_release.sh",
         "adversarial_review": true,
         "rubric": [
-          "Classifiers separate duplicate, known, and novel incidents.",
-          "Investigators cite bounded logs or tickets.",
-          "Acting agents only change tracked issues or code after review."
+          "Candidates are judged against the same criteria.",
+          "The selected option explains why it beats close alternatives.",
+          "Any implementation still passes the release harness."
         ]
       },
       "stop_conditions": [
-        "No new unique incident class appears in the bounded input.",
-        "Root-cause hypotheses have supporting and disconfirming evidence.",
-        "Escalations name the owner and next action."
+        "A winner and near-miss alternatives are recorded.",
+        "The judging rubric has no unaddressed hard requirement.",
+        "Release harness passes when code changed."
       ],
       "evidence": [
-        ".artifacts/harness/incident-triage/"
+        ".artifacts/harness/exploration-tournament/"
       ],
       "budget": {
         "token_budget": "explicit",
         "parallelism": "medium"
       },
       "human_escalation": [
-        "Production credentials, raw customer data, or broad log access would be needed.",
-        "The workflow proposes write actions outside tracked code or issue systems."
+        "The choice encodes a business decision not in the spec.",
+        "No candidate satisfies a hard constraint."
       ],
-      "principle_ids": [
-        "agent-legible-environment",
-        "external-evaluator-loop",
-        "sandbox-and-quarantine"
-      ]
-    },
-    {
-      "id": "HARNESS-EXPLORATION-TOURNAMENT",
-      "name": "Exploration Tournament",
-      "purpose": "Explore open-ended alternatives, then select winners through a rubric-driven tournament.",
-      "source_ids": [
-        "claude-dynamic-workflows",
-        "claude-html-artifacts",
-        "openai-codex-manual"
-      ],
-      "use_when": [
-        "The task asks for naming, design direction, API shape, architecture alternatives, or strategy options.",
-        "Multiple plausible answers should compete.",
-        "A rubric can evaluate pairwise choices more reliably than absolute scores."
-      ],
-      "patterns": [
-        "tournament-selection",
-        "adversarial-verification",
-        "generate-and-filter",
-        "model-routing",
-        "human-in-loop-artifacts",
-        "token-budget",
-        "resumable-evidence",
-        "generate-filter",
-        "artifact-review"
-      ],
+      "agent_team": {
+        "suitability": "recommended",
+        "rationale": "Alternative generation and rubric judging improve when candidate authors and judges are separated.",
+        "use_when": [
+          "Use candidate agents to generate independent options.",
+          "Use a judge or verifier agent to apply the same rubric across options."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team when the choice is already constrained by a single approved spec or owner decision."
+        ],
+        "coordination": "candidate-agents-plus-rubric-judge-plus-synthesis-owner",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep candidates, rubric judgments, and synthesis notes under tournament evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "separate generation from judging and keep the rubric stable",
         "context_rot": "carry only finalist summaries, tradeoffs, and rejected assumptions",
@@ -777,67 +1240,89 @@
         "human_review": "html",
         "export": "markdown",
         "evidence": ".artifacts/harness/exploration-tournament/"
-      },
+      }
+    },
+    {
+      "id": "HARNESS-LONG-RUN-TASK-GRAPH",
+      "name": "Long-run Task Graph",
+      "purpose": "Keep multi-session or long-running agent work explicit, resumable, and checkable.",
+      "source_ids": [
+        "claude-long-running-agents",
+        "claude-long-running-apps",
+        "openai-codex-manual",
+        "openai-codex-maxxing",
+        "claude-managed-agents",
+        "openai-agentic-websockets"
+      ],
+      "principle_ids": [
+        "incremental-task-ledger",
+        "session-interface-decoupling",
+        "cache-safe-context",
+        "external-evaluator-loop",
+        "agent-team-suitability"
+      ],
+      "use_when": [
+        "The task cannot be finished reliably in one context window.",
+        "Multiple dependent tasks need durable status, blockers, and evidence.",
+        "Compaction, handoff, or fresh-session restarts are expected."
+      ],
+      "patterns": [
+        "task-graph",
+        "context-reset",
+        "resumable-evidence",
+        "cache-safe-prefix",
+        "runtime-feedback",
+        "session-interface",
+        "loop-until-done",
+        "mechanical-invariants",
+        "token-budget"
+      ],
       "isolation": {
         "worktree": "optional",
-        "context": "many-solutions-plus-judge",
+        "context": "task-ledger-plus-handoff-checkpoints",
         "quarantine_untrusted_inputs": false
       },
       "verification": {
         "primary_command": "scripts/verify_release.sh",
         "adversarial_review": true,
         "rubric": [
-          "The rubric is explicit before judging starts.",
-          "Candidates are meaningfully distinct.",
-          "Winning options include tradeoffs and rejected alternatives."
+          "Every task has status, owner or agent, evidence, blocker, and next action.",
+          "Handoff notes let a fresh session continue without guessing.",
+          "Stop conditions are tied to objective completion rather than elapsed time."
         ]
       },
       "stop_conditions": [
-        "The judge or human rubric has selected a bounded shortlist.",
-        "No duplicate or dominated candidate remains in the shortlist."
+        "All required task nodes are complete, deferred with owner approval, or blocked with evidence.",
+        "Fresh-session handoff can locate current state and next action.",
+        "Release harness passes for any code changes."
       ],
       "evidence": [
-        ".artifacts/harness/exploration-tournament/"
+        ".artifacts/harness/long-run-task-graph/",
+        ".artifacts/release/summary.json"
       ],
       "budget": {
         "token_budget": "explicit",
-        "parallelism": "medium"
+        "parallelism": "bounded-by-task-graph"
       },
       "human_escalation": [
-        "The rubric requires product, brand, legal, or business-owner judgment.",
-        "The chosen option would change public contracts or runtime behavior."
+        "A blocker repeats without new evidence.",
+        "Task graph scope expands beyond the approved objective."
       ],
-      "principle_ids": [
-        "external-evaluator-loop",
-        "artifact-review-surface",
-        "cache-safe-context"
-      ]
-    },
-    {
-      "id": "HARNESS-LONG-RUN-TASK-GRAPH",
-      "name": "Long-run Task Graph",
-      "purpose": "Coordinate complex work across sessions, subagents, dependencies, blockers, and resumptions.",
-      "source_ids": [
-        "claude-long-running-agents",
-        "claude-long-running-apps",
-        "openai-codex-manual"
-      ],
-      "use_when": [
-        "The work spans multiple sessions, subagents, or context windows.",
-        "Tasks have dependencies, blockers, or owners.",
-        "Progress must be resumable without relying on chat memory."
-      ],
-      "patterns": [
-        "task-graph",
-        "fanout-barrier-synthesis",
-        "resumable-evidence",
-        "loop-until-done",
-        "token-budget",
-        "context-reset",
-        "cache-safe-prefix",
-        "runtime-feedback",
-        "mechanical-invariants"
-      ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Long work may need multiple agents, but the task graph and handoff discipline matter more than agent count.",
+        "use_when": [
+          "Use agents for independent graph nodes with clear owners, inputs, outputs, and stop conditions.",
+          "Use a synthesis owner to merge node evidence into the durable ledger."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team when dependencies are strongly sequential or the ledger is not yet stable enough to delegate safely."
+        ],
+        "coordination": "task-graph-owner-with-optional-node-agents-and-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, tie per-agent evidence and synthesis notes to task graph nodes."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "new sessions may join the same durable task list",
         "context_rot": "resume from task metadata, blockers, and evidence instead of full chat history",
@@ -858,43 +1343,7 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/harness/task-graph/"
-      },
-      "isolation": {
-        "worktree": "optional",
-        "context": "durable-task-list-plus-subagents",
-        "quarantine_untrusted_inputs": false
-      },
-      "verification": {
-        "primary_command": "scripts/verify_release.sh",
-        "adversarial_review": true,
-        "rubric": [
-          "Every task has state, owner, dependencies, blocker status, and evidence.",
-          "No task is marked complete without verification.",
-          "Resume state is sufficient for a new session to continue."
-        ]
-      },
-      "stop_conditions": [
-        "All required tasks are complete or explicitly blocked.",
-        "Dependency blockers are resolved or escalated.",
-        "Release evidence covers completed tasks."
-      ],
-      "evidence": [
-        ".artifacts/harness/task-graph/",
-        ".artifacts/release/summary.json"
-      ],
-      "budget": {
-        "token_budget": "explicit",
-        "parallelism": "bounded-by-dependencies"
-      },
-      "human_escalation": [
-        "A blocker requires product ownership.",
-        "A dependency crosses repository or permission boundaries."
-      ],
-      "principle_ids": [
-        "incremental-task-ledger",
-        "cache-safe-context",
-        "external-evaluator-loop"
-      ]
+      }
     },
     {
       "id": "HARNESS-RUNTIME-LEGIBILITY",
@@ -902,13 +1351,21 @@
       "purpose": "Make the running system observable, controllable, and verifiable by agents and humans.",
       "source_ids": [
         "openai-harness-engineering",
+        "openai-codex-safety-governance",
+        "openai-agent-computer-environment",
+        "openai-agentic-websockets",
         "claude-long-running-agents",
-        "claude-long-running-apps"
+        "claude-long-running-apps",
+        "claude-managed-agents"
       ],
       "principle_ids": [
         "agent-legible-environment",
+        "session-interface-decoupling",
+        "tool-context-economy",
+        "operational-telemetry",
         "release-gate-hard-authority",
-        "continuous-garbage-collection"
+        "continuous-garbage-collection",
+        "agent-team-suitability"
       ],
       "use_when": [
         "The change affects local startup, dev environments, UI feedback, observability, logs, metrics, traces, or smoke tests.",
@@ -918,6 +1375,9 @@
       "patterns": [
         "agent-legibility",
         "runtime-feedback",
+        "session-interface",
+        "agent-native-telemetry",
+        "tool-context-economy",
         "worktree-isolation",
         "mechanical-invariants",
         "hook-gate",
@@ -956,6 +1416,20 @@
         "Production credentials, private hosts, or unsafe network access are needed.",
         "The runtime contract would become cloud-provider-specific."
       ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Runtime work can split into docs, tooling, and smoke verification, but often needs one agent to preserve local environment context.",
+        "use_when": [
+          "Use separate agents for environment setup review, smoke-path validation, and observability surface review when they can run independently."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team when local runtime state is fragile, credentials are involved, or only one agent can safely hold the session."
+        ],
+        "coordination": "runtime-lead-with-optional-probe-and-review-agents-plus-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep probe logs, review notes, and synthesis notes under runtime evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "keep run, observe, probe, and verify steps in one traceable task context",
         "context_rot": "carry only startup commands, observed signals, blockers, and evidence paths forward",
@@ -985,13 +1459,18 @@
       "source_ids": [
         "openai-codex-agent-loop",
         "openai-codex-manual",
+        "openai-agent-misalignment-monitoring",
         "claude-dynamic-workflows",
-        "claude-long-running-apps"
+        "claude-long-running-apps",
+        "claude-infrastructure-noise",
+        "claude-agent-evals"
       ],
       "principle_ids": [
         "external-evaluator-loop",
         "continuous-garbage-collection",
-        "cache-safe-context"
+        "eval-infrastructure-calibration",
+        "cache-safe-context",
+        "agent-team-suitability"
       ],
       "use_when": [
         "An agent repeatedly makes the same class of mistake.",
@@ -1001,6 +1480,7 @@
       "patterns": [
         "eval-improvement-loop",
         "trajectory-review",
+        "eval-noise-calibration",
         "adversarial-verification",
         "generate-filter",
         "loop-until-done",
@@ -1041,6 +1521,20 @@
         "The failure example includes secrets or sensitive production data.",
         "The improvement would weaken an existing gate."
       ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Eval loops benefit from separating failure reproduction, fix generation, and verifier rerun, but tiny regression fixes can stay linear.",
+        "use_when": [
+          "Use separate agents for trajectory review, regression design, candidate fix generation, and verifier rerun when failure modes are independent."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team when the failure is a single deterministic check with an obvious one-line fix."
+        ],
+        "coordination": "failure-reviewer-plus-fix-agent-plus-verifier-with-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep failure examples, verifier output, and synthesis notes under eval evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "separate failure example capture, regression design, fix, and verifier rerun",
         "context_rot": "preserve the failure class, minimal repro, changed gate, and verification output",
@@ -1070,7 +1564,8 @@
       "source_ids": [
         "claude-html-artifacts",
         "claude-long-running-apps",
-        "claude-dynamic-workflows"
+        "claude-dynamic-workflows",
+        "claude-code-best-practices"
       ],
       "use_when": [
         "A markdown plan or report would be too dense to review reliably.",
@@ -1082,10 +1577,10 @@
         "visual-feedback",
         "generate-and-filter",
         "concrete-feedback",
-        "resumable-evidence",
-        "token-budget",
         "generate-filter",
-        "artifact-review"
+        "artifact-review",
+        "resumable-evidence",
+        "token-budget"
       ],
       "context_strategy": {
         "session_boundary": "treat the artifact as the human review surface and export only decisions back",
@@ -1142,36 +1637,106 @@
       "principle_ids": [
         "artifact-review-surface",
         "external-evaluator-loop",
-        "cache-safe-context"
-      ]
+        "cache-safe-context",
+        "tool-context-economy",
+        "agent-team-suitability"
+      ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Interactive artifacts can benefit from separate visual review and export validation, but one owner should keep the artifact contract coherent.",
+        "use_when": [
+          "Use a reviewer agent for screenshot, interaction, or export validation when the artifact materially affects a decision."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team for a small one-off artifact where a single editor can produce and inspect the export path."
+        ],
+        "coordination": "artifact-owner-with-optional-visual-reviewer-and-export-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep visual-review notes, export checks, and synthesis under artifact evidence."
+        ]
+      }
     },
     {
       "id": "HARNESS-SKILL-EVOLUTION",
       "name": "Skill Evolution",
-      "purpose": "Turn repeated corrections, runbooks, templates, scripts, and gotchas into reusable skills or project guidance.",
+      "purpose": "Turn repeated workflows into focused skills, references, scripts, or plugins without bloating instructions.",
       "source_ids": [
         "claude-skills",
         "openai-codex-manual",
-        "claude-prompt-caching"
+        "claude-prompt-caching",
+        "claude-code-best-practices",
+        "claude-context-engineering",
+        "claude-tool-design",
+        "claude-code-execution-mcp"
+      ],
+      "principle_ids": [
+        "skill-progressive-disclosure",
+        "tool-context-economy",
+        "map-not-encyclopedia",
+        "cache-safe-context",
+        "agent-team-suitability"
       ],
       "use_when": [
-        "The same correction, workflow, or setup question recurs.",
-        "A repo would benefit from reusable scripts, references, assets, gotchas, or hooks.",
-        "A skill or instruction needs evaluation before sharing."
+        "A workflow is repeated often enough to deserve a reusable skill or script.",
+        "A skill needs new references, gotchas, trigger descriptions, or deterministic helpers.",
+        "Instruction bloat or prompt-cache churn is making agent behavior worse."
       ],
       "patterns": [
-        "progressive-disclosure",
-        "agentic-search",
-        "adversarial-verification",
-        "concrete-feedback",
-        "cache-safe-forking",
-        "resumable-evidence",
-        "token-budget",
         "skill-packaging",
+        "progressive-disclosure",
+        "tool-context-economy",
         "hook-gate",
+        "eval-improvement-loop",
+        "cache-safe-prefix",
         "source-traceability",
-        "cache-safe-prefix"
+        "resumable-evidence",
+        "token-budget"
       ],
+      "isolation": {
+        "worktree": "optional",
+        "context": "skill-design-trigger-test-release",
+        "quarantine_untrusted_inputs": false
+      },
+      "verification": {
+        "primary_command": "scripts/verify_release.sh",
+        "adversarial_review": true,
+        "rubric": [
+          "The skill has a narrow job and clear trigger boundaries.",
+          "References or scripts are loaded only when needed.",
+          "Trigger tests or reviewer prompts prove the intended invocation behavior."
+        ]
+      },
+      "stop_conditions": [
+        "Skill entry point is concise and points to required references.",
+        "Trigger behavior and deterministic helpers are verified.",
+        "Release harness passes."
+      ],
+      "evidence": [
+        ".artifacts/harness/skill-evolution/",
+        ".artifacts/release/summary.json"
+      ],
+      "budget": {
+        "token_budget": "bounded-by-skill-scope",
+        "parallelism": "none-to-low"
+      },
+      "human_escalation": [
+        "The skill would encode project authority outside specs, docs, or scripts.",
+        "A plugin distribution or external dependency decision is required."
+      ],
+      "agent_team": {
+        "suitability": "optional",
+        "rationale": "Skill work can use reviewers for trigger boundaries and examples, but the entry point should stay owned by one editor to avoid instruction bloat.",
+        "use_when": [
+          "Use review agents to test trigger behavior, progressive disclosure, and gotchas across examples."
+        ],
+        "avoid_when": [
+          "Avoid Agent Team for a small skill text edit where one editor and one validator are enough."
+        ],
+        "coordination": "skill-editor-with-optional-trigger-reviewers-and-synthesis",
+        "evidence": [
+          "Record the Agent Team decision; when used, keep trigger-test results, reviewer notes, and synthesis notes under skill evidence."
+        ]
+      },
       "context_strategy": {
         "session_boundary": "mine prior evidence in a separate context and edit guidance in a clean context",
         "context_rot": "distill only rules that would have prevented real mistakes",
@@ -1192,43 +1757,7 @@
         "human_review": "markdown",
         "export": "markdown",
         "evidence": ".artifacts/harness/skill-evolution/"
-      },
-      "isolation": {
-        "worktree": "optional",
-        "context": "mine-gotchas-build-skill-evaluate",
-        "quarantine_untrusted_inputs": false
-      },
-      "verification": {
-        "primary_command": "scripts/verify_release.sh",
-        "adversarial_review": true,
-        "rubric": [
-          "The skill description is written for model triggering, not human summary.",
-          "Gotchas are grounded in real failures or repo-specific footguns.",
-          "References, scripts, and assets are progressively disclosed instead of frontloaded."
-        ]
-      },
-      "stop_conditions": [
-        "The reusable skill or guidance has a clear trigger and gotchas.",
-        "A virtual or real task demonstrates the skill changes behavior.",
-        "Release harness passes if repository files changed."
-      ],
-      "evidence": [
-        ".artifacts/harness/skill-evolution/",
-        ".artifacts/release/summary.json"
-      ],
-      "budget": {
-        "token_budget": "bounded-by-evidence",
-        "parallelism": "low"
-      },
-      "human_escalation": [
-        "The skill would encode team policy without owner review.",
-        "The skill needs credentials, destructive hooks, or production access."
-      ],
-      "principle_ids": [
-        "skill-progressive-disclosure",
-        "map-not-encyclopedia",
-        "cache-safe-context"
-      ]
+      }
     }
   ]
 }
