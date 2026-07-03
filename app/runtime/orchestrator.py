@@ -52,6 +52,7 @@ from app.runtime.chat_behavior import (
     build_language_instruction,
     detect_target_language,
     evaluate_user_message,
+    select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
 from app.runtime.provider_limits import (
@@ -59,9 +60,10 @@ from app.runtime.provider_limits import (
     ProviderLimitRequest,
     ProviderRateLimitError,
     ProviderUsageSettlement,
-    estimate_input_tokens,
+    estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
+from app.runtime.tool_context import mask_run_context
 from app.runtime.token_stream import TokenAggregator
 
 logger = get_logger(__name__)
@@ -150,6 +152,7 @@ async def run_orchestration(
     emit: Any = None,
     user_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    run_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """tasks 层集成入口(薄适配)。
 
@@ -170,6 +173,7 @@ async def run_orchestration(
         route_type="batch",
         user_id=user_id,
         metadata=metadata,
+        run_context=run_context,
     )
     return {"content": answer, "intent": None}
 
@@ -187,8 +191,10 @@ class AgentOrchestrator:
             agent: 可选注入的 PydanticAI Agent(测试用);缺省按配置构建。
         """
         self._deps = deps
+        self._agent_override = agent is not None
         self._agent = agent or build_agent(
-            build_model(deps.settings, deps.secret_provider)
+            build_model(deps.settings, deps.secret_provider),
+            behavior_profile=select_behavior_profile(deps.settings),
         )
 
     async def run(
@@ -201,6 +207,7 @@ class AgentOrchestrator:
         route_type: str = "realtime",
         user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        run_context: dict[str, Any] | None = None,
     ) -> str:
         """执行一次完整运行,返回最终 assistant 文本。"""
         set_trace_id(trace_id)
@@ -222,6 +229,7 @@ class AgentOrchestrator:
                     emitter,
                     route_type,
                     metadata or {},
+                    run_context or {},
                     input_decision,
                     target_language,
                 )
@@ -233,6 +241,7 @@ class AgentOrchestrator:
                 route_type,
                 user_id,
                 metadata or {},
+                run_context or {},
                 target_language,
             )
         except ProviderRateLimitError as exc:
@@ -250,6 +259,7 @@ class AgentOrchestrator:
         route_type: str,
         user_id: str | None,
         metadata: dict[str, Any],
+        run_context: dict[str, Any],
         target_language: str,
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
@@ -263,6 +273,7 @@ class AgentOrchestrator:
                 metadata,
                 self._deps.settings,
                 target_language=target_language,
+                run_context=run_context,
             ),
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
@@ -276,6 +287,7 @@ class AgentOrchestrator:
             route_type,
             user_id,
             metadata,
+            run_context,
             target_language,
         )
 
@@ -307,6 +319,7 @@ class AgentOrchestrator:
         route_type: str,
         user_id: str | None,
         metadata: dict[str, Any],
+        run_context: dict[str, Any],
         target_language: str,
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
@@ -334,16 +347,22 @@ class AgentOrchestrator:
             retrieval_top_k=self._deps.settings.retrieval_top_k,
             target_language=target_language,
             language_instruction=build_language_instruction(target_language),
+            run_context=run_context,
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
         emitted_chunks: list[str] = []
         llm_started = False
         quota_decision = await self._acquire_provider_quota(
-            agent_run_id, user_message, route_type
+            agent_run_id,
+            user_message,
+            route_type,
+            metadata,
+            run_context,
         )
+        agent = self._agent_for_quota(quota_decision)
         try:
-            async with self._agent.iter(
+            async with agent.iter(
                 user_message,
                 deps=deps,
                 message_history=message_history or None,
@@ -374,7 +393,7 @@ class AgentOrchestrator:
         except ProviderRateLimitError:
             raise
         except Exception as exc:
-            provider_error = await self._record_provider_exception(exc)
+            provider_error = await self._record_provider_exception(exc, quota_decision)
             if provider_error is not None:
                 reason = (
                     "RATE_LIMITED"
@@ -389,7 +408,12 @@ class AgentOrchestrator:
             return answer if answer.strip() else self._empty_answer(user_message)
 
     async def _acquire_provider_quota(
-        self, agent_run_id: str, user_message: str, route_type: str
+        self,
+        agent_run_id: str,
+        user_message: str,
+        route_type: str,
+        metadata: dict[str, Any] | None = None,
+        run_context: dict[str, Any] | None = None,
     ) -> ProviderLimitDecision | None:
         """Gate real provider calls before entering the Pydantic AI loop."""
         identity = provider_identity_from_settings(self._deps.settings)
@@ -399,7 +423,11 @@ class AgentOrchestrator:
         request = ProviderLimitRequest(
             provider=identity.provider,
             model=identity.model,
-            estimated_input_tokens=estimate_input_tokens(user_message),
+            estimated_input_tokens=estimate_structured_input_tokens(
+                user_message,
+                metadata or {},
+                run_context or {},
+            ),
             max_output_tokens=self._deps.settings.provider_default_max_output_tokens,
             route_type=route_type,
             agent_run_id=agent_run_id,
@@ -447,12 +475,17 @@ class AgentOrchestrator:
                     actual_input_tokens=usage.get("input_tokens"),
                     actual_output_tokens=usage.get("output_tokens"),
                     route_type=route_type,
+                    provider_key_id=decision.provider_key_id,
                 )
             )
         except Exception as exc:
             raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
 
-    async def _record_provider_exception(self, exc: Exception) -> Any | None:
+    async def _record_provider_exception(
+        self,
+        exc: Exception,
+        decision: ProviderLimitDecision | None = None,
+    ) -> Any | None:
         from app.llm.providers import map_provider_error
 
         info = map_provider_error(exc)
@@ -466,8 +499,25 @@ class AgentOrchestrator:
             identity.model,
             info.status_code,
             info.retry_after_ms,
+            provider_key_id=None if decision is None else decision.provider_key_id,
         )
         return info
+
+    def _agent_for_quota(
+        self,
+        decision: ProviderLimitDecision | None,
+    ) -> Agent[AgentDeps, str]:
+        """Build a per-run agent when provider admission selected a key slot."""
+        if self._agent_override or decision is None or decision.provider_key_secret is None:
+            return self._agent
+        return build_agent(
+            build_model(
+                self._deps.settings,
+                self._deps.secret_provider,
+                provider_key_secret=decision.provider_key_secret,
+            ),
+            behavior_profile=select_behavior_profile(self._deps.settings),
+        )
 
     async def _handle_model_request(
         self,
@@ -650,6 +700,7 @@ class AgentOrchestrator:
         settings: Any,
         *,
         target_language: str | None = None,
+        run_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return an engine snapshot for run audit/debugging."""
         plan: dict[str, Any] = {
@@ -657,11 +708,13 @@ class AgentOrchestrator:
             "tools": list(_TOOL_NAMES),
             "route_type": route_type,
             "metadata": _plan_metadata(settings, metadata),
+            "run_context": mask_run_context(run_context or {}),
         }
         kb_id = _knowledge_base_id(settings, metadata)
         if kb_id:
             plan["knowledge_base_id"] = kb_id
         plan["policy_version"] = DEFAULT_CHAT_BEHAVIOR_POLICY.version
+        plan["behavior_profile"] = select_behavior_profile(settings).name
         if target_language:
             plan["target_language"] = target_language
         return plan
@@ -673,6 +726,7 @@ class AgentOrchestrator:
         emitter: _EventEmitter,
         route_type: str,
         metadata: dict[str, Any],
+        run_context: dict[str, Any],
         decision: GuardrailDecision,
         target_language: str,
     ) -> str:
@@ -682,6 +736,7 @@ class AgentOrchestrator:
             metadata,
             self._deps.settings,
             target_language=target_language,
+            run_context=run_context,
         )
         plan["guardrail"] = decision.as_plan_metadata()
         await self._safe_run_repo(

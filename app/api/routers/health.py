@@ -15,6 +15,7 @@ from app.core.logging import get_logger
 from app.core.metrics import Metrics
 from app.core.secrets import ProviderSecretMissingError, build_secret_provider
 from app.db.session import async_session_factory
+from app.runtime.provider_keys import build_provider_key_pool
 from app.runtime.provider_limits import provider_identity_from_settings
 
 logger = get_logger(__name__)
@@ -36,9 +37,10 @@ async def readyz(request: Request) -> JSONResponse:
     redis_ok = await _check_redis(request, checks)
     bus_ok = _check_bus(request, checks)
     secret_ok = _check_provider_secret(request, checks)
+    key_pool_ok = _check_provider_key_pool(request, checks)
     limiter_ok = _check_provider_limiter(request, checks)
     _check_reaper(checks)
-    ready = db_ok and redis_ok and bus_ok and secret_ok and limiter_ok
+    ready = db_ok and redis_ok and bus_ok and secret_ok and key_pool_ok and limiter_ok
     code = status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(
         status_code=code,
@@ -105,12 +107,41 @@ def _check_provider_secret(request: Request, checks: dict[str, str]) -> bool:
     provider = getattr(request.app.state, "secret_provider", None)
     if provider is None:
         provider = build_secret_provider(settings)
+    pool = getattr(request.app.state, "provider_key_pool", None)
+    if pool is None:
+        pool = build_provider_key_pool(settings, provider)
+    if getattr(pool, "status", "") not in {"missing", ""} and getattr(pool, "enabled_slots", []):
+        checks["provider_secret"] = "configured"
+        return True
     try:
         provider.validate_required(identity.provider, identity.model)
     except ProviderSecretMissingError:
         checks["provider_secret"] = "missing"
         return False
     checks["provider_secret"] = "configured"
+    return True
+
+
+def _check_provider_key_pool(request: Request, checks: dict[str, str]) -> bool:
+    settings = get_settings()
+    identity = provider_identity_from_settings(settings)
+    if identity.mock:
+        checks["provider_key_pool"] = "mock"
+        return True
+    provider = getattr(request.app.state, "secret_provider", None)
+    if provider is None:
+        provider = build_secret_provider(settings)
+    pool = getattr(request.app.state, "provider_key_pool", None)
+    if pool is None:
+        pool = build_provider_key_pool(settings, provider)
+    enabled_count = len(getattr(pool, "enabled_slots", []))
+    if getattr(pool, "status", "") == "missing":
+        checks["provider_key_pool"] = "missing"
+        return False
+    if enabled_count == 0:
+        checks["provider_key_pool"] = f"{pool.status}:0"
+        return False
+    checks["provider_key_pool"] = f"{pool.status}:{enabled_count}"
     return True
 
 

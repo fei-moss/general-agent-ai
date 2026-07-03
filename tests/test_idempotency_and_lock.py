@@ -33,14 +33,35 @@ def test_chat_request_hash_is_stable_for_metadata_order():
         message="hello",
         conversation_id="conv-1",
         metadata={"b": 2, "a": 1},
+        run_context={"team": {"b": 2, "a": 1}},
     )
     second = chat_request_hash(
         message="hello",
         conversation_id="conv-1",
         metadata={"a": 1, "b": 2},
+        run_context={"team": {"a": 1, "b": 2}},
     )
 
     assert first == second
+
+
+def test_chat_request_hash_changes_when_run_context_changes():
+    from app.api.idempotency import chat_request_hash
+
+    base = chat_request_hash(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        run_context={"dataset": {"version": 1}},
+    )
+    changed = chat_request_hash(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        run_context={"dataset": {"version": 2}},
+    )
+
+    assert base != changed
 
 
 async def test_redis_conversation_lock_uses_nx_and_ttl():

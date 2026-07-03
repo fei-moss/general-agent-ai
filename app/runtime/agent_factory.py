@@ -39,10 +39,16 @@ from pydantic_ai.models.function import (
 )
 
 from app.core.config import Settings, get_settings
-from app.core.secrets import SecretProvider, build_secret_provider, is_mock_provider
+from app.core.secrets import SecretProvider, SecretValue, build_secret_provider, is_mock_provider
 from app.runtime.chat_behavior import (
-    DEFAULT_CHAT_BEHAVIOR_POLICY,
     build_system_prompt,
+    get_behavior_profile,
+)
+from app.runtime.tool_context import (
+    build_run_context_instruction,
+    mask_run_context,
+    tool_allowed,
+    tool_denied_result,
 )
 
 # mock 流式回答的分片长度(按字符切分,模拟逐 token 产出)
@@ -52,7 +58,7 @@ _MOCK_CHUNK_SIZE = 12
 TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
 
 # Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
-_SYSTEM_PROMPT = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
+_SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").policy)
 
 
 @dataclass
@@ -76,25 +82,32 @@ class AgentDeps:
     retrieval_top_k: int = 5
     target_language: str = "unknown"
     language_instruction: str = ""
+    run_context: dict[str, Any] | None = None
 
 
-def build_agent(model: Model) -> Agent[AgentDeps, str]:
+def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
     """构造并返回注册好工具的 Agent。
 
     参数:
         model: PydanticAI model 实例(由 build_model 产出或测试注入)。
     """
+    profile = behavior_profile or get_behavior_profile("ask_this_agent")
     agent: Agent[AgentDeps, str] = Agent(
         model,
         deps_type=AgentDeps,
         output_type=str,
-        system_prompt=_SYSTEM_PROMPT,
+        system_prompt=build_system_prompt(profile.policy),
     )
 
     @agent.instructions
     def run_language_policy(ctx: RunContext[AgentDeps]) -> str:
         """Inject per-run language policy without mutating user messages."""
         return ctx.deps.language_instruction
+
+    @agent.instructions
+    def run_context_policy(ctx: RunContext[AgentDeps]) -> str:
+        """Inject masked server runtime context."""
+        return build_run_context_instruction(mask_run_context(ctx.deps.run_context or {}))
 
     @agent.tool
     async def search_knowledge(
@@ -105,6 +118,8 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         参数:
             query: 检索关键词或问题。
         """
+        if not tool_allowed(TOOL_SEARCH_KNOWLEDGE, ctx.deps.run_context):
+            return tool_denied_result(TOOL_SEARCH_KNOWLEDGE)
         return await ctx.deps.retriever.retrieve(query, ctx.deps.retrieval_top_k)
 
     @agent.tool
@@ -116,6 +131,8 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         参数:
             expression: 待求值的数学表达式,如 '2 * (3 + 4)'。
         """
+        if not tool_allowed("calculator", ctx.deps.run_context):
+            return tool_denied_result("calculator")
         return await ctx.deps.tool_router.route(
             expression, "calculator", agent_run_id=ctx.deps.agent_run_id
         )
@@ -123,6 +140,8 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
     @agent.tool
     async def clock(ctx: RunContext[AgentDeps]) -> dict[str, Any]:
         """返回当前的 UTC 与本地时间(ISO 8601 与 Unix 时间戳)。"""
+        if not tool_allowed("clock", ctx.deps.run_context):
+            return tool_denied_result("clock")
         return await ctx.deps.tool_router.route(
             "", "clock", agent_run_id=ctx.deps.agent_run_id
         )
@@ -136,6 +155,8 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         参数:
             query: 搜索关键词。
         """
+        if not tool_allowed("web_search", ctx.deps.run_context):
+            return tool_denied_result("web_search")
         return await ctx.deps.tool_router.route(
             query, "web_search", agent_run_id=ctx.deps.agent_run_id
         )
@@ -146,6 +167,7 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
 def build_model(
     settings: Settings | None = None,
     secret_provider: SecretProvider | None = None,
+    provider_key_secret: SecretValue | None = None,
 ) -> Model:
     """按配置选择 PydanticAI 原生 model;未知或 mock 时回退到离线 FunctionModel。"""
     settings = settings or get_settings()
@@ -154,31 +176,35 @@ def build_model(
     if is_mock_provider(provider):
         return build_mock_model()
     if provider == "openai":
-        secret_provider.validate_required("openai", settings.openai_model)
-        api_key = secret_provider.get_secret("openai_api_key")
+        if provider_key_secret is None:
+            secret_provider.validate_required("openai", settings.openai_model)
+        api_key = provider_key_secret or secret_provider.get_secret("openai_api_key")
         return _openai_model(
             settings.openai_model,
             settings.openai_base_url,
             api_key.reveal() if api_key else "",
         )
     if provider == "qwen":
-        secret_provider.validate_required("qwen", settings.qwen_model)
-        api_key = secret_provider.get_secret("dashscope_api_key")
+        if provider_key_secret is None:
+            secret_provider.validate_required("qwen", settings.qwen_model)
+        api_key = provider_key_secret or secret_provider.get_secret("dashscope_api_key")
         return _openai_model(
             settings.qwen_model,
             settings.qwen_base_url,
             api_key.reveal() if api_key else "",
         )
     if provider == "zai":
-        secret_provider.validate_required("zai", settings.zai_model)
-        api_key = secret_provider.get_secret("zai_api_key")
+        if provider_key_secret is None:
+            secret_provider.validate_required("zai", settings.zai_model)
+        api_key = provider_key_secret or secret_provider.get_secret("zai_api_key")
         return _zai_model(settings, api_key.reveal() if api_key else "")
     if provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
 
-        secret_provider.validate_required("anthropic", settings.anthropic_model)
-        api_key = secret_provider.get_secret("anthropic_api_key")
+        if provider_key_secret is None:
+            secret_provider.validate_required("anthropic", settings.anthropic_model)
+        api_key = provider_key_secret or secret_provider.get_secret("anthropic_api_key")
         return AnthropicModel(
             settings.anthropic_model,
             provider=AnthropicProvider(api_key=api_key.reveal() if api_key else ""),
@@ -187,8 +213,9 @@ def build_model(
         from pydantic_ai.models.google import GoogleModel
         from pydantic_ai.providers.google import GoogleProvider
 
-        secret_provider.validate_required("gemini", settings.gemini_model)
-        api_key = secret_provider.get_secret("gemini_api_key")
+        if provider_key_secret is None:
+            secret_provider.validate_required("gemini", settings.gemini_model)
+        api_key = provider_key_secret or secret_provider.get_secret("gemini_api_key")
         return GoogleModel(
             settings.gemini_model,
             provider=GoogleProvider(api_key=api_key.reveal() if api_key else ""),

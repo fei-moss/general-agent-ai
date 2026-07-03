@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any, Literal
 
 from pydantic import (
@@ -26,6 +27,35 @@ from app.core.enums import (
 )
 
 
+_ANCHOR_RE = re.compile(r"[^a-z0-9_.:-]+")
+
+
+def _normalize_anchor_part(value: Any, *, max_length: int) -> str:
+    text = _ANCHOR_RE.sub("-", str(value or "").strip().lower()).strip("-")
+    if not text:
+        raise ValueError("conversation_anchor 不能为空")
+    if len(text) > max_length:
+        raise ValueError("conversation_anchor 超过长度限制")
+    return text
+
+
+class ConversationAnchorIn(BaseModel):
+    """Optional generic domain anchor for finding/reusing a conversation."""
+
+    type: str = Field(min_length=1, max_length=64)
+    key: str = Field(min_length=1, max_length=256)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_type(cls, value: Any) -> str:
+        return _normalize_anchor_part(value, max_length=64)
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def _normalize_key(cls, value: Any) -> str:
+        return _normalize_anchor_part(value, max_length=256)
+
+
 class ChatRequest(BaseModel):
     """提交一次对话/任务的请求体。"""
 
@@ -33,6 +63,8 @@ class ChatRequest(BaseModel):
     message: str
     stream: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
+    run_context: dict[str, Any] = Field(default_factory=dict)
+    conversation_anchor: ConversationAnchorIn | None = None
 
 
 class ChatAccepted(BaseModel):

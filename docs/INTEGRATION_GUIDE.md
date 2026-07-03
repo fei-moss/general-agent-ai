@@ -36,6 +36,8 @@ https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org
 export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org"
 ```
 
+curl 示例使用 `AUTH_HEADER` 变量承载当前用户身份 header；调用前由接入方按本节身份模型设置。
+
 DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
 
 ## 3. 当前身份模型
@@ -142,7 +144,7 @@ internal_rag_owner_user_id
 ```bash
 curl -sS -X POST "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H "$AUTH_HEADER" \
   -H 'Idempotency-Key: chat-001' \
   -d '{
     "message": "请用三句话介绍一下这个系统现在的能力。",
@@ -198,7 +200,7 @@ curl -sS -X POST "$BASE_URL/chat" \
 
 ```bash
 curl -N "$BASE_URL/stream/run_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+  -H "$AUTH_HEADER"
 ```
 
 SSE frame 示例：
@@ -313,7 +315,7 @@ ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 ```bash
 curl -sS -X POST "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H "$AUTH_HEADER" \
   -H 'Idempotency-Key: chat-002' \
   -d '{
     "conversation_id": "conv_xxx",
@@ -374,7 +376,7 @@ Idempotency-Key: <client-generated-stable-key>
 ```bash
 curl -sS -X POST "$BASE_URL/conversations" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer alice.internal' \
+  -H "$AUTH_HEADER" \
   -d '{
     "title": "Support analysis"
   }'
@@ -396,7 +398,7 @@ curl -sS -X POST "$BASE_URL/conversations" \
 
 ```bash
 curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
-  -H 'Authorization: Bearer alice.internal'
+  -H "$AUTH_HEADER"
 ```
 
 返回当前 `user_id` 下的会话列表，按更新时间倒序：
@@ -422,7 +424,7 @@ curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
 
 ```bash
 curl -sS "$BASE_URL/conversations/conv_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+  -H "$AUTH_HEADER"
 ```
 
 响应包含会话和消息列表：
@@ -469,7 +471,7 @@ curl -sS "$BASE_URL/conversations/conv_xxx" \
 
 ```bash
 curl -sS "$BASE_URL/runs/run_xxx" \
-  -H 'Authorization: Bearer alice.internal'
+  -H "$AUTH_HEADER"
 ```
 
 响应：
@@ -509,7 +511,7 @@ curl -sS "$BASE_URL/runs/run_xxx" \
 ```bash
 curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer rag-admin' \
+  -H "$AUTH_HEADER" \
   -d '{
     "name": "Product docs",
     "description": "内部产品知识库"
@@ -534,7 +536,7 @@ curl -sS -X POST "$BASE_URL/rag/knowledge-bases" \
 
 ```bash
 curl -sS "$BASE_URL/rag/knowledge-bases" \
-  -H 'Authorization: Bearer rag-admin'
+  -H "$AUTH_HEADER"
 ```
 
 ### 9.3 导入文本/Markdown 文档
@@ -542,7 +544,7 @@ curl -sS "$BASE_URL/rag/knowledge-bases" \
 ```bash
 curl -sS -X POST "$BASE_URL/rag/documents" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer rag-admin' \
+  -H "$AUTH_HEADER" \
   -d '{
     "knowledge_base_id": "kb_xxx",
     "title": "DockerHost notes",
@@ -569,7 +571,7 @@ curl -sS -X POST "$BASE_URL/rag/documents" \
 
 ```bash
 curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
-  -H 'Authorization: Bearer rag-admin'
+  -H "$AUTH_HEADER"
 ```
 
 等到：
@@ -584,7 +586,7 @@ curl -sS "$BASE_URL/rag/ingestion-jobs/ragjob_xxx" \
 
 ```bash
 curl -sS "$BASE_URL/rag/documents/doc_xxx" \
-  -H 'Authorization: Bearer rag-admin'
+  -H "$AUTH_HEADER"
 ```
 
 文档状态应为：
@@ -600,7 +602,7 @@ curl -sS "$BASE_URL/rag/documents/doc_xxx" \
 ```bash
 curl -sS -X POST "$BASE_URL/rag/query" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer rag-admin' \
+  -H "$AUTH_HEADER" \
   -d '{
     "knowledge_base_id": "kb_xxx",
     "query": "DockerHost 部署里有哪些服务？",

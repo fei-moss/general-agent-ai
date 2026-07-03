@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.core.config import get_settings
@@ -25,6 +25,7 @@ class RealtimeRunRequest:
     metadata: dict[str, Any]
     accepted_at: float
     route_type: str = "realtime"
+    run_context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -140,6 +141,7 @@ class RealtimeRunner:
                     route_type=request.route_type,
                     user_id=request.user_id,
                     metadata=request.metadata,
+                    run_context=request.run_context,
                 ),
                 timeout=self._max_runtime_s,
             )

@@ -54,6 +54,15 @@ class ChatBehaviorPolicy:
 
 
 @dataclass(frozen=True)
+class ChatBehaviorProfile:
+    """Server-owned behavior profile descriptor."""
+
+    name: str
+    policy: ChatBehaviorPolicy
+    eval_tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class GuardrailDecision:
     """Deterministic guardrail decision for input or output text."""
 
@@ -125,6 +134,37 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "可以解释安全原因,也可以提供合规的替代步骤、文档方向或只读排障建议。",
     ),
 )
+
+DEFAULT_BEHAVIOR_PROFILE = ChatBehaviorProfile(
+    name="ask_this_agent",
+    policy=DEFAULT_CHAT_BEHAVIOR_POLICY,
+    eval_tags=("ask_this_agent", "default"),
+)
+
+_BEHAVIOR_PROFILES = {
+    DEFAULT_BEHAVIOR_PROFILE.name: DEFAULT_BEHAVIOR_PROFILE,
+}
+
+
+def get_behavior_profile(name: str | None) -> ChatBehaviorProfile:
+    """Return a registered profile, failing closed to the default profile."""
+    key = (name or DEFAULT_BEHAVIOR_PROFILE.name).strip().lower()
+    return _BEHAVIOR_PROFILES.get(key, DEFAULT_BEHAVIOR_PROFILE)
+
+
+def select_behavior_profile(
+    settings: object,
+    *,
+    metadata: dict[str, object] | None = None,
+    run_context: dict[str, object] | None = None,
+) -> ChatBehaviorProfile:
+    """Select the server-owned behavior profile.
+
+    Client metadata and request context are accepted for future server-side
+    call sites, but intentionally ignored as control inputs.
+    """
+    _ = metadata, run_context
+    return get_behavior_profile(getattr(settings, "chat_behavior_profile", None))
 
 
 _HIDDEN_INSTRUCTION_TERMS = (

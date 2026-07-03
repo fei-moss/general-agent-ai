@@ -93,6 +93,23 @@ def test_build_model_zai_uses_openai_chat_model_with_glm52_defaults():
     assert model.profile.openai_supports_strict_tool_definition is False
 
 
+def test_build_model_uses_selected_provider_key_secret_for_zai():
+    from app.core.secrets import SecretValue
+
+    model = build_model(
+        _settings(
+            llm_provider="zai",
+            zai_api_key="settings-secret",
+            provider_default_max_output_tokens=4096,
+        ),
+        provider_key_secret=SecretValue("selected-secret"),
+    )
+
+    assert isinstance(model, OpenAIChatModel)
+    assert "selected-secret" not in repr(model)
+    assert model.model_name == "glm-5.2"
+
+
 def test_build_model_anthropic_uses_anthropic_model():
     model = build_model(
         _settings(

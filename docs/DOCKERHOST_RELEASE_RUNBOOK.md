@@ -217,12 +217,13 @@ curl -fsS "$BASE_URL/metrics" | head
 ## 7. Async Chat 合约 Smoke
 
 先确认同步等待入口仍被拒绝。`stream=false` 必须返回 `422 STREAM_FALSE_NOT_SUPPORTED`;否则不得继续宣布发布成功。
+运行本节命令前,先把 `AUTH_HEADER` 设置为 smoke 身份对应的完整认证 header。
 
 ```bash
 curl -sS -o /tmp/stream_false.json -w "%{http_code}\n" \
   "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   -d '{"message":"smoke: stream=false must be rejected","stream":false}'
 
 cat /tmp/stream_false.json
@@ -233,7 +234,7 @@ cat /tmp/stream_false.json
 ```bash
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   -d '{"message":"用一句话回答: DockerHost chat smoke 是否连通?","stream":true,"metadata":{"release_smoke":true}}' \
   | tee /tmp/chat_accepted.json
 
@@ -248,11 +249,11 @@ SSE 必须能收到事件并最终进入 terminal state。若 SSE 连接中断,�
 
 ```bash
 curl -N \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   "$BASE_URL$STREAM_URL"
 
 curl -fsS \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   "$BASE_URL/runs/$RUN_ID"
 ```
 
@@ -268,7 +269,7 @@ curl -fsS \
 
 ```bash
 websocat \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   "$BASE_URL$WS_URL"
 ```
 

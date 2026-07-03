@@ -19,6 +19,7 @@ from app.core.ids import _new_id, new_conversation_id
 from app.core.models import (
     AgentRun,
     Conversation,
+    ConversationAnchor,
     IdempotencyRecord,
     Message,
     TaskState,
@@ -96,6 +97,67 @@ class Repos:
             title=None,
             conversation_id=conversation_id,
         )
+
+    async def find_conversation_by_anchor(
+        self,
+        *,
+        user_id: str,
+        anchor_type: str,
+        anchor_key: str,
+    ) -> Conversation | None:
+        """Return the conversation bound to a user-scoped domain anchor."""
+        stmt = select(ConversationAnchor).where(
+            ConversationAnchor.user_id == user_id,
+            ConversationAnchor.anchor_type == anchor_type,
+            ConversationAnchor.anchor_key == anchor_key,
+        )
+        result = await self._session.execute(stmt)
+        anchor = result.scalar_one_or_none()
+        if anchor is None:
+            return None
+        return await self.get_conversation(anchor.conversation_id)
+
+    async def bind_conversation_anchor(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        anchor_type: str,
+        anchor_key: str,
+    ) -> ConversationAnchor:
+        """Bind a user/type/key anchor to a conversation."""
+        existing = await self._find_anchor_record(
+            user_id=user_id,
+            anchor_type=anchor_type,
+            anchor_key=anchor_key,
+        )
+        if existing is not None:
+            return existing
+        anchor = ConversationAnchor(
+            id=_new_id("canc_"),
+            conversation_id=conversation_id,
+            user_id=user_id,
+            anchor_type=anchor_type,
+            anchor_key=anchor_key,
+        )
+        self._session.add(anchor)
+        await self._session.flush()
+        return anchor
+
+    async def _find_anchor_record(
+        self,
+        *,
+        user_id: str,
+        anchor_type: str,
+        anchor_key: str,
+    ) -> ConversationAnchor | None:
+        stmt = select(ConversationAnchor).where(
+            ConversationAnchor.user_id == user_id,
+            ConversationAnchor.anchor_type == anchor_type,
+            ConversationAnchor.anchor_key == anchor_key,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
 
     # --- Message ---
 

@@ -66,6 +66,31 @@ class Conversation(Base):
     )
 
 
+class ConversationAnchor(Base):
+    """Generic user-scoped anchor that binds a domain object to a conversation."""
+
+    __tablename__ = "conversation_anchor"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "anchor_type",
+            "anchor_key",
+            name="uq_conversation_anchor_user_type_key",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    anchor_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    anchor_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Message(Base):
     """会话内的单条消息。"""
 

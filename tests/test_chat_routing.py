@@ -164,6 +164,7 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
         message="hello",
         conversation_id="conv-1",
         metadata={"mode": "realtime"},
+        run_context={"tenant": "alpha"},
     )
 
     class _ExistingRecord:
@@ -202,11 +203,12 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
     )
 
     response = await chat.create_chat(
-        ChatRequest(
-            message="hello",
-            conversation_id="conv-1",
-            metadata={"mode": "realtime"},
-        ),
+            ChatRequest(
+                message="hello",
+                conversation_id="conv-1",
+                metadata={"mode": "realtime"},
+                run_context={"tenant": "alpha"},
+            ),
         request,
         "user-1",
         _Repos(),
@@ -317,6 +319,84 @@ async def test_dispatch_realtime_keeps_strong_reference_until_task_done():
     finish.set()
     await asyncio.wait_for(task, timeout=1)
     assert task not in chat._BACKGROUND_TASKS
+
+
+def test_build_payload_includes_generic_run_context():
+    from app.api.routers.chat import _build_payload
+
+    payload = _build_payload(
+        "run-1",
+        "conv-1",
+        "trace-1",
+        ChatRequest(
+            message="hello",
+            metadata={"mode": "batch"},
+            run_context={"fixture": {"id": "ctx-1"}},
+        ),
+    )
+
+    assert payload["run_context"] == {"fixture": {"id": "ctx-1"}}
+
+
+async def test_dispatch_realtime_forwards_run_context_to_runner():
+    from app.api.routers import chat
+
+    seen = {}
+
+    class _Runner:
+        async def run_chat(self, request, *, conversation_lease=None, capacity_slot=None):
+            seen["run_context"] = request.run_context
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(realtime_runner=_Runner())))
+    payload = {
+        "agent_run_id": "run-bg-context",
+        "conversation_id": "conv-1",
+        "trace_id": "trace-1",
+        "message": "hello",
+        "metadata": {},
+        "run_context": {"fixture": {"id": "ctx-1"}},
+    }
+
+    task = chat._dispatch_realtime(request, payload, "user-1", None)
+    await asyncio.wait_for(task, timeout=1)
+
+    assert seen["run_context"] == {"fixture": {"id": "ctx-1"}}
+
+
+async def test_provider_preflight_estimates_message_metadata_and_run_context():
+    from app.api.routers.chat import _apply_provider_preflight
+
+    captured = {}
+
+    class _Limiter:
+        async def check(self, request):
+            captured["estimated_input_tokens"] = request.estimated_input_tokens
+            return SimpleNamespace(allowed=True)
+
+    body = ChatRequest(
+        message="hi",
+        metadata={"mode": "realtime"},
+        run_context={"long_context": "x" * 300},
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(provider_limiter=_Limiter())))
+    settings = SimpleNamespace(
+        llm_provider="zai",
+        zai_model="glm-5.2",
+        provider_default_max_output_tokens=1024,
+        provider_realtime_preflight_timeout_ms=100,
+        provider_realtime_degrade_to_batch=True,
+    )
+
+    route_type = await _apply_provider_preflight(
+        body,
+        request,
+        "realtime",
+        settings=settings,
+        user_id="user-1",
+    )
+
+    assert route_type == "realtime"
+    assert captured["estimated_input_tokens"] > 50
 
 
 def test_missing_realtime_runner_fails_closed_instead_of_creating_fallback():

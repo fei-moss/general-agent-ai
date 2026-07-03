@@ -166,7 +166,10 @@ def build_deps(
         message_repo, run_repo = _build_repos(session)
         secret_provider = secret_provider or build_secret_provider(settings)
         provider_limiter = provider_limiter or build_provider_limiter(
-            settings, redis_client=redis_client, metrics=metrics
+            settings,
+            redis_client=redis_client,
+            metrics=metrics,
+            secret_provider=secret_provider,
         )
     except ImportError as exc:
         log_with_fields(

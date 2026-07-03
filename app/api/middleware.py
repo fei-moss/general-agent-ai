@@ -103,7 +103,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if limiter is None or not user_id:
             # 限流器未就绪或匿名:不阻断,交由下游处理
             return await call_next(request)
-        result = await limiter.check(user_id)
+        result = await limiter.check(user_id, route=request.url.path)
         if not result.allowed:
             log_with_fields(
                 logger,

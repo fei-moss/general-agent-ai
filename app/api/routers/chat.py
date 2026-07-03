@@ -33,7 +33,7 @@ from app.core.schemas import ChatAccepted, ChatRequest
 from app.runtime.locks import ConversationLock
 from app.runtime.provider_limits import (
     ProviderLimitRequest,
-    estimate_input_tokens,
+    estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
 from app.runtime.runner import (
@@ -42,6 +42,7 @@ from app.runtime.runner import (
     RealtimeRunner,
     now_seconds,
 )
+from app.runtime.tool_context import mask_run_context
 
 logger = get_logger(__name__)
 
@@ -75,7 +76,6 @@ async def create_chat(
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
-    conversation_id = body.conversation_id or new_conversation_id()
     route_type = select_route_type(
         body.metadata,
         runtime_mode=settings.chat_runtime_mode,
@@ -85,6 +85,8 @@ async def create_chat(
         message=body.message,
         conversation_id=body.conversation_id,
         metadata=body.metadata,
+        run_context=body.run_context,
+        conversation_anchor=_anchor_payload(body),
     )
     if idempotency_key:
         replay = await _try_idempotency_replay(
@@ -93,6 +95,7 @@ async def create_chat(
         if replay is not None:
             return replay
 
+    conversation_id = await _resolve_conversation_id(body, repos, user)
     route_type = await _apply_provider_preflight(
         body,
         request,
@@ -130,9 +133,9 @@ async def create_chat(
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="REALTIME_RUNNER_BUSY",
-                )
+            )
             lock = getattr(request.app.state, "conversation_lock", None) or ConversationLock()
-            lock_key = body.conversation_id or f"new:{user}:{request_hash}"
+            lock_key = _conversation_lock_key(body, user, request_hash)
             conversation_lease = await lock.acquire(lock_key, run_id, ttl_s=120)
             if conversation_lease is None:
                 raise HTTPException(
@@ -146,11 +149,23 @@ async def create_chat(
             role=MessageRole.USER,
             content=body.message,
         )
+        if body.conversation_anchor is not None:
+            await repos.bind_conversation_anchor(
+                conversation_id=conversation.id,
+                user_id=user,
+                anchor_type=body.conversation_anchor.type,
+                anchor_key=body.conversation_anchor.key,
+            )
         await repos.create_run(
             run_id,
             conversation.id,
             trace_id,
-            plan={"route_type": route_type, "metadata": body.metadata},
+            plan={
+                "route_type": route_type,
+                "metadata": body.metadata,
+                "run_context": mask_run_context(body.run_context),
+                "conversation_anchor": _anchor_payload(body),
+            },
         )
         payload = _build_payload(run_id, conversation.id, trace_id, body)
         payload["user_id"] = user
@@ -211,6 +226,39 @@ def select_route_type(
     return "realtime"
 
 
+async def _resolve_conversation_id(
+    body: ChatRequest,
+    repos: ReposDep,
+    user_id: str,
+) -> str:
+    if body.conversation_id:
+        return body.conversation_id
+    if body.conversation_anchor is not None:
+        existing = await repos.find_conversation_by_anchor(
+            user_id=user_id,
+            anchor_type=body.conversation_anchor.type,
+            anchor_key=body.conversation_anchor.key,
+        )
+        if existing is not None:
+            return existing.id
+    return new_conversation_id()
+
+
+def _conversation_lock_key(body: ChatRequest, user_id: str, request_hash: str) -> str:
+    if body.conversation_anchor is not None:
+        return (
+            f"anchor:{user_id}:"
+            f"{body.conversation_anchor.type}:{body.conversation_anchor.key}"
+        )
+    return body.conversation_id or f"new:{user_id}:{request_hash}"
+
+
+def _anchor_payload(body: ChatRequest) -> dict[str, str] | None:
+    if body.conversation_anchor is None:
+        return None
+    return body.conversation_anchor.model_dump()
+
+
 async def _apply_provider_preflight(
     body: ChatRequest,
     request: Request,
@@ -234,7 +282,11 @@ async def _apply_provider_preflight(
     req = ProviderLimitRequest(
         provider=identity.provider,
         model=identity.model,
-        estimated_input_tokens=estimate_input_tokens(body.message),
+        estimated_input_tokens=estimate_structured_input_tokens(
+            body.message,
+            body.metadata,
+            body.run_context,
+        ),
         max_output_tokens=settings.provider_default_max_output_tokens,
         route_type="realtime",
         user_id=user_id,
@@ -303,6 +355,8 @@ def _build_payload(
         "trace_id": trace_id,
         "message": body.message,
         "metadata": body.metadata,
+        "run_context": body.run_context,
+        "conversation_anchor": _anchor_payload(body),
     }
 
 
@@ -341,6 +395,7 @@ def _dispatch_realtime(
         trace_id=payload["trace_id"],
         message=payload["message"],
         metadata=payload.get("metadata") or {},
+        run_context=payload.get("run_context") or {},
         accepted_at=now_seconds(),
         route_type=str(payload.get("route_type") or "realtime"),
     )

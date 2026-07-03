@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     zai_model: str = "glm-5.2"
     zai_api_key: str = ""
     zai_api_key_file: str = ""
+    zai_api_keys_file: str = ""
     zai_thinking_type: str = "enabled"  # enabled | disabled
     zai_reasoning_effort: str = "max"
     zai_tool_stream: bool = True
@@ -89,10 +90,14 @@ class Settings(BaseSettings):
     embedding_dim: int = 256
     request_timeout_s: float = 60.0
     chat_runtime_mode: str = "auto"  # celery | realtime | auto
+    chat_behavior_profile: str = "ask_this_agent"
     realtime_runner_max_concurrency: int = 1000
     provider_rate_limit_enabled: bool = True
     provider_rate_limit_fail_open: bool = False
     provider_rate_limits_json: str = "{}"
+    provider_key_pool_file: str = ""
+    provider_key_pool_scope: str = "account"  # account | key
+    provider_key_pool_strategy: str = "least_wait_round_robin"
     provider_default_rpm: int = 100000
     provider_default_tpm: int = 1000000
     provider_default_max_output_tokens: int = 1024

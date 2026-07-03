@@ -248,6 +248,25 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
     assert plan["target_language"] == "zh-Hans"
 
 
+def test_plan_snapshot_masks_run_context_before_audit_storage():
+    from app.core.config import Settings
+
+    plan = AgentOrchestrator._plan_snapshot(
+        "realtime",
+        {},
+        Settings(_env_file=None),
+        run_context={
+            "fixture": {"id": "ctx-1"},
+            "paid": {"locked": True, "value": "do-not-store"},
+        },
+    )
+
+    rendered_context = repr(plan["run_context"])
+    assert "ctx-1" in rendered_context
+    assert "do-not-store" not in rendered_context
+    assert "[masked:locked]" in rendered_context
+
+
 async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):
     """订阅 channel,收集事件直到 RUN_COMPLETED 或超时。"""
     collected = []

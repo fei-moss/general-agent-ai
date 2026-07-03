@@ -44,20 +44,22 @@ DockerHost 部署时使用 `dockerhost/env.example` 中的变量形态，并通�
 
 ## 端到端 demo(curl)
 
+先把 `AUTH_HEADER` 设置为当前环境认可的用户认证头。不要把真实 token 或生产身份写入仓库文档。
+
 ```bash
 # 提交一次运行,得到 202 + agent_run_id / stream_url
 curl -s -X POST http://localhost:8000/chat \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer local-user' \
+  -H "$AUTH_HEADER" \
   -d '{"message": "你好,介绍一下这个平台", "stream": true, "metadata": {"mode": "realtime"}}'
 
 # 用返回的 stream_url 订阅 SSE 事件流(逐 token 推送)
 curl -N http://localhost:8000/stream/<agent_run_id> \
-  -H 'Authorization: Bearer local-user'
+  -H "$AUTH_HEADER"
 
 # 查询运行状态
 curl -s http://localhost:8000/runs/<agent_run_id> \
-  -H 'Authorization: Bearer local-user'
+  -H "$AUTH_HEADER"
 ```
 
 ## 目录结构

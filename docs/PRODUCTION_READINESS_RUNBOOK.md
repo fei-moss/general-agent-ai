@@ -72,18 +72,20 @@ curl -fsS "$BASE_URL/metrics" | head
 
 ## Smoke Checks
 
+Set `AUTH_HEADER` to the smoke identity header before running chat and stream checks.
+
 ```bash
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "$AUTH_HEADER" \
   -d '{"message":"用一句话回答: GLM-5.2 是否连通?","stream":true,"metadata":{"mode":"realtime"}}'
 ```
 
 Use the returned `stream_url`:
 
 ```bash
-curl -N -H 'Authorization: Bearer smoke-user' "$BASE_URL/stream/<run_id>"
-curl -fsS -H 'Authorization: Bearer smoke-user' "$BASE_URL/runs/<run_id>"
+curl -N -H "$AUTH_HEADER" "$BASE_URL/stream/<run_id>"
+curl -fsS -H "$AUTH_HEADER" "$BASE_URL/runs/<run_id>"
 ```
 
 RAG smoke:
