@@ -36,6 +36,28 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "不要编造" in prompt
     assert "search_knowledge" in prompt
     assert "真实资金" in prompt
+    assert "需要数学计算时调用 calculator" not in prompt
+    assert "需要当前时间时调用 clock" not in prompt
+    assert "web_search" not in prompt
+
+
+def test_input_guardrail_responds_to_self_introduction_in_scope():
+    decision = evaluate_user_message("请介绍一下你自己。")
+
+    assert decision.action is GuardrailAction.RESPOND
+    assert decision.category is GuardrailCategory.IDENTITY_INTRODUCTION
+    assert "Ask this Agent" in decision.safe_response
+    assert "当前 Agent 详情页" in decision.safe_response
+    assert "数学计算" not in decision.safe_response
+    assert "联网搜索" not in decision.safe_response
+    assert "AI 智能助手" not in decision.safe_response
+
+
+def test_input_guardrail_does_not_swallow_current_agent_description_question():
+    decision = evaluate_user_message("这个 Agent 是做什么的?")
+
+    assert decision.action is GuardrailAction.ALLOW
+    assert decision.category is GuardrailCategory.ALLOWED
 
 
 def test_detect_target_language_prefers_explicit_user_request():
@@ -158,6 +180,19 @@ def test_output_guardrail_replaces_high_confidence_secret_value():
     assert decision.action is GuardrailAction.REFUSE
     assert decision.category is GuardrailCategory.OUTPUT_POLICY_LEAK
     assert "密钥" in decision.safe_response or "隐藏指令" in decision.safe_response
+
+
+def test_output_guardrail_replaces_generic_identity_drift():
+    decision = evaluate_assistant_answer(
+        "我是一个 AI 智能助手,可以为你提供数学计算、联网搜索、时间查询和决策建议。",
+        target_language=TARGET_LANGUAGE_ZH_HANS,
+    )
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category is GuardrailCategory.IDENTITY_DRIFT
+    assert "Ask this Agent" in decision.safe_response
+    assert "数学计算" not in decision.safe_response
+    assert "联网搜索" not in decision.safe_response
 
 
 def test_output_guardrail_refuses_english_answer_for_chinese_target():

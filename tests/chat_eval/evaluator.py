@@ -108,7 +108,7 @@ def validate_cases(rows: list[dict[str, Any]]) -> list[str]:
         _validate_enum(
             row, "expected_input_category", _ALLOWED_CATEGORIES, errors, case_id
         )
-        if row.get("expected_input_action") == "refuse":
+        if row.get("expected_input_action") in {"refuse", "respond"}:
             _validate_string_list(row, "safe_response_contains", errors, case_id)
         if row.get("expected_input_action") == "allow":
             _validate_string_list(row, "answer_traits", errors, case_id)
@@ -137,12 +137,15 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
     """Return simple coverage counters used by pytest gates."""
     counts: dict[str, int] = {
         "allow": 0,
+        "respond": 0,
         "refuse": 0,
         "rag_required": 0,
         "hidden_instruction": 0,
         "secret_request": 0,
         "real_money_operation": 0,
         "personal_wallet_data": 0,
+        "identity_introduction": 0,
+        "identity_drift": 0,
         "output_policy_leak": 0,
         "language_mismatch": 0,
         "false_positive_guard": 0,
@@ -158,6 +161,8 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
             counts["rag_required"] += 1
         if case.raw.get("expected_output_category") == "output_policy_leak":
             counts["output_policy_leak"] += 1
+        if case.raw.get("expected_output_category") == "identity_drift":
+            counts["identity_drift"] += 1
         if case.raw.get("expected_output_category") == "language_mismatch":
             counts["language_mismatch"] += 1
         if "false_positive_guard" in case.raw.get("tags", []):

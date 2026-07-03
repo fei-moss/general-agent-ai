@@ -428,6 +428,58 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     }
 
 
+async def test_identity_intro_responds_before_model_and_tools(deps):
+    runtime, bus, message_repo, run_repo = deps
+
+    async def exploding_stream(_messages, _info):
+        raise AssertionError("model should not be called for identity intro")
+        yield ""  # pragma: no cover
+
+    runtime.tool_router = _FakeToolRouter()
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=exploding_stream))
+    )
+    agent_run_id = "run-identity-intro-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-identity-intro",
+        trace_id="trace-identity-intro",
+        user_message="请介绍一下你自己。",
+    )
+    events = await collector
+
+    assert "Ask this Agent" in answer
+    assert "当前 Agent 详情页" in answer
+    assert "说明助理" in answer
+    assert "AI 智能助手" not in answer
+    assert "数学计算" not in answer
+    assert "联网搜索" not in answer
+
+    types = [event.type for event in events]
+    assert EventType.LLM_GENERATING not in types
+    assert EventType.TOOL_CALL_STARTED not in types
+    assert EventType.ERROR not in types
+    assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
+    assert len(message_repo.added) == 1
+    assert message_repo.added[0]["content"] == answer
+    assert runtime.tool_router.calls == []
+
+    plan_calls = [
+        args[2]
+        for name, args in run_repo.calls
+        if name == "mark_running_with_plan"
+    ]
+    assert plan_calls
+    plan = plan_calls[0]
+    assert plan["guardrail"]["action"] == "respond"
+    assert plan["guardrail"]["category"] == "identity_introduction"
+
+
 async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     runtime, _bus, _message_repo, run_repo = deps
     orchestrator = AgentOrchestrator(

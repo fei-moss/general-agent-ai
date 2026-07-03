@@ -231,8 +231,8 @@ class AgentOrchestrator:
         try:
             target_language = detect_target_language(user_message)
             input_decision = evaluate_user_message(user_message)
-            if input_decision.action is GuardrailAction.REFUSE:
-                return await self._handle_guardrail_refusal(
+            if input_decision.action is not GuardrailAction.ALLOW:
+                return await self._handle_guardrail_response(
                     agent_run_id,
                     conversation_id,
                     emitter,
@@ -729,7 +729,7 @@ class AgentOrchestrator:
             plan["target_language"] = target_language
         return plan
 
-    async def _handle_guardrail_refusal(
+    async def _handle_guardrail_response(
         self,
         agent_run_id: str,
         conversation_id: str,
@@ -740,7 +740,7 @@ class AgentOrchestrator:
         decision: GuardrailDecision,
         target_language: str,
     ) -> str:
-        """Converge a deterministic policy refusal without calling the model."""
+        """Converge a deterministic policy response without calling the model."""
         plan = self._plan_snapshot(
             route_type,
             metadata,
