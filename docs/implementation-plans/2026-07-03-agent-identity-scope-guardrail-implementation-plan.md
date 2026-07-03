@@ -20,7 +20,7 @@ Fix Ask this Agent self-introduction drift without fixed self-introduction templ
 
 1. Tests and golden cases
    - Files/modules: `tests/test_chat_behavior_policy.py`, `tests/test_chat_behavior_eval.py`, `tests/test_orchestrator.py`, `tests/chat_eval/golden_cases.jsonl`, `tests/chat_eval/evaluator.py`.
-   - Behavior change: encode self-introduction as `allow`, so it passes through the model; assert the prompt carries identity and readable-format constraints.
+   - Behavior change: encode self-introduction as `allow`, so it passes through the model; assert the prompt carries identity, no-tool-for-pure-identity, and readable-format constraints.
    - Data contract impact: none.
    - Tests to add/update: identity prompt allow decision, model-path orchestrator coverage, markdown-format prompt constraints, non-trigger for `这个 Agent 是做什么的?`, no identity fixed-template output replacement.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_chat_behavior_eval.py tests/test_orchestrator.py -q`.

@@ -39,6 +39,8 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "避免整段堆砌" in prompt
     assert "必须由模型自然生成回答" in prompt
     assert "不要把内部计算、时间查询、联网检索" in prompt
+    assert "纯身份或能力范围问题不是数据查询" in prompt
+    assert "应直接回答,不要调用工具" in prompt
     assert "search_knowledge" in prompt
     assert "真实资金" in prompt
     assert "需要数学计算时调用 calculator" not in prompt

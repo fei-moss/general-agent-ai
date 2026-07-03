@@ -29,6 +29,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
   - When a user asks `你是谁`, `介绍一下你自己`, `你能做什么`, or equivalent identity/capability questions, the assistant should generate an answer as the Ask this Agent detail-page information assistant.
 - State model:
   - Identity self-introduction is not a deterministic safe response; it goes through the model path.
+  - Pure identity/capability questions are not data queries and should not call tools; tool use remains appropriate for specific current-Agent fields, metrics, reports, or Live Activities.
   - Other allowed Agent data questions continue through the model/tool path.
 - Ownership and identity rules:
   - The assistant must not claim to be a generic AI assistant, calculator, web-search assistant, platform customer-support agent, market-news assistant, or cross-Agent comparison engine.
@@ -103,6 +104,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 
 - Functional:
   - `请介绍一下你自己。`, `你是谁?`, and `你能做什么?` pass through the model path instead of returning a deterministic fixed template.
+  - Pure identity/capability prompts emit an LLM event but should not call Marketplace or utility tools.
   - Model-generated identity answers say it is the current Agent detail-page information assistant.
   - Model-generated identity answers do not claim to be a generic AI assistant, calculator, web-search assistant, platform support agent, market-news assistant, or investment adviser.
   - Model-generated identity answers name allowed user questions in PRD terms: current Agent metadata, contract parameters, on-chain/history metrics, Top Holders, Live Activities, and fixed platform mechanism knowledge.
