@@ -17,7 +17,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
   - Generic tool/capability self-introduction conflicts with `SPEC-AGENT-POSITIONING-POLICY-001`.
   - The system prompt still exposes generic tool capabilities such as `calculator` and `clock`, which encourages model self-description as a utility bot.
   - Existing evals do not contain a self-introduction regression case.
-  - The deterministic identity answer can be semantically correct but still feel low-quality if it is returned as one dense paragraph.
+  - A deterministic fixed self-introduction template is too rigid for the product experience; identity questions should still pass through the model while staying inside the PRD persona and scope.
 - Non-goals:
   - No route, DB, streaming event, provider, Marketplace API, or deployment configuration change.
   - No removal of internal calculator/clock tools from the platform runtime in this slice.
@@ -26,15 +26,15 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 ## Product Semantics
 
 - User/operator workflow:
-  - When a user asks `你是谁`, `介绍一下你自己`, `你能做什么`, or equivalent identity/capability questions, the assistant should answer as the Ask this Agent detail-page information assistant.
+  - When a user asks `你是谁`, `介绍一下你自己`, `你能做什么`, or equivalent identity/capability questions, the assistant should generate an answer as the Ask this Agent detail-page information assistant.
 - State model:
-  - Identity self-introduction is a deterministic safe response and should not call the model or tools.
+  - Identity self-introduction is not a deterministic safe response; it goes through the model path.
   - Other allowed Agent data questions continue through the model/tool path.
 - Ownership and identity rules:
   - The assistant must not claim to be a generic AI assistant, calculator, web-search assistant, platform customer-support agent, market-news assistant, or cross-Agent comparison engine.
   - The assistant must not present internal tools as product capabilities.
 - Presentation rules:
-  - Fixed identity answers should use readable Markdown structure: short opening sentence, concise sections, and bullet points.
+  - Identity answers should use readable Markdown structure: short opening sentence, concise sections, and bullet points.
   - Model-generated answers should prefer short headings, bullets, or compact tables for identity, capability, metric, and data-explanation answers; avoid one dense paragraph when multiple facts are present.
   - Formatting must improve scanability without turning the answer into marketing copy or adding unsupported claims.
 - Permissions/authentication:
@@ -77,16 +77,16 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
   - `tests/chat_eval/evaluator.py`
 - Data flow:
   1. Orchestrator evaluates the user message before model/tool execution.
-  2. Identity/capability prompts return a deterministic scoped identity answer.
-  3. The run plan records guardrail metadata with action `respond`.
+  2. Identity/capability prompts pass as allowed input to the model.
+  3. The system prompt constrains model identity, scope, forbidden capability claims, and presentation.
   4. Non-identity allowed prompts continue through the existing model/tool flow.
-  5. Output guardrail catches high-confidence generic identity drift if a model output still claims generic AI/tool capabilities.
+  5. Security and language output guardrails remain deterministic for hidden-instruction, secret, and language violations; identity drift is handled through prompt/eval feedback rather than a fixed replacement template.
 - Transaction/concurrency boundaries:
   - Same as existing deterministic guardrail path.
 - Observability/logging/metrics:
   - Existing run plan `guardrail` metadata is reused.
 - Rollback strategy:
-  - Revert identity patterns, safe responses, prompt narrowing, tests, and this spec/plan.
+  - Revert prompt narrowing, tests, and this spec/plan.
 
 ## Harness Classification
 
@@ -102,19 +102,18 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 ## Acceptance Criteria
 
 - Functional:
-  - `请介绍一下你自己。`, `你是谁?`, and `你能做什么?` return an Ask this Agent scoped identity answer before model/tool execution.
-  - The scoped identity answer says it is the current Agent detail-page information assistant.
-  - The scoped identity answer says it is not a generic AI assistant, calculator, web-search assistant, platform support agent, market-news assistant, or investment adviser.
-  - The scoped identity answer names allowed user questions in PRD terms: current Agent metadata, contract parameters, on-chain/history metrics, Top Holders, Live Activities, and fixed platform mechanism knowledge.
-  - The scoped identity answer does not mention `数学计算`, `联网搜索`, `时间查询`, broad general Q&A, or decision-support capabilities as product capabilities.
-  - The scoped identity answer is not a single dense paragraph; it uses Markdown section labels and bullet points for role, scope, and boundaries.
+  - `请介绍一下你自己。`, `你是谁?`, and `你能做什么?` pass through the model path instead of returning a deterministic fixed template.
+  - Model-generated identity answers say it is the current Agent detail-page information assistant.
+  - Model-generated identity answers do not claim to be a generic AI assistant, calculator, web-search assistant, platform support agent, market-news assistant, or investment adviser.
+  - Model-generated identity answers name allowed user questions in PRD terms: current Agent metadata, contract parameters, on-chain/history metrics, Top Holders, Live Activities, and fixed platform mechanism knowledge.
+  - Model-generated identity answers do not mention `数学计算`, `联网搜索`, `时间查询`, broad general Q&A, or decision-support capabilities as product capabilities.
+  - Identity answers are not a single dense paragraph; they use Markdown section labels and bullet points for role, scope, and boundaries.
   - The default model prompt asks the LLM to use structured, readable Markdown formatting for multi-fact answers.
-  - Self-introduction does not call Marketplace tools when no current Agent address is present.
   - System prompt no longer advertises generic calculator/clock/web-search utility capabilities.
 - Edge cases:
   - `这个 Agent 是做什么的?` remains an allowed current-Agent data question and does not get swallowed by the self-introduction guardrail.
   - Chinese and English identity prompts are both handled in the target language.
-  - Output guardrail replaces high-confidence generic identity drift with the scoped identity answer.
+  - Hidden-instruction, secret, personal-wallet, real-money, and language guardrails remain deterministic.
 - Compatibility:
   - Existing hidden-instruction, secret, wallet-data, language, and streaming output guardrails remain valid.
   - Existing tool-event tests for explicit tool-call harness behavior remain valid.
@@ -127,7 +126,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 
 - Accepted assumptions:
   - Internal tools may still exist for engineering/runtime compatibility, but the product self-identity must not advertise them as user-facing capabilities.
-  - Deterministic identity responses are appropriate because PRD identity is fixed product copy, not model reasoning.
+  - Identity should be model-generated for product quality, while the PRD persona and scope remain server-owned prompt policy.
 - Rejected alternatives:
-  - Prompt-only tuning was rejected because live evidence shows the model can still turn tool schemas into self-description.
+  - Fixed deterministic identity templates were rejected because they feel rigid and low-quality for user-facing chat.
   - Removing calculator/clock tools entirely was deferred because this slice is about product identity behavior, not runtime tool inventory.

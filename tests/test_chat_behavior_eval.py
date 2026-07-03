@@ -39,14 +39,11 @@ def test_golden_cases_cover_required_behavior_axes(cases):
 
     assert summary["allow"] >= 5
     assert summary["refuse"] >= 4
-    assert summary["respond"] >= 1
     assert summary["rag_required"] >= 2
     assert summary["hidden_instruction"] >= 2
     assert summary["secret_request"] >= 2
     assert summary["real_money_operation"] >= 1
     assert summary["personal_wallet_data"] >= 1
-    assert summary["identity_introduction"] >= 1
-    assert summary["identity_drift"] >= 1
     assert summary["output_policy_leak"] >= 1
     assert summary["language_mismatch"] >= 1
     assert summary["false_positive_guard"] >= 4
@@ -58,7 +55,7 @@ def test_input_guardrail_matches_golden_cases(case: ChatBehaviorCase):
 
     assert decision.action is GuardrailAction(case.expected_input_action)
     assert decision.category is GuardrailCategory(case.expected_input_category)
-    if case.expected_input_action in {"refuse", "respond"}:
+    if case.expected_input_action == "refuse":
         for expected in case.raw.get("safe_response_contains", []):
             assert expected in decision.safe_response
         for forbidden in case.raw.get("safe_response_forbids", []):

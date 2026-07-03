@@ -37,6 +37,8 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "清晰版式" in prompt
     assert "短标题、要点或紧凑表格" in prompt
     assert "避免整段堆砌" in prompt
+    assert "必须由模型自然生成回答" in prompt
+    assert "不要把内部计算、时间查询、联网检索" in prompt
     assert "search_knowledge" in prompt
     assert "真实资金" in prompt
     assert "需要数学计算时调用 calculator" not in prompt
@@ -44,33 +46,20 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "web_search" not in prompt
 
 
-def test_input_guardrail_responds_to_self_introduction_in_scope():
+def test_input_guardrail_allows_self_introduction_to_model():
     decision = evaluate_user_message("请介绍一下你自己。")
 
-    assert decision.action is GuardrailAction.RESPOND
-    assert decision.category is GuardrailCategory.IDENTITY_INTRODUCTION
-    assert "Ask this Agent" in decision.safe_response
-    assert "当前 Agent 详情页" in decision.safe_response
-    assert "\n\n**我负责**\n" in decision.safe_response
-    assert "\n\n**我不会**\n" in decision.safe_response
-    assert "- 解释这个 Agent 是什么" in decision.safe_response
-    assert "`这个 Agent 是做什么的?`" in decision.safe_response
-    assert "数学计算" not in decision.safe_response
-    assert "联网搜索" not in decision.safe_response
-    assert "AI 智能助手" not in decision.safe_response
+    assert decision.action is GuardrailAction.ALLOW
+    assert decision.category is GuardrailCategory.ALLOWED
+    assert decision.safe_response == ""
 
 
-def test_input_guardrail_responds_to_english_self_introduction_with_structure():
+def test_input_guardrail_allows_english_self_introduction_to_model():
     decision = evaluate_user_message("Please introduce yourself.")
 
-    assert decision.action is GuardrailAction.RESPOND
-    assert decision.category is GuardrailCategory.IDENTITY_INTRODUCTION
-    assert "Ask this Agent" in decision.safe_response
-    assert "\n\n**I help with**\n" in decision.safe_response
-    assert "\n\n**I do not**\n" in decision.safe_response
-    assert "- Explaining what this Agent is" in decision.safe_response
-    assert "calculator" in decision.safe_response
-    assert "web-search assistant" in decision.safe_response
+    assert decision.action is GuardrailAction.ALLOW
+    assert decision.category is GuardrailCategory.ALLOWED
+    assert decision.safe_response == ""
 
 
 def test_input_guardrail_does_not_swallow_current_agent_description_question():
@@ -202,17 +191,15 @@ def test_output_guardrail_replaces_high_confidence_secret_value():
     assert "密钥" in decision.safe_response or "隐藏指令" in decision.safe_response
 
 
-def test_output_guardrail_replaces_generic_identity_drift():
+def test_output_guardrail_does_not_replace_identity_answer_with_fixed_template():
     decision = evaluate_assistant_answer(
         "我是一个 AI 智能助手,可以为你提供数学计算、联网搜索、时间查询和决策建议。",
         target_language=TARGET_LANGUAGE_ZH_HANS,
     )
 
-    assert decision.action is GuardrailAction.REFUSE
-    assert decision.category is GuardrailCategory.IDENTITY_DRIFT
-    assert "Ask this Agent" in decision.safe_response
-    assert "数学计算" not in decision.safe_response
-    assert "联网搜索" not in decision.safe_response
+    assert decision.action is GuardrailAction.ALLOW
+    assert decision.category is GuardrailCategory.ALLOWED
+    assert decision.safe_response == ""
 
 
 def test_output_guardrail_refuses_english_answer_for_chinese_target():

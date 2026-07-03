@@ -428,16 +428,24 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     }
 
 
-async def test_identity_intro_responds_before_model_and_tools(deps):
+async def test_identity_intro_uses_model_path_without_fixed_template(deps):
     runtime, bus, message_repo, run_repo = deps
 
-    async def exploding_stream(_messages, _info):
-        raise AssertionError("model should not be called for identity intro")
-        yield ""  # pragma: no cover
+    answer_text = (
+        "我是 Ask this Agent 中当前 Agent 详情页的说明助理。\n\n"
+        "**我负责**\n"
+        "- 解释当前 Agent 的页面信息、历史表现和平台机制。\n\n"
+        "**我不会**\n"
+        "- 冒充 Agent 本人,也不会替用户做投资判断。"
+    )
+
+    async def identity_stream(_messages, _info):
+        for i in range(0, len(answer_text), 8):
+            yield answer_text[i : i + 8]
 
     runtime.tool_router = _FakeToolRouter()
     orchestrator = AgentOrchestrator(
-        runtime, agent=build_agent(FunctionModel(stream_function=exploding_stream))
+        runtime, agent=build_agent(FunctionModel(stream_function=identity_stream))
     )
     agent_run_id = "run-identity-intro-1"
     channel = channel_for(agent_run_id)
@@ -455,13 +463,13 @@ async def test_identity_intro_responds_before_model_and_tools(deps):
 
     assert "Ask this Agent" in answer
     assert "当前 Agent 详情页" in answer
-    assert "说明助理" in answer
+    assert "**我负责**" in answer
     assert "AI 智能助手" not in answer
     assert "数学计算" not in answer
     assert "联网搜索" not in answer
 
     types = [event.type for event in events]
-    assert EventType.LLM_GENERATING not in types
+    assert EventType.LLM_GENERATING in types
     assert EventType.TOOL_CALL_STARTED not in types
     assert EventType.ERROR not in types
     assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
@@ -476,8 +484,8 @@ async def test_identity_intro_responds_before_model_and_tools(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["guardrail"]["action"] == "respond"
-    assert plan["guardrail"]["category"] == "identity_introduction"
+    assert "guardrail" not in plan
+    assert plan["target_language"] == "zh-Hans"
 
 
 async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):

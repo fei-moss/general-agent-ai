@@ -26,7 +26,6 @@ class GuardrailAction(str, Enum):
     """Deterministic guardrail action."""
 
     ALLOW = "allow"
-    RESPOND = "respond"
     REFUSE = "refuse"
 
 
@@ -38,8 +37,6 @@ class GuardrailCategory(str, Enum):
     SECRET_REQUEST = "secret_request"
     REAL_MONEY_OPERATION = "real_money_operation"
     PERSONAL_WALLET_DATA = "personal_wallet_data"
-    IDENTITY_INTRODUCTION = "identity_introduction"
-    IDENTITY_DRIFT = "identity_drift"
     OUTPUT_POLICY_LEAK = "output_policy_leak"
     LANGUAGE_MISMATCH = "language_mismatch"
 
@@ -102,6 +99,10 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "中文问题使用简体中文,英文问题使用英文,产品术语和字段名可保留原文。",
         "回答默认简洁但要有清晰版式;多事实回答优先使用短标题、要点或紧凑表格,"
         "避免整段堆砌。身份、能力、边界和数据解释类回答尤其要便于快速扫读。",
+        "当用户询问你是谁、自我介绍、你能做什么或能力范围时,必须由模型自然生成回答;"
+        "回答应说明自己是 Ask this Agent 中当前 Agent 详情页的信息助理,只解释当前 Agent "
+        "页面信息和固定平台机制,不要把内部计算、时间查询、联网检索或任何内部工具描述成"
+        "面向用户的产品能力。",
         "只基于当前 Agent 的 Metadata、合约参数、链上历史数据、Top Holders、"
         "Agent Live Activities 和固定平台机制知识回答,不要超出详情页已展示范围。",
         "当前 Agent 的基础信息、概览指标、最近报告和动态计算指标优先来自 Marketplace 工具结果。",
@@ -283,32 +284,6 @@ _PERSONAL_WALLET_DATA_TERMS = (
     "holdings",
     "shares",
 )
-_IDENTITY_INTRO_PATTERNS = (
-    re.compile(r"(?:介绍|自我介绍).{0,8}(?:你自己|你|自己|yourself)", re.I),
-    re.compile(r"(?:你|您).{0,8}(?:是谁|是什么|是干什么|能做什么|可以做什么|会做什么|有什么能力|主要能力)"),
-    re.compile(r"\bwho\s+are\s+you\b", re.I),
-    re.compile(r"\bwhat\s+are\s+you\b", re.I),
-    re.compile(r"\bwhat\s+can\s+you\s+do\b", re.I),
-    re.compile(r"\bintroduce\s+yourself\b", re.I),
-    re.compile(r"\byour\s+capabilities\b", re.I),
-)
-_GENERIC_IDENTITY_PATTERNS = (
-    re.compile(r"我是.{0,8}ai.{0,6}智能助手", re.I),
-    re.compile(r"我是.{0,8}通用.{0,6}助手"),
-    re.compile(r"\bi\s*(?:am|'m)\s+an?\s+ai\s+assistant\b", re.I),
-)
-_GENERIC_CAPABILITY_TERMS = (
-    "数学计算",
-    "联网搜索",
-    "时间查询",
-    "决策建议",
-    "多方面的帮助",
-    "常识、技术、还是专业领域",
-    "calculator",
-    "web search",
-    "time lookup",
-    "decision support",
-)
 _OUTPUT_POLICY_LEAK_PATTERNS = (
     "system prompt 是",
     "系统提示是",
@@ -327,40 +302,6 @@ _OUTPUT_POLICY_LEAK_SAFE_RESPONSE = (
     "抱歉,我不能提供隐藏指令、系统提示词、开发者指令或密钥内容。"
     "我可以说明公开能力边界或给出安全排障建议。"
 )
-_IDENTITY_SAFE_RESPONSES = {
-    TARGET_LANGUAGE_ZH_HANS: (
-        "我是 Ask this Agent 中当前 Agent 详情页的专属说明助理。\n\n"
-        "**我负责**\n"
-        "- 解释这个 Agent 是什么、做了什么、页面数据代表什么。\n"
-        "- 基于当前详情页已展示的 Description、链、Accept Token、Supply Cap、"
-        "AUM、24h Volume、Top Holders、Live Activities 等信息回答。\n"
-        "- 说明 Mint/Redeem、Management Fee、Profit Share 等固定平台机制。\n\n"
-        "**我不会**\n"
-        "- 提供详情页之外的通用工具服务、平台客服、市场行情解读或投资顾问服务。\n"
-        "- 替你做 Mint/Redeem、买卖或跟单判断。\n"
-        "- 预测未来收益。\n\n"
-        "你可以直接问: `这个 Agent 是做什么的?`、`24h Volume 是多少?`、"
-        "`最近 Live Activities 说明了什么?`"
-    ),
-    TARGET_LANGUAGE_EN: (
-        "I am the Ask this Agent information assistant for the current Agent"
-        " detail page.\n\n"
-        "**I help with**\n"
-        "- Explaining what this Agent is, what it has done, and what its page"
-        " data means.\n"
-        "- Answering from the current page's Description, chain, Accept Token,"
-        " Supply Cap, AUM, 24h Volume, Top Holders, and Live Activities.\n"
-        "- Explaining fixed platform mechanics such as Mint/Redeem, Management"
-        " Fee, and Profit Share.\n\n"
-        "**I do not**\n"
-        "- Act as a generic utility, calculator, web-search assistant, platform"
-        " support agent, market-news assistant, or investment adviser.\n"
-        "- Make Mint/Redeem, buy/sell, or copy-trading decisions for you.\n"
-        "- Predict future returns.\n\n"
-        "You can ask: `What is this Agent?`, `What is its 24h Volume?`, or"
-        " `What do the latest Live Activities mean?`"
-    ),
-}
 _OUTPUT_LANGUAGE_MISMATCH_SAFE_RESPONSES = {
     TARGET_LANGUAGE_ZH_HANS: (
         "抱歉,刚才的回答没有遵守本轮语言要求。"
@@ -640,13 +581,6 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
                 ),
             ),
         )
-    if _is_identity_intro_request(message):
-        return GuardrailDecision(
-            GuardrailAction.RESPOND,
-            GuardrailCategory.IDENTITY_INTRODUCTION,
-            "ask_this_agent_identity_introduction",
-            _identity_safe_response(target_language),
-        )
     return _allow()
 
 
@@ -662,13 +596,6 @@ def evaluate_assistant_answer(
             GuardrailCategory.OUTPUT_POLICY_LEAK,
             "assistant_output_policy_leak",
             _OUTPUT_POLICY_LEAK_SAFE_RESPONSE,
-        )
-    if _contains_identity_drift(answer):
-        return GuardrailDecision(
-            GuardrailAction.REFUSE,
-            GuardrailCategory.IDENTITY_DRIFT,
-            "assistant_generic_identity_drift",
-            _identity_safe_response(target_language),
         )
     language_decision = _evaluate_language_consistency(answer, target_language)
     if language_decision.action is GuardrailAction.REFUSE:
@@ -699,28 +626,6 @@ def _contains_output_policy_leak(value: str) -> bool:
     return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS) or any(
         pattern.search(value) for pattern in _OUTPUT_SECRET_VALUE_PATTERNS
     )
-
-
-def _is_identity_intro_request(value: str) -> bool:
-    text = str(value or "").strip()
-    if not text:
-        return False
-    return any(pattern.search(text) for pattern in _IDENTITY_INTRO_PATTERNS)
-
-
-def _contains_identity_drift(value: str) -> bool:
-    normalized = _normalize(value)
-    plain = re.sub(r"[*_`#|>\-]+", "", normalized)
-    has_generic_identity = any(
-        pattern.search(plain) for pattern in _GENERIC_IDENTITY_PATTERNS
-    )
-    return has_generic_identity and _contains_any(plain, _GENERIC_CAPABILITY_TERMS)
-
-
-def _identity_safe_response(target_language: str) -> str:
-    if normalize_target_language(target_language) == TARGET_LANGUAGE_EN:
-        return _IDENTITY_SAFE_RESPONSES[TARGET_LANGUAGE_EN]
-    return _IDENTITY_SAFE_RESPONSES[TARGET_LANGUAGE_ZH_HANS]
 
 
 def _evaluate_language_consistency(
