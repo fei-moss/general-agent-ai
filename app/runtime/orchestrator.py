@@ -39,6 +39,8 @@ from app.core.enums import MessageRole, RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.logging import get_logger, log_with_fields, set_trace_id
 from app.runtime.agent_factory import (
+    TOOL_MARKETPLACE_AGENT_COMPUTE,
+    TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_SEARCH_KNOWLEDGE,
     AgentDeps,
     build_agent,
@@ -75,7 +77,14 @@ _CHANNEL_PREFIX = "run:"
 # 顶层兜底文案
 _FATAL_ANSWER = "抱歉,处理过程中发生了内部错误,请稍后重试。"
 # 计划快照中记录的工具清单(供回放/观测)
-_TOOL_NAMES = (TOOL_SEARCH_KNOWLEDGE, "calculator", "clock", "web_search")
+_TOOL_NAMES = (
+    TOOL_SEARCH_KNOWLEDGE,
+    "calculator",
+    "clock",
+    "web_search",
+    TOOL_MARKETPLACE_AGENT_CONTEXT,
+    TOOL_MARKETPLACE_AGENT_COMPUTE,
+)
 
 
 class _EventEmitter:
@@ -348,6 +357,7 @@ class AgentOrchestrator:
             target_language=target_language,
             language_instruction=build_language_instruction(target_language),
             run_context=run_context,
+            marketplace_ai=self._deps.marketplace_ai,
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)

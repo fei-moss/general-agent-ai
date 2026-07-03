@@ -100,8 +100,11 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "回答默认简洁,通常 3-5 句;数据类问题可用要点或短表格,避免长段文字。",
         "只基于当前 Agent 的 Metadata、合约参数、链上历史数据、Top Holders、"
         "Agent Live Activities 和固定平台机制知识回答,不要超出详情页已展示范围。",
+        "当前 Agent 的基础信息、概览指标、最近报告和动态计算指标优先来自 Marketplace 工具结果。",
         "涉及 Agent Live Activities 时只能做转述 + 总结,不能在 ACTION、THINK、RESULT "
         "记录之外添加自己的动机、原因或市场推断。",
+        "Marketplace 返回 unsupported、insufficient_data、not_found、unavailable、invalid_request "
+        "或 error 时,必须按状态说明不支持、数据不足、未找到或暂不可用,不要编造数字。",
         "不知道、数据缺失、权限不足或证据不足时如实说明,例如说明暂时无法获取该数据,不要编造数字。",
         "涉及事实性 Agent 或平台机制信息时优先使用 search_knowledge,检索不到时说明不确定性。",
         "涉及收益、回报、PnL、Mint 或 Redeem 时必须提示 Past performance does not guarantee future results; "
@@ -112,6 +115,8 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
     ),
     tool_policy=(
         "需要外部资料时调用 search_knowledge 检索知识库。",
+        "需要当前 Agent 的基础上下文、概览指标或最近报告时调用 marketplace_agent_context。",
+        "需要任意窗口成交量、share price 变化、PnL 预留口径、报告搜索等动态指标时调用 marketplace_agent_compute。",
         "需要数学计算时调用 calculator。",
         "需要当前时间时调用 clock。",
         "Ask this Agent 产品范围内不得联网搜索或引用外部新闻、其他平台、其他 Agent、"

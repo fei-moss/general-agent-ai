@@ -55,6 +55,8 @@ services:
       REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
       REAPER_STALE_AFTER_S: ${REAPER_STALE_AFTER_S:-300}
       REAPER_MAX_ATTEMPTS: ${REAPER_MAX_ATTEMPTS:-3}
+      MARKETPLACE_AI_BASE_URL: ${MARKETPLACE_AI_BASE_URL:-https://app-df-moss-site-agent-marketplace-dev.dkhost.vixmk-yo.org}
+      MARKETPLACE_AI_TIMEOUT_S: ${MARKETPLACE_AI_TIMEOUT_S:-8}
     depends_on:
       db:
         condition: service_healthy
@@ -147,6 +149,8 @@ services:
       REAPER_MAX_ATTEMPTS: ${REAPER_MAX_ATTEMPTS:-3}
       WORKER_POOL: ${WORKER_POOL:-prefork}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      MARKETPLACE_AI_BASE_URL: ${MARKETPLACE_AI_BASE_URL:-https://app-df-moss-site-agent-marketplace-dev.dkhost.vixmk-yo.org}
+      MARKETPLACE_AI_TIMEOUT_S: ${MARKETPLACE_AI_TIMEOUT_S:-8}
     depends_on:
       db:
         condition: service_healthy

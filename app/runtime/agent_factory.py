@@ -44,6 +44,12 @@ from app.runtime.chat_behavior import (
     build_system_prompt,
     get_behavior_profile,
 )
+from app.runtime.marketplace_ai import (
+    current_agent_missing_result,
+    extract_current_agent_ref,
+    marketplace_unavailable,
+    normalize_compute_queries,
+)
 from app.runtime.tool_context import (
     build_run_context_instruction,
     mask_run_context,
@@ -56,6 +62,8 @@ _MOCK_CHUNK_SIZE = 12
 
 # 知识检索工具名(mock 模型据此判断是否先检索一轮)
 TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
+TOOL_MARKETPLACE_AGENT_CONTEXT = "marketplace_agent_context"
+TOOL_MARKETPLACE_AGENT_COMPUTE = "marketplace_agent_compute"
 
 # Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
 _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").policy)
@@ -83,6 +91,7 @@ class AgentDeps:
     target_language: str = "unknown"
     language_instruction: str = ""
     run_context: dict[str, Any] | None = None
+    marketplace_ai: Any | None = None
 
 
 def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
@@ -159,6 +168,67 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             return tool_denied_result("web_search")
         return await ctx.deps.tool_router.route(
             query, "web_search", agent_run_id=ctx.deps.agent_run_id
+        )
+
+    @agent.tool
+    async def marketplace_agent_context(
+        ctx: RunContext[AgentDeps],
+        reports_limit: int = 5,
+        include_raw: bool = False,
+    ) -> dict[str, Any]:
+        """获取当前 Agent 的 Marketplace 基础上下文、概览指标和最近报告。
+
+        当前 Agent 地址只能来自服务端 run_context,不能由用户或模型指定。
+        """
+        if not tool_allowed(TOOL_MARKETPLACE_AGENT_CONTEXT, ctx.deps.run_context):
+            return tool_denied_result(TOOL_MARKETPLACE_AGENT_CONTEXT)
+        ref = extract_current_agent_ref(ctx.deps.run_context)
+        if ref is None:
+            return current_agent_missing_result()
+        client = ctx.deps.marketplace_ai
+        if client is None:
+            return marketplace_unavailable(
+                "marketplace_client_missing",
+                "Marketplace AI client is not available.",
+            )
+        return await client.get_agent_context(
+            ref.address,
+            chain_id=ref.chain_id,
+            reports_limit=reports_limit,
+            include_raw=include_raw,
+        )
+
+    @agent.tool
+    async def marketplace_agent_compute(
+        ctx: RunContext[AgentDeps],
+        queries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """按需计算当前 Agent 的 Marketplace 指标或报告搜索结果。
+
+        结果中的 available/status/reason/message 必须按原义使用。
+        """
+        if not tool_allowed(TOOL_MARKETPLACE_AGENT_COMPUTE, ctx.deps.run_context):
+            return tool_denied_result(TOOL_MARKETPLACE_AGENT_COMPUTE)
+        ref = extract_current_agent_ref(ctx.deps.run_context)
+        if ref is None:
+            return current_agent_missing_result()
+        client = ctx.deps.marketplace_ai
+        if client is None:
+            return marketplace_unavailable(
+                "marketplace_client_missing",
+                "Marketplace AI client is not available.",
+            )
+        normalized_queries = normalize_compute_queries(queries)
+        if not normalized_queries:
+            return marketplace_unavailable(
+                "marketplace_queries_missing",
+                "Marketplace compute requires at least one metric query.",
+                status="invalid_request",
+            )
+        return await client.compute_agent_metrics(
+            ref.address,
+            normalized_queries,
+            chain_id=ref.chain_id,
         )
 
     return agent

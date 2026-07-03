@@ -135,6 +135,7 @@ class RuntimeDeps:
     metrics: Metrics | None = None
     provider_limiter: Any | None = None
     secret_provider: SecretProvider | None = None
+    marketplace_ai: Any | None = None
 
 
 def build_deps(
@@ -144,6 +145,7 @@ def build_deps(
     redis_client: Any | None = None,
     provider_limiter: Any | None = None,
     secret_provider: SecretProvider | None = None,
+    marketplace_ai: Any | None = None,
     metrics: Metrics | None = None,
 ) -> RuntimeDeps:
     """装配真实依赖。
@@ -171,6 +173,7 @@ def build_deps(
             metrics=metrics,
             secret_provider=secret_provider,
         )
+        marketplace_ai = marketplace_ai or _build_marketplace_ai(settings)
     except ImportError as exc:
         log_with_fields(
             logger,
@@ -190,6 +193,7 @@ def build_deps(
         metrics=metrics or Metrics(),
         provider_limiter=provider_limiter,
         secret_provider=secret_provider,
+        marketplace_ai=marketplace_ai,
     )
 
 
@@ -212,6 +216,13 @@ def _build_tool_router(settings: Settings, session: Any | None = None) -> ToolRo
     from app.runtime.adapters import ToolRouterAdapter
 
     return ToolRouterAdapter(log_sink=_build_tool_log_sink(session))
+
+
+def _build_marketplace_ai(settings: Settings) -> Any:
+    """Build the Marketplace AI read-only client."""
+    from app.runtime.marketplace_ai import build_marketplace_ai_client
+
+    return build_marketplace_ai_client(settings)
 
 
 def _build_event_bus(
