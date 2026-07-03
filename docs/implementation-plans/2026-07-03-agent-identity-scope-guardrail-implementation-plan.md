@@ -36,7 +36,7 @@ Fix Ask this Agent self-introduction drift without fixed self-introduction templ
 
 3. Orchestrator handling
    - Files/modules: `app/runtime/orchestrator.py`, `app/runtime/agent_factory.py`.
-   - Behavior change: identity prompts use the normal model execution path with all function tools hidden for that turn; existing deterministic refusal path remains only for safety guardrails.
+   - Behavior change: identity prompts use the normal model execution path with all function tools hidden for that turn and a server-owned identity turn instruction; existing deterministic refusal path remains only for safety guardrails.
    - Data contract impact: no API/event schema change; identity prompts use the normal plan metadata without a guardrail `respond` action.
    - Tests to add/update: orchestrator model-path test for identity prompts.
    - Verification command: `.venv/bin/python -m pytest tests/test_orchestrator.py -q`.

@@ -81,7 +81,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Data flow:
   1. Orchestrator evaluates the user message before model/tool execution.
   2. Identity/capability prompts pass as allowed input to the model.
-  3. The system prompt constrains model identity, scope, forbidden capability claims, and presentation.
+  3. The system prompt and a server-owned turn instruction constrain model identity, scope, forbidden capability claims, and presentation.
   4. Non-identity allowed prompts continue through the existing model/tool flow.
   5. Security and language output guardrails remain deterministic for hidden-instruction, secret, and language violations; identity drift is handled through prompt/eval feedback rather than a fixed replacement template.
 - Transaction/concurrency boundaries:

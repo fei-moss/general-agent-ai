@@ -121,6 +121,26 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         """Inject masked server runtime context."""
         return build_run_context_instruction(mask_run_context(ctx.deps.run_context or {}))
 
+    @agent.instructions
+    def turn_policy_instruction(ctx: RunContext[AgentDeps]) -> str:
+        """Inject server-owned turn policy instructions."""
+        turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
+        if not isinstance(turn_policy, dict):
+            return ""
+        if turn_policy.get("intent") != "identity_introduction":
+            return ""
+        return (
+            "This turn is an identity or capability question. Answer directly in"
+            " your own words, but follow these product identity constraints: you"
+            " are the Ask this Agent information assistant for the current Agent"
+            " detail page; you explain current Agent page data and fixed platform"
+            " mechanics only; do not introduce yourself as a generic AI assistant,"
+            " DeFi assistant, marketplace platform assistant, utility bot, customer"
+            " support agent, market-news assistant, or investment adviser; do not"
+            " list internal tools or tool categories as user-facing capabilities;"
+            " use concise Markdown sections and bullets."
+        )
+
     @agent.tool
     async def search_knowledge(
         ctx: RunContext[AgentDeps], query: str

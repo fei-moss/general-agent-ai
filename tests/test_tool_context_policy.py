@@ -120,6 +120,33 @@ async def test_agent_hides_tools_when_turn_policy_disables_tool_use():
     assert seen_tool_names == [[]]
 
 
+async def test_agent_injects_identity_turn_policy_instruction():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "identity_introduction",
+                "tool_use": "none",
+            }
+        },
+    )
+
+    await agent.run("请介绍一下你自己。", deps=deps)
+
+    serialized = repr(seen_messages)
+    assert "Ask this Agent information assistant" in serialized
+    assert "do not introduce yourself as a generic AI assistant" in serialized
+    assert "do not list internal tools" in serialized
+
+
 class _NoopRetriever:
     async def retrieve(self, query: str, top_k: int):
         return []
