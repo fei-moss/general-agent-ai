@@ -106,14 +106,32 @@ X-RateLimit-Remaining: 0
 | `conversation_id` | string \| null | ❌ | null | 续接已有会话;不传则**自动新建** |
 | `stream` | boolean | ❌ | `true` | 兼容字段;省略或传 `true`;`false` 会返回 422 |
 | `metadata` | object | ❌ | `{}` | 透传元数据(当前预留,后端暂未消费) |
+| `proxy_payload` | object | ❌ | `{}` | 上游代理注入的当前页面/Agent 上下文;会归一化为运行上下文 |
 
 ```json
 {
   "message": "帮我算一下 (123+456)*7 等于多少",
   "conversation_id": null,
-  "stream": true
+  "stream": true,
+  "proxy_payload": {}
 }
 ```
+
+当前 Agent 页面接入示例:
+
+```json
+{
+  "message": "这个 Agent 支持哪条链？24 小时交易量是多少？",
+  "stream": true,
+  "proxy_payload": {
+    "marketplace_agent": {
+      "address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+    }
+  }
+}
+```
+
+`proxy_payload` 是唯一对外上下文字段。请求体里不要传 `run_context`;传入时会返回 422。
 
 #### 响应: **202 Accepted**(`ChatAccepted`)
 

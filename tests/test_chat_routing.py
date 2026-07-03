@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.core.enums import RunStatus
 from app.core.models import Conversation, Message
@@ -46,6 +47,52 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.conversation_id == "conv-1"
     assert accepted.agent_run_id == "run-1"
     assert accepted.route_type == "realtime"
+
+
+def test_chat_request_accepts_proxy_payload_as_upstream_context():
+    body = ChatRequest(
+        message="hello",
+        proxy_payload={
+            "marketplace_agent": {
+                "address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+            }
+        },
+    )
+
+    assert body.run_context == body.proxy_payload
+    assert body.run_context["marketplace_agent"]["address"].startswith("0x17")
+
+
+def test_chat_request_rejects_run_context_request_field():
+    with pytest.raises(ValidationError):
+        ChatRequest(
+            message="hello",
+            run_context={
+                "marketplace_agent": {
+                    "address": "0x1111111111111111111111111111111111111111"
+                }
+            },
+        )
+
+
+def test_chat_request_exposes_empty_proxy_payload_as_empty_run_context():
+    body = ChatRequest(message="hello")
+
+    assert body.proxy_payload == {}
+    assert body.run_context == {}
+
+
+def test_chat_request_ignores_unrelated_extra_fields_by_existing_default():
+    context = {"tenant": "alpha"}
+
+    body = ChatRequest(
+        message="hello",
+        proxy_payload={"tenant": "alpha"},
+        ignored="value",
+    )
+
+    assert body.run_context == context
+    assert body.proxy_payload == context
 
 
 async def test_chat_returned_conversation_id_can_fetch_detail(monkeypatch):
@@ -207,7 +254,7 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
                 message="hello",
                 conversation_id="conv-1",
                 metadata={"mode": "realtime"},
-                run_context={"tenant": "alpha"},
+                proxy_payload={"tenant": "alpha"},
             ),
         request,
         "user-1",
@@ -331,11 +378,28 @@ def test_build_payload_includes_generic_run_context():
         ChatRequest(
             message="hello",
             metadata={"mode": "batch"},
-            run_context={"fixture": {"id": "ctx-1"}},
+            proxy_payload={"fixture": {"id": "ctx-1"}},
         ),
     )
 
     assert payload["run_context"] == {"fixture": {"id": "ctx-1"}}
+
+
+def test_build_payload_includes_proxy_payload_as_run_context():
+    from app.api.routers.chat import _build_payload
+
+    payload = _build_payload(
+        "run-1",
+        "conv-1",
+        "trace-1",
+        ChatRequest(
+            message="hello",
+            metadata={"mode": "batch"},
+            proxy_payload={"fixture": {"id": "ctx-proxy"}},
+        ),
+    )
+
+    assert payload["run_context"] == {"fixture": {"id": "ctx-proxy"}}
 
 
 async def test_dispatch_realtime_forwards_run_context_to_runner():
@@ -376,7 +440,7 @@ async def test_provider_preflight_estimates_message_metadata_and_run_context():
     body = ChatRequest(
         message="hi",
         metadata={"mode": "realtime"},
-        run_context={"long_context": "x" * 300},
+        proxy_payload={"long_context": "x" * 300},
     )
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(provider_limiter=_Limiter())))
     settings = SimpleNamespace(

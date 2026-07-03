@@ -14,6 +14,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_validator,
 )
 
 from app.core.enums import (
@@ -63,8 +64,19 @@ class ChatRequest(BaseModel):
     message: str
     stream: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
-    run_context: dict[str, Any] = Field(default_factory=dict)
+    proxy_payload: dict[str, Any] = Field(default_factory=dict)
     conversation_anchor: ConversationAnchorIn | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_run_context_field(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "run_context" in data:
+            raise ValueError("run_context 已废弃,请使用 proxy_payload")
+        return data
+
+    @property
+    def run_context(self) -> dict[str, Any]:
+        return self.proxy_payload
 
 
 class ChatAccepted(BaseModel):

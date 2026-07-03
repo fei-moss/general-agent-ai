@@ -152,7 +152,8 @@ curl -sS -X POST "$BASE_URL/chat" \
     "metadata": {
       "mode": "realtime",
       "task_type": "chat"
-    }
+    },
+    "proxy_payload": {}
   }'
 ```
 
@@ -166,6 +167,11 @@ curl -sS -X POST "$BASE_URL/chat" \
   "metadata": {
     "mode": "auto | realtime | batch",
     "task_type": "chat | file_analysis | slow_tool | batch"
+  },
+  "proxy_payload": {
+    "marketplace_agent": {
+      "address": "可选；当前 Agent 合约地址"
+    }
   }
 }
 ```
@@ -173,6 +179,10 @@ curl -sS -X POST "$BASE_URL/chat" \
 普通接入方不要传 `metadata.knowledge_base_id`。服务端会根据
 `RAG_DEFAULT_KNOWLEDGE_BASE_ID` 决定是否在 Agent 运行中检索内部知识库；
 默认情况下客户端传入的 `knowledge_base_id` 会被忽略。
+
+上游代理或页面服务需要提供当前 Agent 上下文时,请使用 `proxy_payload`。
+`run_context` 不再作为对外请求字段兼容。`proxy_payload` 必须是合法 JSON 对象,
+示例中不能包含 `//` 注释。
 
 响应是 HTTP `202`：
 

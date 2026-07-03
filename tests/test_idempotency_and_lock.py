@@ -64,6 +64,39 @@ def test_chat_request_hash_changes_when_run_context_changes():
     assert base != changed
 
 
+def test_chat_request_hash_changes_when_proxy_payload_changes():
+    from app.api.idempotency import chat_request_hash
+    from app.core.schemas import ChatRequest
+
+    base_body = ChatRequest(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        proxy_payload={"dataset": {"version": 1}},
+    )
+    changed_body = ChatRequest(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        proxy_payload={"dataset": {"version": 2}},
+    )
+
+    base = chat_request_hash(
+        message=base_body.message,
+        conversation_id=base_body.conversation_id,
+        metadata=base_body.metadata,
+        run_context=base_body.run_context,
+    )
+    changed = chat_request_hash(
+        message=changed_body.message,
+        conversation_id=changed_body.conversation_id,
+        metadata=changed_body.metadata,
+        run_context=changed_body.run_context,
+    )
+
+    assert base != changed
+
+
 async def test_redis_conversation_lock_uses_nx_and_ttl():
     from app.runtime.locks import ConversationLock
 

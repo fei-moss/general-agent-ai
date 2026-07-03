@@ -185,7 +185,7 @@ async def test_chat_reuses_existing_anchor_when_conversation_id_absent(monkeypat
         ChatRequest(
             message="hello",
             metadata={"mode": "realtime"},
-            run_context={
+            proxy_payload={
                 "public": {"id": "ctx-1"},
                 "locked": {"locked": True, "value": "do-not-store"},
             },
