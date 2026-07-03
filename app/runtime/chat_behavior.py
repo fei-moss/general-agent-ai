@@ -286,6 +286,15 @@ _PERSONAL_WALLET_DATA_TERMS = (
     "holdings",
     "shares",
 )
+_IDENTITY_INTRO_PATTERNS = (
+    re.compile(r"(?:介绍|自我介绍).{0,8}(?:你自己|你|自己|yourself)", re.I),
+    re.compile(r"(?:你|您).{0,8}(?:是谁|是什么|是干什么|能做什么|可以做什么|会做什么|有什么能力|主要能力)"),
+    re.compile(r"\bwho\s+are\s+you\b", re.I),
+    re.compile(r"\bwhat\s+are\s+you\b", re.I),
+    re.compile(r"\bwhat\s+can\s+you\s+do\b", re.I),
+    re.compile(r"\bintroduce\s+yourself\b", re.I),
+    re.compile(r"\byour\s+capabilities\b", re.I),
+)
 _OUTPUT_POLICY_LEAK_PATTERNS = (
     "system prompt 是",
     "系统提示是",
@@ -584,6 +593,19 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
             ),
         )
     return _allow()
+
+
+def is_identity_introduction_request(message: str) -> bool:
+    """Return whether a turn asks for assistant identity/capability framing.
+
+    This is not a refusal or fixed-response guardrail. The result is used to
+    keep the turn on a no-tool model path so the model can answer naturally
+    without seeing internal utility tool schemas.
+    """
+    text = str(message or "").strip()
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in _IDENTITY_INTRO_PATTERNS)
 
 
 def evaluate_assistant_answer(

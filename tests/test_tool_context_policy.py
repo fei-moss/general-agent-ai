@@ -96,6 +96,30 @@ async def test_agent_tool_denial_returns_structured_error_without_routing():
     assert router.calls == []
 
 
+async def test_agent_hides_tools_when_turn_policy_disables_tool_use():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "identity_introduction",
+                "tool_use": "none",
+            }
+        },
+    )
+
+    await agent.run("请介绍一下你自己。", deps=deps)
+
+    assert seen_tool_names == [[]]
+
+
 class _NoopRetriever:
     async def retrieve(self, query: str, top_k: int):
         return []

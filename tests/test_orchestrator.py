@@ -486,6 +486,8 @@ async def test_identity_intro_uses_model_path_without_fixed_template(deps):
     plan = plan_calls[0]
     assert "guardrail" not in plan
     assert plan["target_language"] == "zh-Hans"
+    assert plan["run_context"]["turn_policy"]["intent"] == "identity_introduction"
+    assert plan["run_context"]["turn_policy"]["tool_use"] == "none"
 
 
 async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.capabilities import PrepareTools
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -37,6 +38,7 @@ from pydantic_ai.models.function import (
     DeltaToolCalls,
     FunctionModel,
 )
+from pydantic_ai.tools import ToolDefinition
 
 from app.core.config import Settings, get_settings
 from app.core.secrets import SecretProvider, SecretValue, build_secret_provider, is_mock_provider
@@ -106,6 +108,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         deps_type=AgentDeps,
         output_type=str,
         system_prompt=build_system_prompt(profile.policy),
+        capabilities=[PrepareTools(_prepare_tools_for_turn)],
     )
 
     @agent.instructions
@@ -232,6 +235,16 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
 
     return agent
+
+
+def _prepare_tools_for_turn(
+    ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]
+) -> list[ToolDefinition]:
+    """Hide all function tools for turns that must be answered directly."""
+    turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
+    if isinstance(turn_policy, dict) and turn_policy.get("tool_use") == "none":
+        return []
+    return tool_defs
 
 
 def build_model(

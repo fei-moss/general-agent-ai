@@ -19,7 +19,7 @@ Fix Ask this Agent self-introduction drift without fixed self-introduction templ
 ## Change Steps
 
 1. Tests and golden cases
-   - Files/modules: `tests/test_chat_behavior_policy.py`, `tests/test_chat_behavior_eval.py`, `tests/test_orchestrator.py`, `tests/chat_eval/golden_cases.jsonl`, `tests/chat_eval/evaluator.py`.
+   - Files/modules: `tests/test_chat_behavior_policy.py`, `tests/test_chat_behavior_eval.py`, `tests/test_orchestrator.py`, `tests/test_tool_context_policy.py`, `tests/chat_eval/golden_cases.jsonl`, `tests/chat_eval/evaluator.py`.
    - Behavior change: encode self-introduction as `allow`, so it passes through the model; assert the prompt carries identity, no-tool-for-pure-identity, and readable-format constraints.
    - Data contract impact: none.
    - Tests to add/update: identity prompt allow decision, model-path orchestrator coverage, markdown-format prompt constraints, non-trigger for `这个 Agent 是做什么的?`, no identity fixed-template output replacement.
@@ -35,8 +35,8 @@ Fix Ask this Agent self-introduction drift without fixed self-introduction templ
    - Rollback note: revert enum/category additions and prompt changes.
 
 3. Orchestrator handling
-   - Files/modules: `app/runtime/orchestrator.py`.
-   - Behavior change: identity prompts use the normal model execution path; existing deterministic refusal path remains only for safety guardrails.
+   - Files/modules: `app/runtime/orchestrator.py`, `app/runtime/agent_factory.py`.
+   - Behavior change: identity prompts use the normal model execution path with all function tools hidden for that turn; existing deterministic refusal path remains only for safety guardrails.
    - Data contract impact: no API/event schema change; identity prompts use the normal plan metadata without a guardrail `respond` action.
    - Tests to add/update: orchestrator model-path test for identity prompts.
    - Verification command: `.venv/bin/python -m pytest tests/test_orchestrator.py -q`.

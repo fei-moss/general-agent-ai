@@ -54,6 +54,7 @@ from app.runtime.chat_behavior import (
     build_language_instruction,
     detect_target_language,
     evaluate_user_message,
+    is_identity_introduction_request,
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
@@ -242,6 +243,11 @@ class AgentOrchestrator:
                     input_decision,
                     target_language,
                 )
+            effective_run_context = run_context or {}
+            if is_identity_introduction_request(user_message):
+                effective_run_context = _with_identity_turn_policy(
+                    effective_run_context
+                )
             return await self._execute(
                 agent_run_id,
                 conversation_id,
@@ -250,7 +256,7 @@ class AgentOrchestrator:
                 route_type,
                 user_id,
                 metadata or {},
-                run_context or {},
+                effective_run_context,
                 target_language,
             )
         except ProviderRateLimitError as exc:
@@ -972,6 +978,22 @@ def _knowledge_base_id(settings: Any, metadata: dict[str, Any] | None) -> str | 
 def _knowledge_base_owner_user_id(settings: Any, user_id: str | None) -> str | None:
     configured = _clean_text(getattr(settings, "rag_internal_owner_user_id", ""))
     return configured or user_id
+
+
+def _with_identity_turn_policy(run_context: dict[str, Any]) -> dict[str, Any]:
+    """Return a server-owned context copy for direct model identity answers."""
+    context = dict(run_context)
+    existing = context.get("turn_policy")
+    turn_policy = dict(existing) if isinstance(existing, dict) else {}
+    turn_policy.update(
+        {
+            "intent": "identity_introduction",
+            "tool_use": "none",
+            "reason": "answer assistant identity directly with the model",
+        }
+    )
+    context["turn_policy"] = turn_policy
+    return context
 
 
 def _plan_metadata(settings: Any, metadata: dict[str, Any]) -> dict[str, Any]:

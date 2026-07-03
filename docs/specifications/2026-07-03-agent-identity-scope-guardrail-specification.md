@@ -71,9 +71,11 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Modules/files expected to change:
   - `app/runtime/chat_behavior.py`
   - `app/runtime/orchestrator.py`
+  - `app/runtime/agent_factory.py`
   - `tests/test_chat_behavior_policy.py`
   - `tests/test_chat_behavior_eval.py`
   - `tests/test_orchestrator.py`
+  - `tests/test_tool_context_policy.py`
   - `tests/chat_eval/golden_cases.jsonl`
   - `tests/chat_eval/evaluator.py`
 - Data flow:
