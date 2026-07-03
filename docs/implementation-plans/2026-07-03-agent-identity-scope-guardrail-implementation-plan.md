@@ -8,7 +8,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 
 ## Scope Summary
 
-Fix Ask this Agent self-introduction drift by adding deterministic identity responses, narrowing prompt tool-policy copy, adding output drift detection, and expanding golden-case coverage.
+Fix Ask this Agent self-introduction drift by adding deterministic identity responses, narrowing prompt tool-policy copy, adding output drift detection, improving answer presentation, and expanding golden-case coverage.
 
 ## Out Of Scope
 
@@ -20,15 +20,15 @@ Fix Ask this Agent self-introduction drift by adding deterministic identity resp
 
 1. Tests and golden cases
    - Files/modules: `tests/test_chat_behavior_policy.py`, `tests/test_chat_behavior_eval.py`, `tests/test_orchestrator.py`, `tests/chat_eval/golden_cases.jsonl`, `tests/chat_eval/evaluator.py`.
-   - Behavior change: encode self-introduction as deterministic `respond`, not model/tool execution.
+   - Behavior change: encode self-introduction as deterministic `respond`, not model/tool execution; assert the response uses readable Markdown sections and bullets.
    - Data contract impact: none.
-   - Tests to add/update: identity prompt response, non-trigger for `这个 Agent 是做什么的?`, output identity drift replacement, orchestrator no-tool short-circuit.
+   - Tests to add/update: identity prompt response, markdown structure, non-trigger for `这个 Agent 是做什么的?`, output identity drift replacement, orchestrator no-tool short-circuit.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_chat_behavior_eval.py tests/test_orchestrator.py -q`.
    - Rollback note: remove new cases and tests.
 
 2. Runtime behavior policy
    - Files/modules: `app/runtime/chat_behavior.py`.
-   - Behavior change: add `GuardrailAction.RESPOND`, `identity_introduction`/`identity_drift` categories, identity prompt matcher, localized scoped response, and high-confidence generic identity output guardrail.
+   - Behavior change: add `GuardrailAction.RESPOND`, `identity_introduction`/`identity_drift` categories, identity prompt matcher, localized scoped response, high-confidence generic identity output guardrail, and structured-format prompt guidance.
    - Data contract impact: run plan guardrail action may be `respond`.
    - Tests to add/update: policy tests and eval validation.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_chat_behavior_eval.py -q`.

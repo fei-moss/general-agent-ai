@@ -17,6 +17,7 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
   - Generic tool/capability self-introduction conflicts with `SPEC-AGENT-POSITIONING-POLICY-001`.
   - The system prompt still exposes generic tool capabilities such as `calculator` and `clock`, which encourages model self-description as a utility bot.
   - Existing evals do not contain a self-introduction regression case.
+  - The deterministic identity answer can be semantically correct but still feel low-quality if it is returned as one dense paragraph.
 - Non-goals:
   - No route, DB, streaming event, provider, Marketplace API, or deployment configuration change.
   - No removal of internal calculator/clock tools from the platform runtime in this slice.
@@ -32,6 +33,10 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Ownership and identity rules:
   - The assistant must not claim to be a generic AI assistant, calculator, web-search assistant, platform customer-support agent, market-news assistant, or cross-Agent comparison engine.
   - The assistant must not present internal tools as product capabilities.
+- Presentation rules:
+  - Fixed identity answers should use readable Markdown structure: short opening sentence, concise sections, and bullet points.
+  - Model-generated answers should prefer short headings, bullets, or compact tables for identity, capability, metric, and data-explanation answers; avoid one dense paragraph when multiple facts are present.
+  - Formatting must improve scanability without turning the answer into marketing copy or adding unsupported claims.
 - Permissions/authentication:
   - Unchanged.
 - Empty, error, retry, timeout, duplicate, and partial-failure behavior:
@@ -102,6 +107,8 @@ Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
   - The scoped identity answer says it is not a generic AI assistant, calculator, web-search assistant, platform support agent, market-news assistant, or investment adviser.
   - The scoped identity answer names allowed user questions in PRD terms: current Agent metadata, contract parameters, on-chain/history metrics, Top Holders, Live Activities, and fixed platform mechanism knowledge.
   - The scoped identity answer does not mention `数学计算`, `联网搜索`, `时间查询`, broad general Q&A, or decision-support capabilities as product capabilities.
+  - The scoped identity answer is not a single dense paragraph; it uses Markdown section labels and bullet points for role, scope, and boundaries.
+  - The default model prompt asks the LLM to use structured, readable Markdown formatting for multi-fact answers.
   - Self-introduction does not call Marketplace tools when no current Agent address is present.
   - System prompt no longer advertises generic calculator/clock/web-search utility capabilities.
 - Edge cases:
