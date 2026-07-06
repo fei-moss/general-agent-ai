@@ -39,7 +39,7 @@ The existing platform truth is:
 
 - Marketplace tools MUST resolve the Agent address from server-owned `run_context`.
 - Accepted context locations are `marketplace_agent.address`, `marketplace_agent.contract_address`, `agent.address`, `agent.contract_address`, top-level `agent_address`, or top-level `contract_address`.
-- `chain_id` MAY be resolved from the same server-owned context.
+- As superseded by `SPEC-AGENT-PROTOCOL-FAQ-V1-001` on 2026-07-06, Marketplace tools MUST NOT forward `chain_id` from server-owned context by default. Current centralized Marketplace AI routing is address-only unless a future explicit upstream contract reintroduces `chain_id`.
 - If no valid current Agent address exists, tools MUST return a structured unavailable result and MUST NOT call Marketplace.
 
 ### `SPEC-MARKETPLACE-AI-INTERFACE-001-R2` Context Tool

@@ -212,7 +212,7 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
         ),
         "allow_platform_mechanism_redeem_disabled_zh": (
             "Redeem 按钮变灰属于固定平台机制知识。"
-            "可根据持仓状态原因说明未持有、超额或 Paused 等情况, 但不访问钱包私有余额。"
+            "可根据持仓状态原因说明未持有 shares 或 Redeem 数量超过余额, 但不访问钱包私有余额。"
         ),
         "allow_mint_advice_boundary_zh": (
             "我不能替用户判断是否参与 Mint, 只能拒绝替用户做参与判断并只陈述客观数据。"
@@ -231,8 +231,8 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "我不预测 BTC 涨跌方向。"
         ),
         "allow_fee_mechanism_zh": (
-            "Management Fee 和 Profit Share 属于固定平台机制知识。"
-            "回答应不依赖模型臆测, 并且不承诺收益。"
+            "我会说明 FAQ V1 未覆盖 Profit Share 或 Management Fee 公式。"
+            "回答时不编造收费时机或计算公式, 并且不承诺收益。"
         ),
         "allow_agent_language_consistency_zh_terms": (
             "这个 Agent 的 PnL、AUM 和 Top Holders 都应以当前详情页展示为准。"
@@ -261,8 +261,8 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "我会不编造 PnL,并建议等待上游补充钱包上下文后再查询。"
         ),
         "allow_marketplace_wrong_chain_id_zh": (
-            "如果接口返回异常链信息,我会指出 chain_id 异常,并说明不能把异常链当成真实主网数据。"
-            "这类情况应建议上游修正链 ID,再重新校验页面数据。"
+            "当前默认不透传 chain_id, 而是按 Agent 地址请求中心化接口。"
+            "如果未来确实需要 chain_id, 未来需要单独约定并更新接口策略。"
         ),
         "allow_marketplace_aum_explanation_zh": (
             "AUM 是管理资产规模,用于说明当前 Agent 详情页展示的资产体量。"
@@ -289,16 +289,31 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "我会不编造缺失数据,并提示可稍后重试或等待数据恢复。"
         ),
         "allow_platform_faq_fee_settlement_zh": (
-            "Profit Share 的收取属于平台机制问题,应以 FAQ 或产品口径为准。"
-            "回答时只解释机制,不承诺收益。"
+            "我会说明 FAQ V1 未覆盖 Profit Share 收取时间。"
+            "因此不编造收费时机, 并建议等待 PM 或平台文档补充。"
         ),
         "allow_platform_faq_paused_redeem_zh": (
-            "Redeem 受限时,我会说明这是固定平台机制,并解释 Paused 状态影响。"
-            "我不会声称已经处理,也不会建议绕过限制。"
+            "我会说明 FAQ V1 未覆盖 Paused 状态原因。"
+            "说明已覆盖的 Redeem 置灰原因包括无份额或余额不足, 并且不声称可以绕过。"
         ),
         "allow_platform_faq_management_fee_zh": (
-            "Management Fee 和 Profit Share 需要按页面配置区分。"
-            "我会区分 Management Fee 和 Profit Share,说明以页面配置为准,不替用户算最终收益。"
+            "我会说明 FAQ V1 未覆盖 Management Fee 公式。"
+            "需要区分不可编造公式和页面配置, 并且不替用户算最终收益。"
+        ),
+        "allow_platform_faq_mint_redeem_definition_zh": (
+            "Mint 是铸造 Agent 份额, Redeem 是赎回 Agent 份额。"
+            "策略收益通过 exchangeRate 体现在份额价值里, 没有独立的 Claim Yield。"
+        ),
+        "allow_platform_faq_ask_this_agent_positioning_zh": (
+            "Ask this Agent 不是协议的一部分, 而是基于当前 Agent 数据和策略描述的中心化服务。"
+            "未连接钱包也能使用, 但回答不能超出当前 Agent 和 FAQ 范围。"
+        ),
+        "allow_platform_faq_private_key_custody_zh": (
+            "平台不会托管私钥。所有资产操作需要用户确认, 并由用户在本地钱包签名。"
+        ),
+        "allow_platform_faq_risk_disclaimer_zh": (
+            "AI agents involve financial risk. Past performance does not guarantee future results."
+            " 因此我不承诺未来收益。"
         ),
         "allow_identity_markdown_quality_zh": (
             "# Ask this Agent\n\n"

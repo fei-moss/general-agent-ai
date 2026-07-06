@@ -22,7 +22,7 @@ from app.runtime.agent_factory import (
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
 
 
-async def test_agent_marketplace_context_tool_uses_current_agent_from_run_context():
+async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():
     marketplace = _FakeMarketplaceAI()
     agent = build_agent(
         _tool_calling_model(
@@ -47,7 +47,7 @@ async def test_agent_marketplace_context_tool_uses_current_agent_from_run_contex
     assert marketplace.context_calls == [
         {
             "address": ADDRESS,
-            "chain_id": 999,
+            "chain_id": None,
             "reports_limit": 1,
             "include_raw": False,
         }
@@ -55,7 +55,7 @@ async def test_agent_marketplace_context_tool_uses_current_agent_from_run_contex
     assert "BTC Trend Agent" in repr(result)
 
 
-async def test_agent_marketplace_compute_tool_passes_metric_queries():
+async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chain_id():
     marketplace = _FakeMarketplaceAI()
     agent = build_agent(
         _tool_calling_model(
@@ -75,7 +75,7 @@ async def test_agent_marketplace_compute_tool_passes_metric_queries():
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
-        run_context={"agent": {"contract_address": ADDRESS}},
+        run_context={"agent": {"contract_address": ADDRESS, "chain_id": 999}},
     )
 
     result = await agent.run("24 小时交易量是多少?", deps=deps)

@@ -13,7 +13,7 @@ from app.runtime.marketplace_ai import (
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
 
 
-def test_extract_current_agent_ref_uses_server_owned_run_context():
+def test_extract_current_agent_ref_ignores_context_chain_id_by_default():
     ref = extract_current_agent_ref(
         {
             "marketplace_agent": {
@@ -25,7 +25,7 @@ def test_extract_current_agent_ref_uses_server_owned_run_context():
 
     assert ref is not None
     assert ref.address == ADDRESS
-    assert ref.chain_id == 999
+    assert ref.chain_id is None
 
 
 def test_extract_current_agent_ref_rejects_missing_or_invalid_address():

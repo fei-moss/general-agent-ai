@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable
 
 from app.core.models import ToolCallLog
+from app.runtime.platform_faq import search_platform_faq
 
 from app.core.enums import MessageRole, RunStatus
 from app.core.ids import _new_id
@@ -58,7 +59,15 @@ class RetrieverAdapter:
 
     async def retrieve(self, query: str, top_k: int) -> dict[str, Any]:
         """调用 RAGQueryService 并返回普通 dict。"""
+        faq_chunks = search_platform_faq(query, top_k)
         if not self._knowledge_base_id:
+            if faq_chunks:
+                return {
+                    "chunks": faq_chunks,
+                    "degraded": False,
+                    "reason": None,
+                    "source": "agent_protocol_faq_v1",
+                }
             return {
                 "chunks": [],
                 "degraded": True,
@@ -79,7 +88,10 @@ class RetrieverAdapter:
             agent_run_id=self._agent_run_id,
             conversation_id=self._conversation_id,
         )
-        return result.model_dump(mode="json")
+        payload = result.model_dump(mode="json")
+        if faq_chunks:
+            payload["chunks"] = (faq_chunks + list(payload.get("chunks") or []))[:top_k]
+        return payload
 
 
 # 工具自动选择的关键词启发式(planner 未显式指定 tool_name 时使用)

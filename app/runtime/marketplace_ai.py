@@ -158,30 +158,17 @@ def extract_current_agent_ref(
 ) -> MarketplaceAgentRef | None:
     """Extract the current Agent reference from server-owned run context."""
     context = run_context or {}
-    candidates: list[tuple[Any, Any]] = []
+    candidates: list[Any] = []
     for key in ("marketplace_agent", "agent"):
         value = context.get(key)
         if isinstance(value, dict):
-            candidates.extend(
-                [
-                    (value.get("address"), value.get("chain_id")),
-                    (value.get("contract_address"), value.get("chain_id")),
-                ]
-            )
-    candidates.extend(
-        [
-            (context.get("agent_address"), context.get("chain_id")),
-            (context.get("contract_address"), context.get("chain_id")),
-        ]
-    )
-    for address, chain_id in candidates:
+            candidates.extend([value.get("address"), value.get("contract_address")])
+    candidates.extend([context.get("agent_address"), context.get("contract_address")])
+    for address in candidates:
         clean_address = _clean_address(address)
         if clean_address is None:
             continue
-        return MarketplaceAgentRef(
-            address=clean_address,
-            chain_id=_optional_int(chain_id),
-        )
+        return MarketplaceAgentRef(address=clean_address, chain_id=None)
     return None
 
 
@@ -240,15 +227,6 @@ def _clean_address(value: Any) -> str | None:
     if not _ADDRESS_RE.match(address):
         return None
     return address
-
-
-def _optional_int(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _bounded_int(

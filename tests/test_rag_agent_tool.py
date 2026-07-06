@@ -56,6 +56,50 @@ async def test_retriever_adapter_returns_no_knowledge_base_without_calling_servi
     assert service.calls == []
 
 
+async def test_retriever_adapter_returns_platform_faq_without_external_knowledge_base():
+    from app.runtime.adapters import RetrieverAdapter
+
+    service = _FakeRAGQueryService()
+    adapter = RetrieverAdapter(
+        query_service=service,
+        user_id="user_1",
+        conversation_id="conv_1",
+        agent_run_id="run_1",
+        knowledge_base_id=None,
+    )
+
+    response = await adapter.retrieve("Mint 和 Redeem 分别是什么?", top_k=3)
+
+    assert response["degraded"] is False
+    assert response["source"] == "agent_protocol_faq_v1"
+    assert response["chunks"][0]["document_id"] == "agent_protocol_faq_v1"
+    assert "exchangeRate" in response["chunks"][0]["content"]
+    assert "没有独立的 Claim Yield" in response["chunks"][0]["content"]
+    assert service.calls == []
+
+
+async def test_retriever_adapter_returns_platform_faq_gap_without_external_knowledge_base():
+    from app.runtime.adapters import RetrieverAdapter
+
+    service = _FakeRAGQueryService()
+    adapter = RetrieverAdapter(
+        query_service=service,
+        user_id="user_1",
+        conversation_id="conv_1",
+        agent_run_id="run_1",
+        knowledge_base_id=None,
+    )
+
+    response = await adapter.retrieve("Profit Share 是什么时候收取?", top_k=2)
+
+    assert response["degraded"] is False
+    content = response["chunks"][0]["content"]
+    assert "FAQ V1 未覆盖 Profit Share" in content
+    assert "不要编造" in content
+    assert response["chunks"][0]["metadata"]["boundary"] is True
+    assert service.calls == []
+
+
 async def test_retriever_adapter_passes_runtime_context_to_query_service():
     from app.runtime.adapters import RetrieverAdapter
 
@@ -77,6 +121,27 @@ async def test_retriever_adapter_passes_runtime_context_to_query_service():
     assert service.calls[0]["agent_run_id"] == "run_1"
     assert service.calls[0]["knowledge_base_id"] == "kb_1"
     assert service.calls[0]["top_k"] == 2
+
+
+async def test_retriever_adapter_prepends_platform_faq_to_external_results():
+    from app.runtime.adapters import RetrieverAdapter
+
+    service = _FakeRAGQueryService()
+    adapter = RetrieverAdapter(
+        query_service=service,
+        user_id="user_1",
+        conversation_id="conv_1",
+        agent_run_id="run_1",
+        knowledge_base_id="kb_1",
+    )
+
+    response = await adapter.retrieve("balanceOf 来源是什么?", top_k=3)
+
+    assert response["degraded"] is False
+    assert response["chunks"][0]["document_id"] == "agent_protocol_faq_v1"
+    assert "balanceOf" in response["chunks"][0]["content"]
+    assert response["chunks"][1]["chunk_id"] == "chunk_1"
+    assert service.calls[0]["knowledge_base_id"] == "kb_1"
 
 
 async def test_retriever_adapter_passes_internal_kb_owner_to_query_service():
