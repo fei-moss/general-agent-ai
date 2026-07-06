@@ -100,6 +100,28 @@ async def test_retriever_adapter_returns_platform_faq_gap_without_external_knowl
     assert service.calls == []
 
 
+async def test_retriever_adapter_returns_system_contract_for_chain_id_default():
+    from app.runtime.adapters import RetrieverAdapter
+
+    service = _FakeRAGQueryService()
+    adapter = RetrieverAdapter(
+        query_service=service,
+        user_id="user_1",
+        conversation_id="conv_1",
+        agent_run_id="run_1",
+        knowledge_base_id=None,
+    )
+
+    response = await adapter.retrieve("proxy_payload 里的 chain_id 怎么处理?", top_k=2)
+
+    assert response["degraded"] is False
+    chunk = response["chunks"][0]
+    assert chunk["metadata"]["section"] == "System Interface Contract"
+    assert "chain_id 默认不透传" in chunk["content"]
+    assert "2026-07-06-agent-protocol-faq-v1-specification.md" in chunk["citation"]["source_uri"]
+    assert service.calls == []
+
+
 async def test_retriever_adapter_passes_runtime_context_to_query_service():
     from app.runtime.adapters import RetrieverAdapter
 

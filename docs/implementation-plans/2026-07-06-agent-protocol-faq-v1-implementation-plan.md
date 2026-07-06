@@ -17,6 +17,7 @@
   - `tests/test_rag_agent_tool.py`
 - Behavior change:
   - Add structured FAQ entries from the PM document.
+  - Add a separate system-interface contract chunk for the current `proxy_payload.chain_id` default.
   - Add deterministic keyword scoring and bounded chunk output.
   - Include explicit boundary entries for FAQ V1 gaps such as Profit Share, Management Fee formula, and paused-specific Redeem semantics.
 - Verification:
@@ -84,6 +85,6 @@
 
 ## Risk Controls
 
-- FAQ entries contain only PM-approved platform mechanism text, no secrets or user data.
+- FAQ entries contain only PM-approved platform mechanism text; the chain-id entry is explicitly sourced to this repository's system-interface spec. Neither contains secrets or user data.
 - Built-in FAQ matching is bounded and only returns small chunks.
 - Chain-id omission preserves the currently working centralized interface behavior.

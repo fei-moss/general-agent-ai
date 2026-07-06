@@ -52,7 +52,7 @@
 ## Data / Schema / Projection Impact
 
 - No database schema, migration, cache, or persistent projection changes.
-- FAQ V1 entries are packaged as runtime code fixtures, not private credentials or user data.
+- FAQ V1 entries and the related `chain_id` system-interface contract chunk are packaged as runtime code fixtures, not private credentials or user data.
 
 ## Architecture
 
@@ -73,7 +73,7 @@
   - `tests/chat_eval/golden_cases.jsonl`
   - `tests/chat_eval/judge.py`
 - Runtime behavior:
-  - `RetrieverAdapter.retrieve()` searches built-in FAQ V1 first.
+  - `RetrieverAdapter.retrieve()` searches built-in FAQ V1 and related system-interface contract chunks first.
   - If no external `knowledge_base_id` exists, matching FAQ chunks are still returned with `source=agent_protocol_faq_v1`.
   - If an external RAG knowledge base exists, matching FAQ chunks are prepended to normal RAG chunks.
   - `search_knowledge` falls back to the current user prompt if the model emits an empty retrieval query.

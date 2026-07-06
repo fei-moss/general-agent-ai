@@ -9,7 +9,10 @@ from typing import Any
 
 _DOCUMENT_ID = "agent_protocol_faq_v1"
 _KNOWLEDGE_BASE_ID = "builtin:agent_protocol_faq_v1"
-_SOURCE_URI = "https://merlinchain.sg.larksuite.com/wiki/AeeywtmIniGvqxkTPF7l1ZWJgdf"
+_FAQ_SOURCE_URI = "https://merlinchain.sg.larksuite.com/wiki/AeeywtmIniGvqxkTPF7l1ZWJgdf"
+_SYSTEM_CONTRACT_SOURCE_URI = (
+    "docs/specifications/2026-07-06-agent-protocol-faq-v1-specification.md"
+)
 _ASCII_TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
 
@@ -23,6 +26,7 @@ class PlatformFAQEntry:
     answer: str
     keywords: tuple[str, ...]
     boundary: bool = False
+    source_uri: str = _FAQ_SOURCE_URI
 
 
 _FAQ_ENTRIES: tuple[PlatformFAQEntry, ...] = (
@@ -329,6 +333,26 @@ _FAQ_ENTRIES: tuple[PlatformFAQEntry, ...] = (
         keywords=("paused", "暂停", "不能 redeem", "redeem 受限", "为什么不能赎回"),
         boundary=True,
     ),
+    PlatformFAQEntry(
+        id="chain_id_default_not_forwarded",
+        section="System Interface Contract",
+        question="proxy_payload 里的 chain_id 默认怎么处理?",
+        answer=(
+            "当前系统接口规则是: proxy_payload、marketplace_agent 或 agent 上下文里的"
+            " chain_id 默认不透传给中心化 Marketplace AI 的 ai-context 或 ai-compute 接口。"
+            "当前按 Agent 地址请求中心化接口; 如果未来上游需要 chain_id, 必须通过新的"
+            " 明确接口合同或配置单独引入。"
+        ),
+        keywords=(
+            "chain_id",
+            "chain id",
+            "proxy_payload",
+            "不透传",
+            "地址请求",
+            "中心化接口",
+        ),
+        source_uri=_SYSTEM_CONTRACT_SOURCE_URI,
+    ),
 )
 
 
@@ -389,7 +413,7 @@ def _to_chunk(entry: PlatformFAQEntry, *, index: int, score: int) -> dict[str, A
         "content": f"Q: {entry.question}\nA: {entry.answer}",
         "score": float(score),
         "citation": {
-            "source_uri": _SOURCE_URI,
+            "source_uri": entry.source_uri,
             "page": None,
             "section": entry.section,
             "chunk_index": index,
