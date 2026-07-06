@@ -1,10 +1,8 @@
 """流式网关路由:SSE 与 WebSocket。
 
-- GET /api/v1/chat/runs/{agent_run_id}/stream 或 /stream/{agent_run_id}:
-  用 sse-starlette 订阅 EventBus 频道 run:{id},
+- GET /stream/{agent_run_id}: 用 sse-starlette 订阅 EventBus 频道 run:{id},
   将 AgentEvent 逐条以 SSE 推送,收到 RUN_COMPLETED/ERROR 后结束。
-- WS /api/v1/chat/runs/{agent_run_id}/ws 或 /ws/{agent_run_id}: 等价的
-  WebSocket 推送。
+- WS /ws/{agent_run_id}: 等价的 WebSocket 推送。
 
 两者都从同一事件总线读取,API 层不缓存事件,断线后客户端可重连重订阅。
 WebSocket 不经 HTTP 中间件,故在握手阶段自行做轻量鉴权。
@@ -38,7 +36,6 @@ from app.db.session import async_session_factory
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["stream"])
-_API_V1_PREFIX = "/api/v1"
 _URL_USER_QUERY = "user_uuid"
 _MAX_USER_ID_LENGTH = 64
 
@@ -51,7 +48,6 @@ def _channel(agent_run_id: str) -> str:
     return f"run:{agent_run_id}"
 
 
-@router.get("/api/v1/chat/runs/{agent_run_id}/stream")
 @router.get("/stream/{agent_run_id}")
 async def stream_sse(
     agent_run_id: str,
@@ -83,7 +79,6 @@ async def stream_sse(
     return EventSourceResponse(event_generator())
 
 
-@router.websocket("/api/v1/chat/runs/{agent_run_id}/ws")
 @router.websocket("/ws/{agent_run_id}")
 async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
     """WebSocket 端点:等价于 SSE 的事件推送。"""
@@ -112,22 +107,28 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
 
 
 def _ws_user_id(websocket: WebSocket) -> str | None:
-    """WebSocket 轻量鉴权:版本化路由从 user_uuid 提取 user id。"""
-    path = getattr(getattr(websocket, "url", None), "path", "")
-    if path.startswith(_API_V1_PREFIX):
-        user_uuid = websocket.query_params.get(_URL_USER_QUERY)
-        if user_uuid and user_uuid.strip() and len(user_uuid.strip()) <= _MAX_USER_ID_LENGTH:
-            return user_uuid.strip()
+    """WebSocket 轻量鉴权:优先从 URL user_uuid 提取 user id。"""
+    user_uuid = websocket.query_params.get(_URL_USER_QUERY)
+    if user_uuid is not None:
+        stripped = user_uuid.strip()
+        if stripped and len(stripped) <= _MAX_USER_ID_LENGTH:
+            return stripped
         return None
     token = websocket.query_params.get("token")
-    if token:
-        return token
+    if token and token.strip() and len(token.strip()) <= _MAX_USER_ID_LENGTH:
+        return token.strip()
     auth = websocket.headers.get("authorization")
     if auth:
-        return auth.removeprefix("Bearer ").strip() or None
+        candidate = auth.removeprefix("Bearer ").strip()
+        if candidate and len(candidate) <= _MAX_USER_ID_LENGTH:
+            return candidate
+        return None
     api_key = websocket.headers.get("x-api-key")
     if api_key:
-        return api_key.strip() or None
+        candidate = api_key.strip()
+        if candidate and len(candidate) <= _MAX_USER_ID_LENGTH:
+            return candidate
+        return None
     return None
 
 

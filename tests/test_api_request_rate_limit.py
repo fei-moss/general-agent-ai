@@ -10,7 +10,6 @@ from app.core.metrics import InMemoryMetrics
 
 
 _CHAT_ROUTE = "/chat"
-_API_V1_CHAT_ROUTE = "/api/v1/chat"
 _OTHER_ROUTE = "/chat/admin-action"
 
 
@@ -151,7 +150,7 @@ async def test_rate_limit_middleware_passes_request_path_as_route_scope():
     assert limiter.calls == [("route-user", _CHAT_ROUTE)]
 
 
-async def test_rate_limit_middleware_covers_versioned_chat_route():
+async def test_rate_limit_middleware_uses_url_user_uuid_on_chat_route():
     from app.api.main import create_app
 
     class _RecordingLimiter:
@@ -176,9 +175,9 @@ async def test_rate_limit_middleware_covers_versioned_chat_route():
         base_url="http://testserver",
     ) as client:
         response = await client.post(
-            f"{_API_V1_CHAT_ROUTE}?user_uuid=route-user",
+            f"{_CHAT_ROUTE}?user_uuid=route-user",
             json={"message": "hello"},
         )
 
     assert response.status_code == 429
-    assert limiter.calls == [("route-user", _API_V1_CHAT_ROUTE)]
+    assert limiter.calls == [("route-user", _CHAT_ROUTE)]

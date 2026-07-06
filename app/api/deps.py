@@ -22,7 +22,6 @@ logger = get_logger(__name__)
 
 # 鉴权 header 约定:Authorization: Bearer <token>,或 X-API-Key
 _BEARER_PREFIX = "Bearer "
-_API_V1_PREFIX = "/api/v1"
 # 缺失鉴权信息时使用的匿名用户(demo 模式可放行)
 _ANON_USER = "anonymous"
 
@@ -35,15 +34,13 @@ async def get_current_user(
     """从请求头解析 user_id。
 
     优先使用中间件已写入 request.state.user_id(避免重复解析);
-    `/api/v1/*` chat-flow 路由的该值来自 URL query user_uuid;
+    chat-flow 路由的该值可来自 URL query user_uuid;
     否则从 Authorization Bearer 或 X-API-Key 提取 token 作为 user_id。
     demo 模式下缺失时降级为匿名用户而非直接 401(401 由中间件统一兜底)。
     """
     state_user = getattr(request.state, "user_id", None)
     if state_user:
         return state_user
-    if request.url.path.startswith(_API_V1_PREFIX):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="缺少 user_uuid")
     token = _extract_token(authorization, x_api_key)
     return token or _ANON_USER
 

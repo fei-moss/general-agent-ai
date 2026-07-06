@@ -36,7 +36,8 @@ https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org
 export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org"
 ```
 
-curl 示例使用 `AUTH_HEADER` 变量承载当前用户身份 header；调用前由接入方按本节身份模型设置。
+Marketplace curl 示例使用 `USER_UUID` 放在 URL query；内部/legacy 示例仍可能使用
+`AUTH_HEADER` 承载当前用户身份 header。
 
 DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
 
@@ -60,7 +61,7 @@ chat-flow 采用 URL-derived identity：
 示例：
 
 ```http
-POST /api/v1/chat?user_uuid=alice.internal
+POST /chat?user_uuid=alice.internal
 ```
 
 这会被服务理解为：
@@ -93,7 +94,7 @@ X-API-Key: <user_id>
 - `GET /redoc`
 - `GET /openapi.json`
 
-Marketplace chat-flow 端点需要 URL `user_uuid`。内部/legacy 业务端点需要身份 header。
+Marketplace chat-flow 端点使用 URL `user_uuid`。内部/legacy 业务端点仍可使用身份 header。
 
 ## 4. 中心化数据模型
 
@@ -127,7 +128,7 @@ internal_rag_owner_user_id
 
 继续对话依赖 `conversation_id`：
 
-- 第一次 `POST /api/v1/chat?user_uuid=<user_uuid>` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
+- 第一次 `POST /chat?user_uuid=<user_uuid>` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
 - 返回体里会给出 `conversation_id`。
 - 后续请求传这个 `conversation_id`，服务会加载该会话历史，再进行新一轮 Agent 执行。
 - 如果接入方不知道有哪些 conversation，可以调用 `GET /conversations` 查询当前 `user_id` 下的会话列表。
@@ -136,10 +137,10 @@ internal_rag_owner_user_id
 
 ```text
 1. 业务系统确定内部 `user_uuid`
-2. POST `/api/v1/chat?user_uuid=<user_uuid>`
+2. POST `/chat?user_uuid=<user_uuid>`
 3. 保存返回的 conversation_id 和 agent_run_id
 4. 订阅 stream_url，读取 TOKEN 和 RUN_COMPLETED
-5. 用户继续追问时，再 POST `/api/v1/chat?user_uuid=<user_uuid>`，并传 conversation_id
+5. 用户继续追问时，再 POST `/chat?user_uuid=<user_uuid>`，并传 conversation_id
 6. 如果页面刷新或客户端丢失状态，调用 GET /conversations 找回会话
 ```
 
@@ -147,11 +148,11 @@ internal_rag_owner_user_id
 
 ### 6.1 新建会话并聊天
 
-不传 `conversation_id`，服务会自动创建新会话。`POST /api/v1/chat` 只做异步受理，
+不传 `conversation_id`，服务会自动创建新会话。`POST /chat` 只做异步受理，
 成功后立即返回 `202`，接入方要马上用返回的 `stream_url` 或 `ws_url` 接收结果。
 
 ```bash
-curl -sS -X POST "$BASE_URL/api/v1/chat?user_uuid=$USER_UUID" \
+curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: chat-001' \
   -d '{
@@ -200,8 +201,8 @@ curl -sS -X POST "$BASE_URL/api/v1/chat?user_uuid=$USER_UUID" \
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/api/v1/chat/runs/run_xxx/stream?user_uuid=alice.internal",
-  "ws_url": "/api/v1/chat/runs/run_xxx/ws?user_uuid=alice.internal",
+  "stream_url": "/stream/run_xxx?user_uuid=alice.internal",
+  "ws_url": "/ws/run_xxx?user_uuid=alice.internal",
   "route_type": "realtime"
 }
 ```
@@ -215,7 +216,7 @@ curl -sS -X POST "$BASE_URL/api/v1/chat?user_uuid=$USER_UUID" \
 查询运行状态：
 
 ```bash
-curl -sS "$BASE_URL/api/v1/chat/runs/run_xxx?user_uuid=$USER_UUID"
+curl -sS "$BASE_URL/runs/run_xxx?user_uuid=$USER_UUID"
 ```
 
 ### 6.2 用 SSE 接收 token 和最终答案
@@ -223,7 +224,7 @@ curl -sS "$BASE_URL/api/v1/chat/runs/run_xxx?user_uuid=$USER_UUID"
 拿到上一步返回的 `stream_url` 后立即订阅：
 
 ```bash
-curl -N "$BASE_URL/api/v1/chat/runs/run_xxx/stream?user_uuid=$USER_UUID"
+curl -N "$BASE_URL/stream/run_xxx?user_uuid=$USER_UUID"
 ```
 
 SSE frame 示例：
@@ -288,10 +289,10 @@ data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","typ
 如果接入方更适合 WebSocket，可以使用响应里的 `ws_url`：
 
 ```text
-ws(s)://<host>/ws/run_xxx?token=alice.internal
+ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal
 ```
 
-也可以在握手时传：
+Legacy/internal 调用也可以在握手时传：
 
 ```http
 Authorization: Bearer alice.internal
@@ -311,7 +312,7 @@ Last-Event-ID: <last_sse_id>
 WebSocket 需要从 cursor 恢复时：
 
 ```text
-ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
+ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
 ```
 
 如果 cursor 已超过服务端保留窗口，服务端会返回：
@@ -328,7 +329,7 @@ ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 
 此时不要再尝试 replay token，应该查询：
 
-- `GET /runs/{agent_run_id}`
+- `GET /runs/{agent_run_id}?user_uuid=<user_uuid>`
 - `GET /conversations/{conversation_id}`
 
 ### 6.5 继续已有会话
@@ -336,9 +337,8 @@ ws(s)://<host>/ws/run_xxx?token=alice.internal&last_event_id=<stream_id>
 把上一次返回的 `conversation_id` 放进请求：
 
 ```bash
-curl -sS -X POST "$BASE_URL/chat" \
+curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
   -H 'Content-Type: application/json' \
-  -H "$AUTH_HEADER" \
   -H 'Idempotency-Key: chat-002' \
   -d '{
     "conversation_id": "conv_xxx",
@@ -352,7 +352,7 @@ curl -sS -X POST "$BASE_URL/chat" \
 
 注意：
 
-- `conversation_id` 必须属于当前 header 里的 `user_id`。
+- `conversation_id` 必须属于当前 `user_uuid` 对应的 `user_id`。
 - 如果会话归属不匹配，返回 `403`。
 - 同一 conversation 的 realtime run 会串行化；如果上一轮还没结束，可能返回 `409 CONVERSATION_BUSY`。
 
@@ -741,7 +741,7 @@ HTTP 状态：
 1. 设置 `BASE_URL`。
 2. 选择稳定的内部 `user_uuid`，不要使用原始 JWT。
 3. Marketplace chat-flow 请求把 `user_uuid` 放进 URL query。
-4. `POST /api/v1/chat?user_uuid=<user_uuid>` 时带 `Idempotency-Key`。
+4. `POST /chat?user_uuid=<user_uuid>` 时带 `Idempotency-Key`。
 5. 新聊天不传 `conversation_id`，服务会自动创建。
 6. 保存返回的 `conversation_id`，后续追问必须传回。
 7. 保存返回的 `agent_run_id`，用于订阅 stream 和查询 run。
@@ -750,6 +750,6 @@ HTTP 状态：
 10. 页面刷新或本地状态丢失时，调用 `GET /conversations` 找回会话列表。
 11. 需要完整历史时，调用 `GET /conversations/{conversation_id}`。
 12. SSE 断线时，用最后一个 SSE `id` 作为 `Last-Event-ID` 重连。
-13. 遇到 `STREAM_GAP`，改查 `/api/v1/chat/runs/{id}?user_uuid=<user_uuid>` 和 `/conversations/{id}`。
+13. 遇到 `STREAM_GAP`，改查 `/runs/{id}?user_uuid=<user_uuid>` 和 `/conversations/{id}`。
 14. 不要调用 `/rag/*` 或传 `metadata.knowledge_base_id`；RAG 由服务端内部知识库配置透明生效。
 15. 接流量前检查 `/readyz`，排障时查看 `/metrics`。

@@ -1,7 +1,6 @@
 """运行状态查询路由。
 
-- GET /api/v1/chat/runs/{id} 或 /runs/{id}: 返回某次 Agent
-  运行的轻量状态(RunStatusOut)。
+- GET /runs/{id}: 返回某次 Agent 运行的轻量状态(RunStatusOut)。
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["runs"])
 
 
-@router.get("/api/v1/chat/runs/{agent_run_id}", response_model=RunStatusOut)
 @router.get("/runs/{agent_run_id}", response_model=RunStatusOut)
 async def get_run_status(agent_run_id: str, user: CurrentUser, repos: ReposDep) -> Any:
     """查询运行状态;不存在返回 404。"""

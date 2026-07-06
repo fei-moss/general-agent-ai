@@ -1,6 +1,6 @@
 """核心对话入口路由。
 
-POST /api/v1/chat?user_uuid=<id> 或 legacy POST /chat 流程:
+POST /chat?user_uuid=<id> 或 header 兼容流程:
 1. URL user_uuid 或 header 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
 2. 创建或复用 conversation,写入用户消息。
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
@@ -48,8 +48,8 @@ from app.runtime.tool_context import mask_run_context
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
-_API_V1_CHAT_PATH = "/api/v1/chat"
-_API_V1_CHAT_PREFIX = "/api/v1/chat"
+_URL_USER_QUERY = "user_uuid"
+_ID_SOURCE_URL_USER_UUID = "user_uuid"
 
 # 投递任务的子任务类型(对应 task_state.task_type)
 _RUN_TASK_TYPE = "run"
@@ -66,7 +66,6 @@ _BATCH_TASK_TYPES = {
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
-@router.post(_API_V1_CHAT_PATH, status_code=status.HTTP_202_ACCEPTED)
 @router.post("/chat", status_code=status.HTTP_202_ACCEPTED)
 async def create_chat(
     body: ChatRequest,
@@ -107,14 +106,12 @@ async def create_chat(
         settings=settings,
         user_id=user,
     )
-    versioned = _is_versioned_chat_request(request)
     accepted = _accepted(
         conversation_id,
         run_id,
         trace_id,
         route_type=route_type,
-        user_uuid=user,
-        versioned=versioned,
+        user_uuid=_request_user_uuid(request),
     )
     if idempotency_key:
         replay = await _claim_idempotency_or_replay(
@@ -271,9 +268,14 @@ def _anchor_payload(body: ChatRequest) -> dict[str, str] | None:
     return body.conversation_anchor.model_dump()
 
 
-def _is_versioned_chat_request(request: Request) -> bool:
-    path = getattr(getattr(request, "url", None), "path", "")
-    return path == _API_V1_CHAT_PATH
+def _request_user_uuid(request: Request) -> str | None:
+    """Return URL user_uuid when middleware selected it as the request identity."""
+    if getattr(request.state, "user_id_source", None) != _ID_SOURCE_URL_USER_UUID:
+        return None
+    user_uuid = request.query_params.get(_URL_USER_QUERY)
+    if user_uuid and user_uuid.strip():
+        return user_uuid.strip()
+    return None
 
 
 async def _apply_provider_preflight(
@@ -505,28 +507,15 @@ def _accepted(
     *,
     route_type: str | None = None,
     user_uuid: str | None = None,
-    versioned: bool = False,
 ) -> ChatAccepted:
     """构造 202 受理响应。"""
-    if versioned:
-        if not user_uuid:
-            raise ValueError("versioned chat responses require user_uuid")
-        user_query = urlencode({"user_uuid": user_uuid})
-        return ChatAccepted(
-            conversation_id=conversation_id,
-            agent_run_id=run_id,
-            trace_id=trace_id,
-            status=RunStatus.PENDING,
-            stream_url=f"{_API_V1_CHAT_PREFIX}/runs/{run_id}/stream?{user_query}",
-            ws_url=f"{_API_V1_CHAT_PREFIX}/runs/{run_id}/ws?{user_query}",
-            route_type=route_type,
-        )
+    query_suffix = f"?{urlencode({_URL_USER_QUERY: user_uuid})}" if user_uuid else ""
     return ChatAccepted(
         conversation_id=conversation_id,
         agent_run_id=run_id,
         trace_id=trace_id,
         status=RunStatus.PENDING,
-        stream_url=f"/stream/{run_id}",
-        ws_url=f"/ws/{run_id}",
+        stream_url=f"/stream/{run_id}{query_suffix}",
+        ws_url=f"/ws/{run_id}{query_suffix}",
         route_type=route_type,
     )

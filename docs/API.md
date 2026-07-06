@@ -8,7 +8,7 @@
 这是一个**异步 Agent 平台**,不是同步问答接口。一次对话的生命周期:
 
 ```
-POST /api/v1/chat?user_uuid=<user_uuid> ──202──▶ 返回 agent_run_id + stream_url
+POST /chat?user_uuid=<user_uuid> ──202──▶ 返回 agent_run_id + stream_url
                          │
                          ▼
             订阅 SSE / WebSocket 实时事件流
@@ -38,11 +38,12 @@ ID 放在 query 参数里:
 
 规则:
 
-- `POST /api/v1/chat`、`/api/v1/chat/runs/*/stream` 和
-  `/api/v1/chat/runs/*/ws` 都从 URL `user_uuid` 取内部 `user_id`。
-- `user_uuid` 必填、非空,并且不能超过 64 个字符。
+- `POST /chat`、`/stream/*`、`/ws/*` 和 `/runs/*` 都优先从 URL
+  `user_uuid` 取内部 `user_id`。
+- Marketplace chat-flow 调用应传 `user_uuid`;值必须非空,并且不能超过 64 个字符。
 - 不要把原始 JWT、session token 或钱包私钥作为 `user_uuid` 或 legacy
   header user id 传给 Chat Server。
+- `/api/v1/chat*` 不是本项目的接口契约。
 
 Legacy/internal 路径仍支持请求头身份:
 
@@ -64,10 +65,10 @@ X-API-Key: <key>
 ### CORS
 后端开启宽松 CORS(`allow_origins: *`),前端可跨域直连(生产会收敛)。
 浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的
-`POST /api/v1/chat` 必须携带 URL `user_uuid`。
+`POST /chat` Marketplace 调用必须携带 URL `user_uuid`。
 
 ### 限流
-仅对 `POST /api/v1/chat` 和 legacy `POST /chat` 限流(按 user_id 滑动窗口,
+仅对 `POST /chat` 限流(按 user_id 滑动窗口,
 默认 **60 次/分钟**)。超限返回 **429**:
 ```
 HTTP 429
@@ -84,7 +85,7 @@ X-RateLimit-Remaining: 0
 
 | 状态码 | 含义 |
 |--------|------|
-| 401 | 缺少/无效身份凭证,或 `/api/v1/*` 缺少 `user_uuid` |
+| 401 | 缺少/无效身份凭证 |
 | 403 | 无权访问该资源(会话归属不符) |
 | 404 | 资源不存在 |
 | 422 | 请求体校验失败(如 message 为空、`stream:false`、`user_uuid` 超长) |
@@ -97,10 +98,10 @@ X-RateLimit-Remaining: 0
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| POST | `/api/v1/chat?user_uuid=...` | Marketplace 提交一次对话(核心) | URL `user_uuid` |
-| GET  | `/api/v1/chat/runs/{agent_run_id}?user_uuid=...` | Marketplace 查询运行状态 | URL `user_uuid` |
-| GET  | `/api/v1/chat/runs/{agent_run_id}/stream?user_uuid=...` | Marketplace SSE 事件流 | URL `user_uuid` |
-| WS   | `/api/v1/chat/runs/{agent_run_id}/ws?user_uuid=...` | Marketplace WebSocket 事件流 | URL `user_uuid` |
+| POST | `/chat?user_uuid=...` | Marketplace 提交一次对话(核心) | URL `user_uuid` |
+| GET  | `/runs/{agent_run_id}?user_uuid=...` | Marketplace 查询运行状态 | URL `user_uuid` |
+| GET  | `/stream/{agent_run_id}?user_uuid=...` | Marketplace SSE 事件流 | URL `user_uuid` |
+| WS   | `/ws/{agent_run_id}?user_uuid=...` | Marketplace WebSocket 事件流 | URL `user_uuid` |
 | POST | `/chat` | Legacy/internal 提交一次对话 | Header |
 | GET  | `/stream/{agent_run_id}` | Legacy/internal SSE 事件流 | Header* |
 | WS   | `/ws/{agent_run_id}` | Legacy/internal WebSocket 事件流 | query token/header |
@@ -116,9 +117,9 @@ X-RateLimit-Remaining: 0
 
 ## 3. 对话接口
 
-### 3.1 POST /api/v1/chat — Marketplace 提交对话(核心)
+### 3.1 POST /chat — Marketplace 提交对话(核心)
 
-**URL**:`/api/v1/chat?user_uuid=<user_uuid>`
+**URL**:`/chat?user_uuid=<user_uuid>`
 
 **请求头**:`Content-Type: application/json`
 
@@ -166,15 +167,15 @@ Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/api/v1/chat/runs/run_xxx/stream?user_uuid=alice.internal",
-  "ws_url": "/api/v1/chat/runs/run_xxx/ws?user_uuid=alice.internal"
+  "stream_url": "/stream/run_xxx?user_uuid=alice.internal",
+  "ws_url": "/ws/run_xxx?user_uuid=alice.internal"
 }
 ```
 > 拿到 `agent_run_id` 后,立刻用 `stream_url` 订阅 SSE,或 `ws_url` 连 WebSocket。
 
 #### 不支持 `stream:false`
 
-`POST /api/v1/chat` 和 legacy `POST /chat` 永远是异步受理接口。传
+`POST /chat` 永远是异步受理接口。传
 `stream:false` 会返回 **422**:
 
 ```json
@@ -182,7 +183,7 @@ Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
 ```
 
 脚本场景如果不想渲染逐 token，也应该订阅到 `RUN_COMPLETED`，或轮询
-`GET /api/v1/chat/runs/{agent_run_id}?user_uuid=...` 后读取
+`GET /runs/{agent_run_id}?user_uuid=...` 后读取
 `GET /conversations/{conversation_id}` 的消息历史。
 
 ---
@@ -262,7 +263,7 @@ const USER_UUID = 'demo-user-1';
 const BASE = 'http://localhost:8000';
 
 // 1) 提交对话
-const res = await fetch(`${BASE}/api/v1/chat?user_uuid=${encodeURIComponent(USER_UUID)}`, {
+const res = await fetch(`${BASE}/chat?user_uuid=${encodeURIComponent(USER_UUID)}`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ message: '帮我算一下 (123+456)*7', stream: true }),
@@ -293,7 +294,7 @@ await fetchEventSource(`${BASE}${stream_url}`, {
 
 ```ts
 const ws = new WebSocket(
-  `ws://localhost:8000/api/v1/chat/runs/${agent_run_id}/ws?user_uuid=${encodeURIComponent(USER_UUID)}`
+  `ws://localhost:8000/ws/${agent_run_id}?user_uuid=${encodeURIComponent(USER_UUID)}`
 );
 let answer = '';
 ws.onmessage = (e) => {
@@ -307,9 +308,9 @@ ws.onmessage = (e) => {
 
 | 通道 | 浏览器能否设鉴权 | 方案 |
 |------|------------------|------|
-| 原生 `EventSource` | 不需要 header | 使用返回的 versioned `stream_url`,其中已带 `user_uuid` |
-| WebSocket | 不需要 header | 使用返回的 versioned `ws_url`,其中已带 `user_uuid` |
-| `fetch`(普通 REST) | 不需要身份 header | `POST /api/v1/chat?user_uuid=...` |
+| 原生 `EventSource` | 不需要 header | 使用返回的 `stream_url`,其中已带 `user_uuid` |
+| WebSocket | 不需要 header | 使用返回的 `ws_url`,其中已带 `user_uuid` |
+| `fetch`(普通 REST) | 不需要身份 header | `POST /chat?user_uuid=...` |
 
 ---
 

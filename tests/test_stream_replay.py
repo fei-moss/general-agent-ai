@@ -73,11 +73,11 @@ async def test_stream_owner_mismatch_raises_403():
     assert exc.value.status_code == 403
 
 
-def test_versioned_websocket_identity_uses_url_user_uuid():
+def test_websocket_identity_prefers_url_user_uuid_on_existing_ws_route():
     from app.api.routers.stream import _ws_user_id
 
     websocket = SimpleNamespace(
-        url=SimpleNamespace(path="/api/v1/chat/runs/run-1/ws"),
+        url=SimpleNamespace(path="/ws/run-1"),
         query_params={"user_uuid": "market-user-1", "token": "legacy-token"},
         headers={"authorization": "Bearer header-user"},
     )
