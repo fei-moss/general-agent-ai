@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
@@ -69,6 +69,9 @@ TOOL_MARKETPLACE_AGENT_COMPUTE = "marketplace_agent_compute"
 
 # Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
 _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").policy)
+_ASK_THIS_AGENT_PROFILE = "ask_this_agent"
+_MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT = 1
+_MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT = 1
 
 
 @dataclass
@@ -94,6 +97,7 @@ class AgentDeps:
     language_instruction: str = ""
     run_context: dict[str, Any] | None = None
     marketplace_ai: Any | None = None
+    tool_call_counts: dict[str, int] = field(default_factory=dict)
 
 
 def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
@@ -103,12 +107,22 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         model: PydanticAI model 实例(由 build_model 产出或测试注入)。
     """
     profile = behavior_profile or get_behavior_profile("ask_this_agent")
+
+    def prepare_tools_for_profile(
+        ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]
+    ) -> list[ToolDefinition]:
+        return _prepare_tools_for_turn(
+            ctx,
+            tool_defs,
+            behavior_profile_name=profile.name,
+        )
+
     agent: Agent[AgentDeps, str] = Agent(
         model,
         deps_type=AgentDeps,
         output_type=str,
         system_prompt=build_system_prompt(profile.policy),
-        capabilities=[PrepareTools(_prepare_tools_for_turn)],
+        capabilities=[PrepareTools(prepare_tools_for_profile)],
     )
 
     @agent.instructions
@@ -214,6 +228,13 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 "marketplace_client_missing",
                 "Marketplace AI client is not available.",
             )
+        exhausted = _claim_tool_budget(
+            ctx,
+            TOOL_MARKETPLACE_AGENT_CONTEXT,
+            _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT,
+        )
+        if exhausted is not None:
+            return exhausted
         return await client.get_agent_context(
             ref.address,
             chain_id=ref.chain_id,
@@ -248,6 +269,13 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 "Marketplace compute requires at least one metric query.",
                 status="invalid_request",
             )
+        exhausted = _claim_tool_budget(
+            ctx,
+            TOOL_MARKETPLACE_AGENT_COMPUTE,
+            _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT,
+        )
+        if exhausted is not None:
+            return exhausted
         return await client.compute_agent_metrics(
             ref.address,
             normalized_queries,
@@ -258,13 +286,40 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
 
 
 def _prepare_tools_for_turn(
-    ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]
+    ctx: RunContext[AgentDeps],
+    tool_defs: list[ToolDefinition],
+    *,
+    behavior_profile_name: str,
 ) -> list[ToolDefinition]:
-    """Hide all function tools for turns that must be answered directly."""
+    """Hide function tools that are out of scope for the current turn/profile."""
     turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
     if isinstance(turn_policy, dict) and turn_policy.get("tool_use") == "none":
         return []
+    if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
+        return [tool for tool in tool_defs if tool.name != "web_search"]
     return tool_defs
+
+
+def _claim_tool_budget(
+    ctx: RunContext[AgentDeps],
+    tool_name: str,
+    limit: int,
+) -> dict[str, Any] | None:
+    """Spend one per-run tool call budget slot, or return a structured limit result."""
+    counts = ctx.deps.tool_call_counts
+    current = int(counts.get(tool_name, 0))
+    if current >= limit:
+        return marketplace_unavailable(
+            "marketplace_tool_budget_exhausted",
+            (
+                f"{tool_name} was already called for this turn. Use prior tool "
+                "results if available; otherwise explain that the requested data "
+                "is temporarily unavailable instead of retrying the same tool."
+            ),
+            status="limited",
+        )
+    counts[tool_name] = current + 1
+    return None
 
 
 def build_model(

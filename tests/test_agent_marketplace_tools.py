@@ -126,6 +126,55 @@ async def test_agent_marketplace_tool_permission_denial_blocks_client_call():
     assert "TOOL_BLOCKED_BY_CONTEXT" in repr(result)
 
 
+async def test_agent_marketplace_context_tool_budget_limits_external_calls():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(
+        _repeated_tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_CONTEXT,
+            {"reports_limit": 1, "include_raw": False},
+            repeat=2,
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("连续查询两次 Agent 上下文", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert "marketplace_tool_budget_exhausted" in repr(result)
+
+
+async def test_agent_marketplace_compute_tool_budget_limits_external_calls():
+    marketplace = _FakeMarketplaceAI()
+    args = {
+        "queries": [
+            {
+                "id": "q1",
+                "metric": "volume_sum",
+                "window": {"unit": "day", "value": 1},
+            }
+        ]
+    }
+    agent = build_agent(
+        _repeated_tool_calling_model(TOOL_MARKETPLACE_AGENT_COMPUTE, args, repeat=2)
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("连续计算两次交易量", deps=deps)
+
+    assert len(marketplace.compute_calls) == 1
+    assert "marketplace_tool_budget_exhausted" in repr(result)
+
+
 class _NoopRetriever:
     async def retrieve(self, query: str, top_k: int):
         return []
@@ -214,5 +263,24 @@ def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:
                             parts=[TextPart(content=repr(part.content))]
                         )
         return ModelResponse(parts=[TextPart(content="done")])
+
+    return FunctionModel(function=function)
+
+
+def _repeated_tool_calling_model(
+    tool_name: str, args: dict[str, Any], *, repeat: int
+) -> FunctionModel:
+    def function(messages, _info):
+        tool_results = []
+        for message in messages:
+            if isinstance(message, ModelRequest):
+                for part in message.parts:
+                    if isinstance(part, ToolReturnPart):
+                        tool_results.append(part.content)
+        if len(tool_results) < repeat:
+            from pydantic_ai.messages import ToolCallPart
+
+            return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
+        return ModelResponse(parts=[TextPart(content=repr(tool_results))])
 
     return FunctionModel(function=function)

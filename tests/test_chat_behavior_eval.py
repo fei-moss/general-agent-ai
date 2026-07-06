@@ -13,8 +13,12 @@ from app.runtime.chat_behavior import (
 from tests.chat_eval.evaluator import (
     ChatBehaviorCase,
     coverage_summary,
+    data_consistency_cases,
+    load_answer_rubric,
     load_cases,
+    load_coverage_contract,
     validate_cases,
+    validate_coverage_contract,
 )
 from tests.chat_eval.judge import (
     PolicyVariant,
@@ -47,6 +51,29 @@ def test_golden_cases_cover_required_behavior_axes(cases):
     assert summary["output_policy_leak"] >= 1
     assert summary["language_mismatch"] >= 1
     assert summary["false_positive_guard"] >= 4
+
+
+def test_golden_cases_satisfy_ask_this_agent_coverage_contract(cases):
+    errors = validate_coverage_contract(
+        cases,
+        contract=load_coverage_contract(),
+        rubric=load_answer_rubric(),
+    )
+
+    assert errors == []
+
+
+def test_data_consistency_cases_define_sources_fields_and_synthetic_payloads(cases):
+    data_cases = data_consistency_cases(cases)
+
+    assert len(data_cases) >= 8
+    wallet_cases = [case for case in data_cases if case.raw.get("requires_wallet")]
+    assert len(wallet_cases) >= 3
+    for case in wallet_cases:
+        serialized = str(case.raw.get("fixture_proxy_payload"))
+        assert "0xEval" in serialized
+        assert case.raw["expected_sources"], case.id
+        assert case.raw["expected_fields"], case.id
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda case: case.id)

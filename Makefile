@@ -7,7 +7,7 @@ PIP ?= $(PY) -m pip
 APP_MODULE ?= app.api.main:app
 CELERY_APP ?= app.tasks.celery_app:celery_app
 
-.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows verify-release
+.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows chat-eval chat-eval-report chat-eval-live verify-release
 
 help:
 	@echo "可用目标:"
@@ -20,6 +20,9 @@ help:
 	@echo "  make test       运行 pytest"
 	@echo "  make seed       初始化建表 + 灌入示例数据"
 	@echo "  make check-harness-workflows 校验 Harness workflow manifest 与 spec/plan 绑定"
+	@echo "  make chat-eval 运行 Ask this Agent 聊天效果 deterministic eval"
+	@echo "  make chat-eval-report 生成 Ask this Agent 聊天效果 scorecard"
+	@echo "  make chat-eval-live 对 DockerHost/API 执行可选 live eval 回放"
 	@echo "  make verify-release 运行发布前 Harness 验证并写入 .artifacts/release"
 
 up:
@@ -48,6 +51,17 @@ seed:
 
 check-harness-workflows:
 	PY="$(PY)" scripts/check_harness_workflows.sh
+
+chat-eval:
+	$(PY) -m pytest tests/test_chat_behavior_eval.py tests/test_chat_eval_closure.py -q
+
+chat-eval-report:
+	$(PY) -m tests.chat_eval.scorecard --output .artifacts/release/chat_eval_scorecard.json --strict
+
+chat-eval-live:
+	@test -n "$$CHAT_EVAL_BASE_URL" || (echo "CHAT_EVAL_BASE_URL is required" >&2; exit 1)
+	@test -n "$$CHAT_EVAL_AUTH_TOKEN" || (echo "CHAT_EVAL_AUTH_TOKEN is required" >&2; exit 1)
+	$(PY) -m tests.chat_eval.live_runner --base-url "$$CHAT_EVAL_BASE_URL" --auth-token-env CHAT_EVAL_AUTH_TOKEN --output .artifacts/release/chat_eval_live.json
 
 verify-release:
 	PY="$(PY)" scripts/verify_release.sh

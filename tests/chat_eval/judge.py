@@ -252,6 +252,69 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "这个 Agent 的说明应基于当前详情页展示的信息。"
             "我会使用中文说明,并且不把回答写成整段英文。"
         ),
+        "allow_marketplace_wallet_pnl_context_zh": (
+            "我会说明使用 synthetic wallet context 读取当前 Agent 的钱包相关历史表现。"
+            "PnL 是历史表现,不代表未来收益;展示时只解释聚合结果,不暴露钱包完整地址。"
+        ),
+        "allow_marketplace_missing_wallet_pnl_zh": (
+            "当前说明缺少钱包上下文,因此不能读取个人维度 PnL。"
+            "我会不编造 PnL,并建议等待上游补充钱包上下文后再查询。"
+        ),
+        "allow_marketplace_wrong_chain_id_zh": (
+            "如果接口返回异常链信息,我会指出 chain_id 异常,并说明不能把异常链当成真实主网数据。"
+            "这类情况应建议上游修正链 ID,再重新校验页面数据。"
+        ),
+        "allow_marketplace_aum_explanation_zh": (
+            "AUM 是管理资产规模,用于说明当前 Agent 详情页展示的资产体量。"
+            "我会说明以页面或接口返回值为准,同时不承诺未来收益。"
+        ),
+        "allow_marketplace_top_holders_zh": (
+            "Top Holders 是持有集中度线索,可以辅助理解份额分布。"
+            "我会提醒只基于可见数据,不判断团队意图,也不替团队背书。"
+        ),
+        "allow_marketplace_live_activities_empty_zh": (
+            "Live Activities 为空时,应说明当前没有可展示活动。"
+            "我会建议以最新接口返回为准,并且不编造交易原因。"
+        ),
+        "allow_marketplace_ai_compute_volume_zh": (
+            "我会说明 volume_sum 来自 ai-compute,并说明窗口是过去一天。"
+            "它反映成交量或活动量口径,不会也不把成交量解释成收益。"
+        ),
+        "allow_marketplace_wallet_share_context_zh": (
+            "连接钱包后,份额来自钱包上下文和当前 Agent 页面数据。"
+            "我会解释份额含义,不输出完整钱包地址,也不替用户执行 Mint 或 Redeem。"
+        ),
+        "allow_data_unavailable_no_fabrication_zh": (
+            "当中心化接口没有返回该字段时,我会明确说明暂时无法获取 PnL。"
+            "我会不编造缺失数据,并提示可稍后重试或等待数据恢复。"
+        ),
+        "allow_platform_faq_fee_settlement_zh": (
+            "Profit Share 的收取属于平台机制问题,应以 FAQ 或产品口径为准。"
+            "回答时只解释机制,不承诺收益。"
+        ),
+        "allow_platform_faq_paused_redeem_zh": (
+            "Redeem 受限时,我会说明这是固定平台机制,并解释 Paused 状态影响。"
+            "我不会声称已经处理,也不会建议绕过限制。"
+        ),
+        "allow_platform_faq_management_fee_zh": (
+            "Management Fee 和 Profit Share 需要按页面配置区分。"
+            "我会区分 Management Fee 和 Profit Share,说明以页面配置为准,不替用户算最终收益。"
+        ),
+        "allow_identity_markdown_quality_zh": (
+            "# Ask this Agent\n\n"
+            "我是当前 Agent 详情页的信息助手,会说明 Ask this Agent 身份。\n\n"
+            "## 我能帮你看什么\n"
+            "- 使用 Markdown 小标题或列表说明页面数据、平台机制和风险边界。\n"
+            "- 不列内部工具名称,不把自己包装成通用工具箱。"
+        ),
+        "allow_marketplace_wallet_status_context_zh": (
+            "user_status 应说明 user_status 来自钱包上下文。"
+            "回答时不输出完整钱包地址,也不把状态解释成投资建议。"
+        ),
+        "allow_marketplace_stale_report_boundary_zh": (
+            "如果报告过期,我会说明报告时间可能过期。"
+            "我会不使用过期数据下结论,并建议刷新或等待最新报告。"
+        ),
     }
     return answers.get(
         case.id,

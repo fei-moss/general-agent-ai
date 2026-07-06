@@ -85,6 +85,8 @@ run_check production_deployment_contract "$PYTHON_BIN" "$ROOT_DIR/scripts/check_
 run_check observability_assets "$PYTHON_BIN" "$ROOT_DIR/scripts/validate_observability_assets.py" || overall_status=1
 run_check python_available "$PYTHON_BIN" --version || overall_status=1
 run_check import_smoke "$PYTHON_BIN" -c 'import app.api.main; import app.runtime.orchestrator; import app.bus.event_bus; import app.core.events' || overall_status=1
+run_check chat_behavior_eval "$PYTHON_BIN" -m pytest tests/test_chat_behavior_eval.py tests/test_chat_eval_closure.py -q || overall_status=1
+run_check chat_eval_scorecard "$PYTHON_BIN" -m tests.chat_eval.scorecard --output "$ARTIFACT_DIR/chat_eval_scorecard.json" --strict || overall_status=1
 run_check pytest "$PYTHON_BIN" -m pytest -q || overall_status=1
 
 if command -v gitleaks >/dev/null 2>&1; then

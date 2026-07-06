@@ -83,17 +83,40 @@ async def test_agent_injects_masked_run_context_instruction():
 
 async def test_agent_tool_denial_returns_structured_error_without_routing():
     router = _NoopToolRouter()
-    agent = build_agent(_tool_calling_model("web_search", {"query": "news"}))
+    agent = build_agent(_tool_calling_model("calculator", {"expression": "2+2"}))
     deps = AgentDeps(
         retriever=_NoopRetriever(),
         tool_router=router,
-        run_context={"tool_permissions": {"denied": ["web_search"]}},
+        run_context={"tool_permissions": {"denied": ["calculator"]}},
     )
 
-    result = await agent.run("search news", deps=deps)
+    result = await agent.run("calculate", deps=deps)
 
     assert "TOOL_BLOCKED_BY_CONTEXT" in repr(result)
     assert router.calls == []
+
+
+async def test_ask_this_agent_hides_web_search_by_default():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={},
+    )
+
+    await agent.run("Top Holders 应该怎么看?", deps=deps)
+
+    assert seen_tool_names
+    assert "web_search" not in seen_tool_names[0]
+    assert "search_knowledge" in seen_tool_names[0]
+    assert "marketplace_agent_context" in seen_tool_names[0]
+    assert "marketplace_agent_compute" in seen_tool_names[0]
 
 
 async def test_agent_hides_tools_when_turn_policy_disables_tool_use():
