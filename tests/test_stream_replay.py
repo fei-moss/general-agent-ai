@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 
@@ -69,3 +71,15 @@ async def test_stream_owner_mismatch_raises_403():
         await _assert_run_owner("run-1", "other-user", _Repos())
 
     assert exc.value.status_code == 403
+
+
+def test_versioned_websocket_identity_uses_url_user_uuid():
+    from app.api.routers.stream import _ws_user_id
+
+    websocket = SimpleNamespace(
+        url=SimpleNamespace(path="/api/v1/chat/runs/run-1/ws"),
+        query_params={"user_uuid": "market-user-1", "token": "legacy-token"},
+        headers={"authorization": "Bearer header-user"},
+    )
+
+    assert _ws_user_id(websocket) == "market-user-1"

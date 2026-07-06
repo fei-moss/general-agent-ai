@@ -1,7 +1,7 @@
 """核心对话入口路由。
 
-POST /chat 流程:
-1. 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
+POST /api/v1/chat?user_uuid=<id> 或 legacy POST /chat 流程:
+1. URL user_uuid 或 header 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
 2. 创建或复用 conversation,写入用户消息。
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
 4. 按 route_type 分发:默认 realtime 交给常驻 Async Runner,慢任务/批任务投递 Celery。
@@ -16,6 +16,7 @@ import asyncio
 import logging
 import math
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -47,6 +48,8 @@ from app.runtime.tool_context import mask_run_context
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
+_API_V1_CHAT_PATH = "/api/v1/chat"
+_API_V1_CHAT_PREFIX = "/api/v1/chat"
 
 # 投递任务的子任务类型(对应 task_state.task_type)
 _RUN_TASK_TYPE = "run"
@@ -63,6 +66,7 @@ _BATCH_TASK_TYPES = {
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
+@router.post(_API_V1_CHAT_PATH, status_code=status.HTTP_202_ACCEPTED)
 @router.post("/chat", status_code=status.HTTP_202_ACCEPTED)
 async def create_chat(
     body: ChatRequest,
@@ -103,7 +107,15 @@ async def create_chat(
         settings=settings,
         user_id=user,
     )
-    accepted = _accepted(conversation_id, run_id, trace_id, route_type=route_type)
+    versioned = _is_versioned_chat_request(request)
+    accepted = _accepted(
+        conversation_id,
+        run_id,
+        trace_id,
+        route_type=route_type,
+        user_uuid=user,
+        versioned=versioned,
+    )
     if idempotency_key:
         replay = await _claim_idempotency_or_replay(
             repos,
@@ -257,6 +269,11 @@ def _anchor_payload(body: ChatRequest) -> dict[str, str] | None:
     if body.conversation_anchor is None:
         return None
     return body.conversation_anchor.model_dump()
+
+
+def _is_versioned_chat_request(request: Request) -> bool:
+    path = getattr(getattr(request, "url", None), "path", "")
+    return path == _API_V1_CHAT_PATH
 
 
 async def _apply_provider_preflight(
@@ -487,8 +504,23 @@ def _accepted(
     trace_id: str,
     *,
     route_type: str | None = None,
+    user_uuid: str | None = None,
+    versioned: bool = False,
 ) -> ChatAccepted:
     """构造 202 受理响应。"""
+    if versioned:
+        if not user_uuid:
+            raise ValueError("versioned chat responses require user_uuid")
+        user_query = urlencode({"user_uuid": user_uuid})
+        return ChatAccepted(
+            conversation_id=conversation_id,
+            agent_run_id=run_id,
+            trace_id=trace_id,
+            status=RunStatus.PENDING,
+            stream_url=f"{_API_V1_CHAT_PREFIX}/runs/{run_id}/stream?{user_query}",
+            ws_url=f"{_API_V1_CHAT_PREFIX}/runs/{run_id}/ws?{user_query}",
+            route_type=route_type,
+        )
     return ChatAccepted(
         conversation_id=conversation_id,
         agent_run_id=run_id,

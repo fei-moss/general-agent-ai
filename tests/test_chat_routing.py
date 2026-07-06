@@ -49,6 +49,25 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.route_type == "realtime"
 
 
+def test_versioned_accepted_response_includes_encoded_user_uuid():
+    from app.api.routers.chat import _accepted
+
+    accepted = _accepted(
+        "conv-1",
+        "run-1",
+        "trace-1",
+        route_type="realtime",
+        user_uuid="market user/1",
+        versioned=True,
+    )
+
+    assert (
+        accepted.stream_url
+        == "/api/v1/chat/runs/run-1/stream?user_uuid=market+user%2F1"
+    )
+    assert accepted.ws_url == "/api/v1/chat/runs/run-1/ws?user_uuid=market+user%2F1"
+
+
 def test_chat_request_accepts_proxy_payload_as_upstream_context():
     body = ChatRequest(
         message="hello",
@@ -201,6 +220,187 @@ async def test_chat_returned_conversation_id_can_fetch_detail(monkeypatch):
     assert detail.status_code == 200
     assert detail.json()["id"] == conversation_id
     assert detail.json()["messages"][0]["content"] == "hello"
+
+
+async def test_versioned_chat_accepts_url_user_uuid_without_auth_headers(monkeypatch):
+    from app.api import deps
+    from app.api.main import create_app
+    from app.api.repos import Repos
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    get_settings.cache_clear()
+
+    class _MemorySession:
+        def __init__(self) -> None:
+            self.rows = {}
+
+        async def get(self, model, key):
+            return self.rows.get((model, key))
+
+        def add(self, entity) -> None:
+            self.rows[(type(entity), entity.id)] = entity
+
+        async def flush(self) -> None:
+            return None
+
+        async def refresh(self, entity) -> None:
+            now = datetime.now(UTC)
+            if isinstance(entity, Conversation):
+                entity.created_at = entity.created_at or now
+                entity.updated_at = entity.updated_at or now
+            if isinstance(entity, Message):
+                entity.created_at = entity.created_at or now
+                entity.meta = entity.meta or {}
+
+        async def commit(self) -> None:
+            return None
+
+    class _Lease:
+        async def renew(self):
+            return True
+
+        async def release(self):
+            return True
+
+    class _Lock:
+        async def acquire(self, *args, **kwargs):
+            return _Lease()
+
+    class _CapacitySlot:
+        async def release(self):
+            return None
+
+    class _Runner:
+        def try_acquire_capacity(self):
+            return _CapacitySlot()
+
+        async def run_chat(self, request, *, conversation_lease=None, capacity_slot=None):
+            if conversation_lease is not None:
+                await conversation_lease.release()
+            if capacity_slot is not None:
+                await capacity_slot.release()
+
+    app = create_app()
+    app.state.conversation_lock = _Lock()
+    app.state.realtime_runner = _Runner()
+    repos = Repos(_MemorySession())
+
+    async def override_repos():
+        yield repos
+
+    app.dependency_overrides[deps.get_repos] = override_repos
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            resp = await client.post(
+                "/api/v1/chat?user_uuid=market-user-1",
+                json={"message": "hello", "stream": True},
+            )
+            body = resp.json()
+            status_resp = await client.get(
+                f"/api/v1/chat/runs/{body['agent_run_id']}?user_uuid=market-user-1"
+            )
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+    assert resp.status_code == 202
+    assert body["stream_url"].startswith("/api/v1/chat/runs/run_")
+    assert body["stream_url"].endswith("/stream?user_uuid=market-user-1")
+    assert body["ws_url"].endswith("/ws?user_uuid=market-user-1")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["agent_run_id"] == body["agent_run_id"]
+    assert status_resp.json()["status"] == "PENDING"
+
+
+async def test_versioned_chat_requires_url_user_uuid_and_ignores_header_only():
+    from app.api import deps
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async def repos_must_not_be_touched():
+        raise AssertionError("missing user_uuid must stop before repositories")
+        yield
+
+    app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            resp = await client.post(
+                "/api/v1/chat",
+                headers={"Authorization": "Bearer header-user"},
+                json={"message": "hello"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "缺少 user_uuid"
+
+
+async def test_versioned_chat_rejects_overlong_user_uuid_before_side_effects():
+    from app.api import deps
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async def repos_must_not_be_touched():
+        raise AssertionError("overlong user_uuid must stop before repositories")
+        yield
+
+    app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            resp = await client.post(
+                f"/api/v1/chat?user_uuid={'u' * 65}",
+                json={"message": "hello"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "USER_UUID_TOO_LONG"
+
+
+async def test_legacy_chat_rejects_overlong_header_user_before_side_effects():
+    from app.api import deps
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async def repos_must_not_be_touched():
+        raise AssertionError("overlong header user must stop before repositories")
+        yield
+
+    app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            resp = await client.post(
+                "/chat",
+                headers={"Authorization": f"Bearer {'u' * 65}"},
+                json={"message": "hello"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "USER_ID_TOO_LONG"
 
 
 async def test_duplicate_idempotency_claim_replays_before_conversation_lock():

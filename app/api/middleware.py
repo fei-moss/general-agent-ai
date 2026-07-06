@@ -1,7 +1,8 @@
 """请求中间件:鉴权、限流、trace_id 注入。
 
 职责:
-- 鉴权:从 Authorization Bearer 或 X-API-Key 取 user_id,受保护路径缺失则 401。
+- 鉴权:Marketplace `/api/v1/*` chat-flow 从 URL user_uuid 取 user_id;
+  其他受保护路径从 Authorization Bearer 或 X-API-Key 取 user_id。
 - 限流:对写入类路径按 user_id 做滑动窗口限流,超限 429。
 - trace_id:每请求生成或透传 X-Trace-Id,注入日志上下文并回写响应头。
 
@@ -23,6 +24,9 @@ logger = get_logger(__name__)
 
 _BEARER_PREFIX = "Bearer "
 _TRACE_HEADER = "X-Trace-Id"
+_API_V1_PREFIX = "/api/v1"
+_URL_USER_QUERY = "user_uuid"
+_MAX_USER_ID_LENGTH = 64
 
 # 无需鉴权即可访问的路径前缀(健康检查与文档)
 _PUBLIC_PREFIXES = (
@@ -33,12 +37,19 @@ _PUBLIC_PREFIXES = (
     "/redoc",
     "/openapi.json",
 )
-# 需要执行限流的路径前缀(写入/触发类)
-_RATE_LIMITED_PREFIXES = ("/chat",)
+# 需要执行限流的路径(写入/触发类)。版本化 stream/ws 位于 chat 子路径,
+# 不能被前缀匹配误伤。
+_RATE_LIMITED_LEGACY_PREFIXES = ("/chat",)
+_RATE_LIMITED_PATHS = ("/api/v1/chat",)
 
 
 def _extract_user_id(request: Request) -> str | None:
-    """从请求头解析 user_id,缺失返回 None。"""
+    """解析 user_id,缺失返回 None。"""
+    if request.url.path.startswith(_API_V1_PREFIX):
+        user_uuid = request.query_params.get(_URL_USER_QUERY)
+        if user_uuid and user_uuid.strip():
+            return user_uuid.strip()
+        return None
     auth = request.headers.get("authorization")
     if auth and auth.startswith(_BEARER_PREFIX):
         token = auth[len(_BEARER_PREFIX) :].strip()
@@ -57,7 +68,9 @@ def _is_public(path: str) -> bool:
 
 def _needs_rate_limit(path: str) -> bool:
     """判断路径是否需要限流。"""
-    return any(path.startswith(p) for p in _RATE_LIMITED_PREFIXES)
+    return path in _RATE_LIMITED_PATHS or any(
+        path.startswith(p) for p in _RATE_LIMITED_LEGACY_PREFIXES
+    )
 
 
 class TraceIdMiddleware(BaseHTTPMiddleware):
@@ -86,7 +99,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         user_id = _extract_user_id(request)
         if not user_id:
-            return _json_error(401, "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)")
+            detail = (
+                "缺少 user_uuid"
+                if request.url.path.startswith(_API_V1_PREFIX)
+                else "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)"
+            )
+            return _json_error(401, detail)
+        if len(user_id) > _MAX_USER_ID_LENGTH:
+            detail = (
+                "USER_UUID_TOO_LONG"
+                if request.url.path.startswith(_API_V1_PREFIX)
+                else "USER_ID_TOO_LONG"
+            )
+            return _json_error(422, detail)
         request.state.user_id = user_id
         return await call_next(request)
 

@@ -1,6 +1,7 @@
 """运行状态查询路由。
 
-- GET /runs/{id}: 返回某次 Agent 运行的轻量状态(RunStatusOut)。
+- GET /api/v1/chat/runs/{id} 或 /runs/{id}: 返回某次 Agent
+  运行的轻量状态(RunStatusOut)。
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ from app.core.schemas import RunStatusOut
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(tags=["runs"])
 
 
-@router.get("/{agent_run_id}", response_model=RunStatusOut)
+@router.get("/api/v1/chat/runs/{agent_run_id}", response_model=RunStatusOut)
+@router.get("/runs/{agent_run_id}", response_model=RunStatusOut)
 async def get_run_status(agent_run_id: str, user: CurrentUser, repos: ReposDep) -> Any:
     """查询运行状态;不存在返回 404。"""
     run = await repos.get_run(agent_run_id)
@@ -27,7 +29,11 @@ async def get_run_status(agent_run_id: str, user: CurrentUser, repos: ReposDep) 
             status_code=status.HTTP_404_NOT_FOUND, detail="运行记录不存在"
         )
     conversation = await repos.get_conversation(run.conversation_id)
-    if conversation is not None and conversation.user_id is not None and conversation.user_id != user:
+    if (
+        conversation is not None
+        and conversation.user_id is not None
+        and conversation.user_id != user
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该运行"
         )

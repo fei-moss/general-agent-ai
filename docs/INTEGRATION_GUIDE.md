@@ -42,8 +42,34 @@ DockerHost 地址默认视为测试/预发地址，除非运维明确声明为�
 
 ## 3. 当前身份模型
 
-当前版本还没有正式登录态、OAuth、租户、API Key 管理系统。服务现在采用
-header-derived identity：
+当前版本还没有正式登录态、OAuth、租户、API Key 管理系统。Marketplace-facing
+chat-flow 采用 URL-derived identity：
+
+```http
+?user_uuid=<user_uuid>
+```
+
+规则：
+
+- `user_uuid` 会被服务当成内部 `user_id`。
+- `user_uuid` 会写入数据库，用于 conversation、run、stream 的资源归属。
+- 同一个用户继续会话、查会话、查 run、订阅 stream，都必须传同一个 `user_uuid`。
+- `user_uuid` 必须是上游认证后的稳定短内部 ID，长度不能超过 64 个字符。
+- 不要把原始 JWT、session token、钱包私钥或 provider key 放进 `user_uuid`。
+
+示例：
+
+```http
+POST /api/v1/chat?user_uuid=alice.internal
+```
+
+这会被服务理解为：
+
+```text
+user_id = alice.internal
+```
+
+Legacy/internal 路径暂时仍支持 header-derived identity：
 
 ```http
 Authorization: Bearer <user_id>
@@ -55,25 +81,8 @@ Authorization: Bearer <user_id>
 X-API-Key: <user_id>
 ```
 
-规则：
-
-- header 里的值会被当成 `user_id`。
-- `user_id` 会写入数据库，用于资源归属。
-- 同一个用户继续会话、查会话、查 run、订阅 stream，都必须传同一个 `user_id`。
-- 这不是正式认证，只是“上游服务已经完成认证后，把内部用户 ID 传给 Chat Server”的占位方式。
-- `/rag/*` 不是普通用户接口，只允许内部知识库管理员或内部 ingestion Agent 访问。
-
-示例：
-
-```http
-Authorization: Bearer alice.internal
-```
-
-这会被服务理解为：
-
-```text
-user_id = alice.internal
-```
+这不是正式认证，只是“上游服务已经完成认证后，把内部用户 ID 传给 Chat Server”的占位方式。
+`/rag/*` 不是普通用户接口，只允许内部知识库管理员或内部 ingestion Agent 访问。
 
 公开端点：
 
@@ -84,7 +93,7 @@ user_id = alice.internal
 - `GET /redoc`
 - `GET /openapi.json`
 
-其他业务端点都需要身份 header。
+Marketplace chat-flow 端点需要 URL `user_uuid`。内部/legacy 业务端点需要身份 header。
 
 ## 4. 中心化数据模型
 
@@ -118,7 +127,7 @@ internal_rag_owner_user_id
 
 继续对话依赖 `conversation_id`：
 
-- 第一次 `POST /chat` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
+- 第一次 `POST /api/v1/chat?user_uuid=<user_uuid>` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
 - 返回体里会给出 `conversation_id`。
 - 后续请求传这个 `conversation_id`，服务会加载该会话历史，再进行新一轮 Agent 执行。
 - 如果接入方不知道有哪些 conversation，可以调用 `GET /conversations` 查询当前 `user_id` 下的会话列表。
@@ -126,11 +135,11 @@ internal_rag_owner_user_id
 ## 5. 最常见接入流程
 
 ```text
-1. 业务系统确定内部 user_id
-2. POST /chat，带 Authorization: Bearer <user_id>
+1. 业务系统确定内部 `user_uuid`
+2. POST `/api/v1/chat?user_uuid=<user_uuid>`
 3. 保存返回的 conversation_id 和 agent_run_id
 4. 订阅 stream_url，读取 TOKEN 和 RUN_COMPLETED
-5. 用户继续追问时，再 POST /chat，并传 conversation_id
+5. 用户继续追问时，再 POST `/api/v1/chat?user_uuid=<user_uuid>`，并传 conversation_id
 6. 如果页面刷新或客户端丢失状态，调用 GET /conversations 找回会话
 ```
 
@@ -138,13 +147,12 @@ internal_rag_owner_user_id
 
 ### 6.1 新建会话并聊天
 
-不传 `conversation_id`，服务会自动创建新会话。`POST /chat` 只做异步受理，
+不传 `conversation_id`，服务会自动创建新会话。`POST /api/v1/chat` 只做异步受理，
 成功后立即返回 `202`，接入方要马上用返回的 `stream_url` 或 `ws_url` 接收结果。
 
 ```bash
-curl -sS -X POST "$BASE_URL/chat" \
+curl -sS -X POST "$BASE_URL/api/v1/chat?user_uuid=$USER_UUID" \
   -H 'Content-Type: application/json' \
-  -H "$AUTH_HEADER" \
   -H 'Idempotency-Key: chat-001' \
   -d '{
     "message": "请用三句话介绍一下这个系统现在的能力。",
@@ -192,8 +200,8 @@ curl -sS -X POST "$BASE_URL/chat" \
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/stream/run_xxx",
-  "ws_url": "/ws/run_xxx",
+  "stream_url": "/api/v1/chat/runs/run_xxx/stream?user_uuid=alice.internal",
+  "ws_url": "/api/v1/chat/runs/run_xxx/ws?user_uuid=alice.internal",
   "route_type": "realtime"
 }
 ```
@@ -204,13 +212,18 @@ curl -sS -X POST "$BASE_URL/chat" \
 - `agent_run_id`：查询这次运行状态、订阅流使用。
 - `trace_id`：排查问题时给服务端定位日志。
 
+查询运行状态：
+
+```bash
+curl -sS "$BASE_URL/api/v1/chat/runs/run_xxx?user_uuid=$USER_UUID"
+```
+
 ### 6.2 用 SSE 接收 token 和最终答案
 
 拿到上一步返回的 `stream_url` 后立即订阅：
 
 ```bash
-curl -N "$BASE_URL/stream/run_xxx" \
-  -H "$AUTH_HEADER"
+curl -N "$BASE_URL/api/v1/chat/runs/run_xxx/stream?user_uuid=$USER_UUID"
 ```
 
 SSE frame 示例：
@@ -726,9 +739,9 @@ HTTP 状态：
 ## 12. Agent 接入清单
 
 1. 设置 `BASE_URL`。
-2. 选择稳定的内部 `user_id`。
-3. 每个请求带 `Authorization: Bearer <user_id>`。
-4. `POST /chat` 时带 `Idempotency-Key`。
+2. 选择稳定的内部 `user_uuid`，不要使用原始 JWT。
+3. Marketplace chat-flow 请求把 `user_uuid` 放进 URL query。
+4. `POST /api/v1/chat?user_uuid=<user_uuid>` 时带 `Idempotency-Key`。
 5. 新聊天不传 `conversation_id`，服务会自动创建。
 6. 保存返回的 `conversation_id`，后续追问必须传回。
 7. 保存返回的 `agent_run_id`，用于订阅 stream 和查询 run。
@@ -737,6 +750,6 @@ HTTP 状态：
 10. 页面刷新或本地状态丢失时，调用 `GET /conversations` 找回会话列表。
 11. 需要完整历史时，调用 `GET /conversations/{conversation_id}`。
 12. SSE 断线时，用最后一个 SSE `id` 作为 `Last-Event-ID` 重连。
-13. 遇到 `STREAM_GAP`，改查 `/runs/{id}` 和 `/conversations/{id}`。
+13. 遇到 `STREAM_GAP`，改查 `/api/v1/chat/runs/{id}?user_uuid=<user_uuid>` 和 `/conversations/{id}`。
 14. 不要调用 `/rag/*` 或传 `metadata.knowledge_base_id`；RAG 由服务端内部知识库配置透明生效。
 15. 接流量前检查 `/readyz`，排障时查看 `/metrics`。

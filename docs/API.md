@@ -8,7 +8,7 @@
 这是一个**异步 Agent 平台**,不是同步问答接口。一次对话的生命周期:
 
 ```
-POST /chat ──202──▶ 返回 agent_run_id + stream_url
+POST /api/v1/chat?user_uuid=<user_uuid> ──202──▶ 返回 agent_run_id + stream_url
                          │
                          ▼
             订阅 SSE / WebSocket 实时事件流
@@ -28,8 +28,23 @@ POST /chat ──202──▶ 返回 agent_run_id + stream_url
 http://localhost:8000        # 本地默认,按部署环境替换
 ```
 
-### 鉴权(所有业务端点必需)
-除健康检查与文档外,所有端点都需在请求头携带凭证之一,**否则 401**:
+### 身份(业务端点必需)
+Marketplace-facing chat-flow 使用 URL-derived identity,把稳定、短的内部用户
+ID 放在 query 参数里:
+
+```http
+?user_uuid=<user_uuid>
+```
+
+规则:
+
+- `POST /api/v1/chat`、`/api/v1/chat/runs/*/stream` 和
+  `/api/v1/chat/runs/*/ws` 都从 URL `user_uuid` 取内部 `user_id`。
+- `user_uuid` 必填、非空,并且不能超过 64 个字符。
+- 不要把原始 JWT、session token 或钱包私钥作为 `user_uuid` 或 legacy
+  header user id 传给 Chat Server。
+
+Legacy/internal 路径仍支持请求头身份:
 
 ```
 Authorization: Bearer <token>
@@ -37,7 +52,8 @@ Authorization: Bearer <token>
 X-API-Key: <key>
 ```
 
-> ⚠️ Demo 模式:`token`/`key` 的**值本身被当作 user_id**,任意非空字符串即可通过(用于区分用户与限流)。生产环境会替换为真实校验。
+> Demo 模式:`token`/`key` 或 `user_uuid` 的**值本身被当作 user_id**。
+> 值必须是上游认证后生成的短内部 ID,不能是长 JWT。
 
 豁免鉴权的公开路径:`/healthz`、`/readyz`、`/docs`、`/redoc`、`/openapi.json`。
 
@@ -47,10 +63,12 @@ X-API-Key: <key>
 
 ### CORS
 后端开启宽松 CORS(`allow_origins: *`),前端可跨域直连(生产会收敛)。
-浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的 `POST /chat` 仍必须携带 `Authorization: Bearer <token>` 或 `X-API-Key`。
+浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的
+`POST /api/v1/chat` 必须携带 URL `user_uuid`。
 
 ### 限流
-仅对 `POST /chat` 限流(按 user_id 滑动窗口,默认 **60 次/分钟**)。超限返回 **429**:
+仅对 `POST /api/v1/chat` 和 legacy `POST /chat` 限流(按 user_id 滑动窗口,
+默认 **60 次/分钟**)。超限返回 **429**:
 ```
 HTTP 429
 Retry-After: <秒>
@@ -66,10 +84,10 @@ X-RateLimit-Remaining: 0
 
 | 状态码 | 含义 |
 |--------|------|
-| 401 | 缺少/无效鉴权凭证 |
+| 401 | 缺少/无效身份凭证,或 `/api/v1/*` 缺少 `user_uuid` |
 | 403 | 无权访问该资源(会话归属不符) |
 | 404 | 资源不存在 |
-| 422 | 请求体校验失败(如 message 为空或 `stream:false`) |
+| 422 | 请求体校验失败(如 message 为空、`stream:false`、`user_uuid` 超长) |
 | 429 | 触发限流 |
 | 503 | 任务队列 / 依赖未就绪 |
 
@@ -79,9 +97,13 @@ X-RateLimit-Remaining: 0
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| POST | `/chat` | 提交一次对话(核心) | ✅ |
-| GET  | `/stream/{agent_run_id}` | SSE 事件流 | ✅* |
-| WS   | `/ws/{agent_run_id}` | WebSocket 事件流 | ✅(query token) |
+| POST | `/api/v1/chat?user_uuid=...` | Marketplace 提交一次对话(核心) | URL `user_uuid` |
+| GET  | `/api/v1/chat/runs/{agent_run_id}?user_uuid=...` | Marketplace 查询运行状态 | URL `user_uuid` |
+| GET  | `/api/v1/chat/runs/{agent_run_id}/stream?user_uuid=...` | Marketplace SSE 事件流 | URL `user_uuid` |
+| WS   | `/api/v1/chat/runs/{agent_run_id}/ws?user_uuid=...` | Marketplace WebSocket 事件流 | URL `user_uuid` |
+| POST | `/chat` | Legacy/internal 提交一次对话 | Header |
+| GET  | `/stream/{agent_run_id}` | Legacy/internal SSE 事件流 | Header* |
+| WS   | `/ws/{agent_run_id}` | Legacy/internal WebSocket 事件流 | query token/header |
 | GET  | `/runs/{agent_run_id}` | 查询运行状态 | ✅ |
 | POST | `/conversations` | 创建会话 | ✅ |
 | GET  | `/conversations/{id}` | 会话详情(含消息) | ✅ |
@@ -94,9 +116,11 @@ X-RateLimit-Remaining: 0
 
 ## 3. 对话接口
 
-### 3.1 POST /chat — 提交对话(核心)
+### 3.1 POST /api/v1/chat — Marketplace 提交对话(核心)
 
-**请求头**:`Authorization: Bearer <token>`、`Content-Type: application/json`
+**URL**:`/api/v1/chat?user_uuid=<user_uuid>`
+
+**请求头**:`Content-Type: application/json`
 
 **请求体** `ChatRequest`:
 
@@ -132,6 +156,7 @@ X-RateLimit-Remaining: 0
 ```
 
 `proxy_payload` 是唯一对外上下文字段。请求体里不要传 `run_context`;传入时会返回 422。
+Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
 
 #### 响应: **202 Accepted**(`ChatAccepted`)
 
@@ -141,22 +166,24 @@ X-RateLimit-Remaining: 0
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/stream/run_xxx",
-  "ws_url": "/ws/run_xxx"
+  "stream_url": "/api/v1/chat/runs/run_xxx/stream?user_uuid=alice.internal",
+  "ws_url": "/api/v1/chat/runs/run_xxx/ws?user_uuid=alice.internal"
 }
 ```
 > 拿到 `agent_run_id` 后,立刻用 `stream_url` 订阅 SSE,或 `ws_url` 连 WebSocket。
 
 #### 不支持 `stream:false`
 
-`POST /chat` 永远是异步受理接口。传 `stream:false` 会返回 **422**:
+`POST /api/v1/chat` 和 legacy `POST /chat` 永远是异步受理接口。传
+`stream:false` 会返回 **422**:
 
 ```json
 { "detail": "STREAM_FALSE_NOT_SUPPORTED" }
 ```
 
 脚本场景如果不想渲染逐 token，也应该订阅到 `RUN_COMPLETED`，或轮询
-`GET /runs/{agent_run_id}` 后读取 `GET /conversations/{conversation_id}` 的消息历史。
+`GET /api/v1/chat/runs/{agent_run_id}?user_uuid=...` 后读取
+`GET /conversations/{conversation_id}` 的消息历史。
 
 ---
 
@@ -231,13 +258,13 @@ data: {"event_id":"evt_x","agent_run_id":"run_x","type":"TOKEN","seq":9,"ts":178
 ```ts
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
-const TOKEN = 'demo-user-1';
+const USER_UUID = 'demo-user-1';
 const BASE = 'http://localhost:8000';
 
 // 1) 提交对话
-const res = await fetch(`${BASE}/chat`, {
+const res = await fetch(`${BASE}/api/v1/chat?user_uuid=${encodeURIComponent(USER_UUID)}`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ message: '帮我算一下 (123+456)*7', stream: true }),
 });
 const { agent_run_id, stream_url } = await res.json();
@@ -245,7 +272,6 @@ const { agent_run_id, stream_url } = await res.json();
 // 2) 订阅事件流,拼接 TOKEN
 let answer = '';
 await fetchEventSource(`${BASE}${stream_url}`, {
-  headers: { Authorization: `Bearer ${TOKEN}` },
   onmessage(ev) {
     const evt = JSON.parse(ev.data);            // AgentEvent
     switch (evt.type) {
@@ -263,10 +289,12 @@ await fetchEventSource(`${BASE}${stream_url}`, {
 });
 ```
 
-### 5.2 WebSocket(浏览器可用 query token)
+### 5.2 WebSocket
 
 ```ts
-const ws = new WebSocket(`ws://localhost:8000/ws/${agent_run_id}?token=${TOKEN}`);
+const ws = new WebSocket(
+  `ws://localhost:8000/api/v1/chat/runs/${agent_run_id}/ws?user_uuid=${encodeURIComponent(USER_UUID)}`
+);
 let answer = '';
 ws.onmessage = (e) => {
   const evt = JSON.parse(e.data);               // 直接是 AgentEvent
@@ -279,11 +307,9 @@ ws.onmessage = (e) => {
 
 | 通道 | 浏览器能否设鉴权 | 方案 |
 |------|------------------|------|
-| 原生 `EventSource` | ❌ 不能设 header | 改用 `@microsoft/fetch-event-source`(带 Authorization 头) |
-| WebSocket | ❌ 不能设 header | 用 `?token=<token>` query 鉴权(已支持) |
-| `fetch`(普通 REST) | ✅ | 正常设 `Authorization` 头 |
-
-> 若团队坚持用原生 `EventSource`,需后端为 `/stream` 增加 query token 支持(当前未实现)。可向后端提需求。
+| 原生 `EventSource` | 不需要 header | 使用返回的 versioned `stream_url`,其中已带 `user_uuid` |
+| WebSocket | 不需要 header | 使用返回的 versioned `ws_url`,其中已带 `user_uuid` |
+| `fetch`(普通 REST) | 不需要身份 header | `POST /api/v1/chat?user_uuid=...` |
 
 ---
 

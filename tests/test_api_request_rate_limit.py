@@ -10,6 +10,7 @@ from app.core.metrics import InMemoryMetrics
 
 
 _CHAT_ROUTE = "/chat"
+_API_V1_CHAT_ROUTE = "/api/v1/chat"
 _OTHER_ROUTE = "/chat/admin-action"
 
 
@@ -148,3 +149,36 @@ async def test_rate_limit_middleware_passes_request_path_as_route_scope():
 
     assert response.status_code == 429
     assert limiter.calls == [("route-user", _CHAT_ROUTE)]
+
+
+async def test_rate_limit_middleware_covers_versioned_chat_route():
+    from app.api.main import create_app
+
+    class _RecordingLimiter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        async def check(self, user_id: str, *, route: str | None = None):
+            self.calls.append((user_id, route))
+            return SimpleNamespace(
+                allowed=False,
+                limit=1,
+                remaining=0,
+                retry_after=60,
+            )
+
+    limiter = _RecordingLimiter()
+    app = create_app()
+    app.state.rate_limiter = limiter
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            f"{_API_V1_CHAT_ROUTE}?user_uuid=route-user",
+            json={"message": "hello"},
+        )
+
+    assert response.status_code == 429
+    assert limiter.calls == [("route-user", _API_V1_CHAT_ROUTE)]
