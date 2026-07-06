@@ -23,7 +23,11 @@ from app.core.enums import MessageRole, RunStatus
 from app.core.events import EventType
 from app.core.metrics import InMemoryMetrics
 from app.runtime.agent_factory import build_agent, build_mock_model
-from app.runtime.chat_behavior import TARGET_LANGUAGE_ZH_HANS
+from app.runtime.chat_behavior import (
+    ChatBehaviorProfile,
+    DEFAULT_CHAT_BEHAVIOR_POLICY,
+    TARGET_LANGUAGE_ZH_HANS,
+)
 from app.runtime.deps import RuntimeDeps
 from app.runtime.orchestrator import AgentOrchestrator
 
@@ -189,6 +193,13 @@ def _make_tool_then_answer_model(
             yield answer[i : i + 6]
 
     return FunctionModel(stream_function=stream_fn)
+
+
+def _legacy_tools_profile() -> ChatBehaviorProfile:
+    return ChatBehaviorProfile(
+        name="legacy_tools",
+        policy=DEFAULT_CHAT_BEHAVIOR_POLICY,
+    )
 
 
 def test_rag_knowledge_base_selection_uses_server_configuration():
@@ -870,7 +881,10 @@ async def test_tool_use_run_maps_tool_events_and_executes_real_tool(deps):
     model = _make_tool_then_answer_model(
         "calculator", {"expression": "(2+3)*4"}, "计算结果是 20。"
     )
-    orchestrator = AgentOrchestrator(runtime, agent=build_agent(model))
+    orchestrator = AgentOrchestrator(
+        runtime,
+        agent=build_agent(model, behavior_profile=_legacy_tools_profile()),
+    )
     agent_run_id = "run-tool-1"
     channel = channel_for(agent_run_id)
     ready_evt = asyncio.Event()

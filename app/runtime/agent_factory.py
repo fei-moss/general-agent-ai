@@ -76,6 +76,11 @@ _MARKETPLACE_BUDGETED_TOOLS = {
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
 }
+_ASK_THIS_AGENT_TOOLS = {
+    TOOL_SEARCH_KNOWLEDGE,
+    TOOL_MARKETPLACE_AGENT_CONTEXT,
+    TOOL_MARKETPLACE_AGENT_COMPUTE,
+}
 
 
 @dataclass
@@ -369,7 +374,7 @@ def _prepare_tools_for_turn(
         return []
     tool_defs = _filter_spent_tool_budgets(ctx, tool_defs)
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
-        return [tool for tool in tool_defs if tool.name != "web_search"]
+        return [tool for tool in tool_defs if tool.name in _ASK_THIS_AGENT_TOOLS]
     return tool_defs
 
 

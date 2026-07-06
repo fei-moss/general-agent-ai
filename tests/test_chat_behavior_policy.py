@@ -41,6 +41,9 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "不要把内部计算、时间查询、联网检索" in prompt
     assert "纯身份或能力范围问题不是数据查询" in prompt
     assert "应直接回答,不要调用工具" in prompt
+    assert "FAQ V1 未覆盖" in prompt
+    assert "不要再添加非官方的一般性解释" in prompt
+    assert "chain_id 默认不透传给中心化 Marketplace AI 接口" in prompt
     assert "search_knowledge" in prompt
     assert "真实资金" in prompt
     assert "需要数学计算时调用 calculator" not in prompt

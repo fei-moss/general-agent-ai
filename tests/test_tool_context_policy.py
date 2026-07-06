@@ -11,6 +11,10 @@ from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     build_agent,
 )
+from app.runtime.chat_behavior import (
+    ChatBehaviorProfile,
+    DEFAULT_CHAT_BEHAVIOR_POLICY,
+)
 from app.runtime.tool_context import (
     build_run_context_instruction,
     mask_run_context,
@@ -88,7 +92,10 @@ async def test_agent_injects_masked_run_context_instruction():
 
 async def test_agent_tool_denial_returns_structured_error_without_routing():
     router = _NoopToolRouter()
-    agent = build_agent(_tool_calling_model("calculator", {"expression": "2+2"}))
+    agent = build_agent(
+        _tool_calling_model("calculator", {"expression": "2+2"}),
+        behavior_profile=_legacy_tools_profile(),
+    )
     deps = AgentDeps(
         retriever=_NoopRetriever(),
         tool_router=router,
@@ -101,7 +108,7 @@ async def test_agent_tool_denial_returns_structured_error_without_routing():
     assert router.calls == []
 
 
-async def test_ask_this_agent_hides_web_search_by_default():
+async def test_ask_this_agent_hides_generic_tools_by_default():
     seen_tool_names: list[list[str]] = []
 
     def function(_messages, info):
@@ -119,6 +126,8 @@ async def test_ask_this_agent_hides_web_search_by_default():
 
     assert seen_tool_names
     assert "web_search" not in seen_tool_names[0]
+    assert "calculator" not in seen_tool_names[0]
+    assert "clock" not in seen_tool_names[0]
     assert "search_knowledge" in seen_tool_names[0]
     assert "marketplace_agent_context" in seen_tool_names[0]
     assert "marketplace_agent_compute" in seen_tool_names[0]
@@ -229,6 +238,13 @@ class _NoopToolRouter:
     async def route(self, query: str, tool_name: str | None = None, **kwargs):
         self.calls.append((query, tool_name, kwargs))
         return {"ok": True}
+
+
+def _legacy_tools_profile() -> ChatBehaviorProfile:
+    return ChatBehaviorProfile(
+        name="legacy_tools",
+        policy=DEFAULT_CHAT_BEHAVIOR_POLICY,
+    )
 
 
 def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:

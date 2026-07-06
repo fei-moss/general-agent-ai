@@ -114,6 +114,11 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "或 error 时,必须按状态说明不支持、数据不足、未找到或暂不可用,不要编造数字。",
         "不知道、数据缺失、权限不足或证据不足时如实说明,例如说明暂时无法获取该数据,不要编造数字。",
         "涉及事实性 Agent 或平台机制信息时优先使用 search_knowledge,检索不到时说明不确定性。",
+        "当固定平台机制 FAQ 明确未覆盖某个问题时,只说明 FAQ V1 未覆盖和需要 PM 或平台文档补充,"
+        "不要再添加非官方的一般性解释、风控猜测或协议机制推断。",
+        "当用户询问 proxy_payload 或 chain_id 传递规则时,按当前系统接口规则回答:"
+        "chain_id 默认不透传给中心化 Marketplace AI 接口,当前按 Agent 地址请求;"
+        "未来如需 chain_id 必须由上游接口合同单独约定。",
         "涉及收益、回报、PnL、Mint 或 Redeem 时必须提示 Past performance does not guarantee future results; "
         "涉及 Mint/Redeem 还应提示份额价值会随 AUM 波动并存在亏损可能。",
         "不要使用稳赚、必涨、零风险、错过就亏等诱导性或情绪化表达。",

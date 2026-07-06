@@ -61,11 +61,13 @@
 - Updated runtime modules:
   - `app/runtime/adapters.py`
   - `app/runtime/agent_factory.py`
+  - `app/runtime/chat_behavior.py`
   - `app/runtime/marketplace_ai.py`
   - `app/runtime/orchestrator.py`
 - Updated tests/eval:
   - `tests/test_rag_agent_tool.py`
   - `tests/test_agent_factory.py`
+  - `tests/test_chat_behavior_policy.py`
   - `tests/test_marketplace_ai_client.py`
   - `tests/test_agent_marketplace_tools.py`
   - `tests/chat_eval/golden_cases.jsonl`
@@ -76,6 +78,9 @@
   - If an external RAG knowledge base exists, matching FAQ chunks are prepended to normal RAG chunks.
   - `search_knowledge` falls back to the current user prompt if the model emits an empty retrieval query.
   - Retrieval-start events use the same prompt fallback for observability when the model emits an empty query.
+  - Ask this Agent exposes only `search_knowledge`, `marketplace_agent_context`, and `marketplace_agent_compute` tools; generic calculator, clock, and web-search tools remain hidden for this profile.
+  - The behavior policy tells the model that FAQ gaps must not be filled with unofficial generic explanations.
+  - The behavior policy states the current `proxy_payload.chain_id` rule: default not forwarded to Marketplace AI; address-only routing unless a future upstream contract reintroduces `chain_id`.
   - `extract_current_agent_ref()` returns the current Agent address and intentionally omits `chain_id` by default.
 
 ## Acceptance Criteria
@@ -84,6 +89,9 @@
 - `search_knowledge("Profit Share 是什么时候收取?")` returns a FAQ V1 boundary chunk saying the mechanism is not covered, rather than returning no knowledge and inviting model invention.
 - An empty model-emitted `search_knowledge` query uses the current user prompt for retrieval, so FAQ-covered questions still hit the built-in FAQ.
 - Stream events for empty model-emitted retrieval queries show the effective user prompt rather than an empty query.
+- Ask this Agent live runs cannot continue into calculator/clock/web-search loops after Marketplace tools have already answered a turn.
+- Questions about `proxy_payload.chain_id` receive the current address-only routing rule without requiring PM FAQ coverage.
+- FAQ-gap answers do not append speculative risk-control, protocol-state, or timing explanations.
 - Marketplace Agent context/compute tools do not pass `chain_id` even when `proxy_payload` includes it.
 - Golden cases reflect the new PM FAQ source-of-truth and no longer expect invented Paused/fee formulas.
 - Focused tests, deterministic chat eval scorecard, and release gate pass.
