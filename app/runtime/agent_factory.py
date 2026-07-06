@@ -172,7 +172,10 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         """
         if not tool_allowed(TOOL_SEARCH_KNOWLEDGE, ctx.deps.run_context):
             return tool_denied_result(TOOL_SEARCH_KNOWLEDGE)
-        return await ctx.deps.retriever.retrieve(query, ctx.deps.retrieval_top_k)
+        effective_query = str(query or "").strip() or _query_from_prompt(ctx.prompt)
+        return await ctx.deps.retriever.retrieve(
+            effective_query, ctx.deps.retrieval_top_k
+        )
 
     @agent.tool
     async def calculator(
@@ -410,6 +413,20 @@ def _claim_tool_budget(
         )
     counts[tool_name] = current + 1
     return None
+
+
+def _query_from_prompt(prompt: Any) -> str:
+    """Best-effort fallback when the model emits an empty retrieval query."""
+    if prompt is None:
+        return ""
+    if isinstance(prompt, str):
+        return prompt.strip()
+    if isinstance(prompt, (list, tuple)):
+        return " ".join(_query_from_prompt(item) for item in prompt).strip()
+    content = getattr(prompt, "content", None)
+    if isinstance(content, str):
+        return content.strip()
+    return str(prompt).strip()
 
 
 def build_model(

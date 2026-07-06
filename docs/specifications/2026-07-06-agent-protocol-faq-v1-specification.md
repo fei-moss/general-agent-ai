@@ -60,9 +60,11 @@
   - `app/runtime/platform_faq.py`
 - Updated runtime modules:
   - `app/runtime/adapters.py`
+  - `app/runtime/agent_factory.py`
   - `app/runtime/marketplace_ai.py`
 - Updated tests/eval:
   - `tests/test_rag_agent_tool.py`
+  - `tests/test_agent_factory.py`
   - `tests/test_marketplace_ai_client.py`
   - `tests/test_agent_marketplace_tools.py`
   - `tests/chat_eval/golden_cases.jsonl`
@@ -71,12 +73,14 @@
   - `RetrieverAdapter.retrieve()` searches built-in FAQ V1 first.
   - If no external `knowledge_base_id` exists, matching FAQ chunks are still returned with `source=agent_protocol_faq_v1`.
   - If an external RAG knowledge base exists, matching FAQ chunks are prepended to normal RAG chunks.
+  - `search_knowledge` falls back to the current user prompt if the model emits an empty retrieval query.
   - `extract_current_agent_ref()` returns the current Agent address and intentionally omits `chain_id` by default.
 
 ## Acceptance Criteria
 
 - `search_knowledge("Mint 和 Redeem 分别是什么?")` returns FAQ V1 content without an external knowledge base.
 - `search_knowledge("Profit Share 是什么时候收取?")` returns a FAQ V1 boundary chunk saying the mechanism is not covered, rather than returning no knowledge and inviting model invention.
+- An empty model-emitted `search_knowledge` query uses the current user prompt for retrieval, so FAQ-covered questions still hit the built-in FAQ.
 - Marketplace Agent context/compute tools do not pass `chain_id` even when `proxy_payload` includes it.
 - Golden cases reflect the new PM FAQ source-of-truth and no longer expect invented Paused/fee formulas.
 - Focused tests, deterministic chat eval scorecard, and release gate pass.

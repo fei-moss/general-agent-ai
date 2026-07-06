@@ -26,13 +26,17 @@
 
 - Files/modules:
   - `app/runtime/adapters.py`
+  - `app/runtime/agent_factory.py`
   - `tests/test_rag_agent_tool.py`
+  - `tests/test_agent_factory.py`
 - Behavior change:
   - `RetrieverAdapter.retrieve()` prepends FAQ V1 chunks to external RAG results when matched.
   - If no external knowledge base is configured, FAQ V1 still answers matching platform mechanism queries.
   - Non-matching queries keep the existing `no_knowledge_base` degraded response.
+  - Empty model-emitted `search_knowledge` queries fall back to the current user prompt before retrieval.
 - Verification:
   - `.venv/bin/python -m pytest tests/test_rag_agent_tool.py -q`
+  - `.venv/bin/python -m pytest tests/test_agent_factory.py -q`
 
 ### Step 3: Marketplace Chain ID Default
 
@@ -64,7 +68,7 @@
 - Files/modules:
   - All files above.
 - Verification:
-  - `.venv/bin/python -m pytest tests/test_rag_agent_tool.py tests/test_marketplace_ai_client.py tests/test_agent_marketplace_tools.py tests/test_chat_behavior_eval.py -q`
+  - `.venv/bin/python -m pytest tests/test_agent_factory.py tests/test_rag_agent_tool.py tests/test_marketplace_ai_client.py tests/test_agent_marketplace_tools.py tests/test_chat_behavior_eval.py -q`
   - `AI_BOUNDARY_APPROVED=1 PYTHON=.venv/bin/python scripts/verify_release.sh`
 - Rollback:
   - Revert this plan/spec and runtime/test fixture changes. No DB rollback required.

@@ -8,7 +8,13 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 
 from app.core.config import Settings
 from app.runtime.agent_factory import (
@@ -137,9 +143,11 @@ class _SpyRetriever:
 
     def __init__(self) -> None:
         self.called = False
+        self.queries: list[str] = []
 
     async def retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
         self.called = True
+        self.queries.append(query)
         return [{"id": "d1", "text": "示例文档", "score": 0.5}]
 
 
@@ -168,6 +176,19 @@ async def test_mock_agent_invokes_search_knowledge_tool_and_answers():
     assert isinstance(result.output, str) and result.output.strip()
 
 
+async def test_search_knowledge_uses_prompt_when_model_emits_empty_query():
+    retriever = _SpyRetriever()
+    agent = build_agent(_empty_search_query_model())
+    deps = AgentDeps(
+        retriever=retriever, tool_router=_NoopToolRouter(), retrieval_top_k=3
+    )
+
+    result = await agent.run("Mint 和 Redeem 分别是什么?", deps=deps)
+
+    assert retriever.queries == ["Mint 和 Redeem 分别是什么?"]
+    assert "示例文档" in result.output
+
+
 async def test_agent_injects_run_scoped_language_instruction():
     seen_messages: list[Any] = []
 
@@ -191,3 +212,30 @@ async def test_agent_injects_run_scoped_language_instruction():
     serialized_messages = repr(seen_messages)
     assert "本轮目标语言: zh-Hans" in serialized_messages
     assert "必须使用简体中文回答" in serialized_messages
+
+
+def _empty_search_query_model() -> FunctionModel:
+    calls = 0
+
+    def function(messages, _info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name="search_knowledge",
+                        args={"query": ""},
+                    )
+                ]
+            )
+        for message in messages:
+            if isinstance(message, ModelRequest):
+                for part in message.parts:
+                    if isinstance(part, ToolReturnPart):
+                        return ModelResponse(
+                            parts=[TextPart(content=repr(part.content))]
+                        )
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    return FunctionModel(function=function)
