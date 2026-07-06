@@ -22,6 +22,7 @@
 - External web search is not a user-facing capability for this product surface and should not be visible to the model by default.
 - Marketplace tools are read-only data access helpers. A single turn should not repeat the same expensive Marketplace tool indefinitely.
 - Ask this Agent model requests should not allow provider-side parallel tool calls, because parallel Marketplace calls can create noisy duplicate tool events before per-run budget visibility can be refreshed.
+- If a provider still emits multiple Marketplace tool calls in one model response, the runtime collapses duplicate Marketplace calls before tool execution; duplicate `marketplace_agent_compute` calls are merged into one call by combining unique `queries`.
 - If a Marketplace tool budget is exhausted before a tool invocation can be prepared, that tool is hidden from later model requests in the same run so the model can answer from already-returned data instead of retrying a spent tool.
 - If a Marketplace tool is invoked after its budget is exhausted through any fallback path, the model receives a structured unavailable result and should answer from already-returned data or state that the data is temporarily unavailable.
 - Stream/live-eval failure reports should distinguish partial stream timeout from a completed run with empty final content.
@@ -34,6 +35,7 @@
   - `turn_policy.tool_use == "none"` still hides all tools.
 - Internal Marketplace budget changes:
   - Agent model settings set `parallel_tool_calls` to `false` by default.
+  - Duplicate Marketplace tool calls within a single model response are filtered before execution; duplicate compute calls preserve distinct query objects by merging them into the first compute call.
   - `marketplace_agent_context` may make at most one external call per run.
   - `marketplace_agent_compute` may make at most one external call per run.
   - Once either Marketplace tool has reached its per-run limit, that tool is omitted from subsequent Pydantic AI tool definitions prepared for the same run.
@@ -56,6 +58,7 @@
   - `tests/test_chat_eval_closure.py`
 - Runtime responsibilities:
   - Model request settings prevent provider-side parallel tool call fan-out for this Agent.
+  - An `after_model_request` hook removes duplicate Marketplace tool call parts before Pydantic AI emits tool execution events.
   - Tool visibility is enforced through Pydantic AI `PrepareTools`, not only through prompt text.
   - Marketplace per-run budgets are enforced in tool implementations before external client calls.
   - Marketplace spent-tool hiding is enforced through the same `PrepareTools` path, using `AgentDeps.tool_call_counts` as the source of truth.
@@ -67,6 +70,7 @@
 - Identity turns continue to hide all tools.
 - Calculator/clock/search_knowledge/Marketplace tools remain available when applicable.
 - Model settings disable parallel tool calls by default so the model must observe one tool result before requesting the next tool.
+- Same-response duplicate Marketplace compute calls are merged into a single external call with combined unique queries.
 - Repeated Marketplace context or compute calls in the same run do not call the external client more than once.
 - Marketplace context or compute tools are no longer visible to the model after their per-run budget has been spent.
 - Budget-exhausted Marketplace calls return a structured unavailable result that can be answered from by the model.

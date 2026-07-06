@@ -35,11 +35,13 @@
 - Behavior change:
   - Track per-run Marketplace tool call counts in `AgentDeps`.
   - Configure the Agent with `parallel_tool_calls=false` so provider-side tool fan-out cannot submit duplicate Marketplace calls before budget visibility refreshes.
+  - Add an `after_model_request` hook that collapses same-response duplicate Marketplace tool calls before tool execution, merging duplicate compute query lists where possible.
   - Allow one external `marketplace_agent_context` call and one external `marketplace_agent_compute` call per run.
   - Remove each Marketplace tool from subsequent `PrepareTools` output after its per-run budget is spent.
   - Return `marketplace_tool_budget_exhausted` without calling the external client after the budget is spent.
 - Tests to add/update:
   - Verify the Agent passes `parallel_tool_calls=false` in model settings.
+  - Verify same-response duplicate compute calls produce one external compute call with merged queries.
   - Verify repeated context calls only hit the fake client once.
   - Verify repeated compute calls only hit the fake client once.
   - Verify Ask this Agent tool definitions no longer include Marketplace tools whose budgets are already spent.

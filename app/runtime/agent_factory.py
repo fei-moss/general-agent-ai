@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.capabilities import PrepareTools
+from pydantic_ai.capabilities import Hooks, PrepareTools
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -72,6 +72,10 @@ _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").poli
 _ASK_THIS_AGENT_PROFILE = "ask_this_agent"
 _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT = 1
 _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT = 1
+_MARKETPLACE_BUDGETED_TOOLS = {
+    TOOL_MARKETPLACE_AGENT_CONTEXT,
+    TOOL_MARKETPLACE_AGENT_COMPUTE,
+}
 
 
 @dataclass
@@ -117,13 +121,14 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             behavior_profile_name=profile.name,
         )
 
+    runtime_hooks = _build_runtime_hooks()
     agent: Agent[AgentDeps, str] = Agent(
         model,
         deps_type=AgentDeps,
         output_type=str,
         model_settings={"parallel_tool_calls": False},
         system_prompt=build_system_prompt(profile.policy),
-        capabilities=[PrepareTools(prepare_tools_for_profile)],
+        capabilities=[PrepareTools(prepare_tools_for_profile), runtime_hooks],
     )
 
     @agent.instructions
@@ -284,6 +289,69 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
 
     return agent
+
+
+def _build_runtime_hooks() -> Hooks[AgentDeps]:
+    hooks: Hooks[AgentDeps] = Hooks()
+
+    @hooks.on.after_model_request
+    def dedupe_marketplace_tool_calls(
+        _ctx: RunContext[AgentDeps], *, request_context: Any, response: ModelResponse
+    ) -> ModelResponse:
+        _ = request_context
+        return _dedupe_marketplace_tool_calls(response)
+
+    return hooks
+
+
+def _dedupe_marketplace_tool_calls(response: ModelResponse) -> ModelResponse:
+    """Collapse duplicate Marketplace tool calls emitted in a single model response."""
+    parts: list[Any] = []
+    changed = False
+    marketplace_indexes: dict[str, int] = {}
+    for part in response.parts:
+        if not (
+            isinstance(part, ToolCallPart)
+            and part.tool_name in _MARKETPLACE_BUDGETED_TOOLS
+        ):
+            parts.append(part)
+            continue
+        existing_index = marketplace_indexes.get(part.tool_name)
+        if existing_index is None:
+            marketplace_indexes[part.tool_name] = len(parts)
+            parts.append(part)
+            continue
+        changed = True
+        if part.tool_name == TOOL_MARKETPLACE_AGENT_COMPUTE:
+            existing_part = parts[existing_index]
+            parts[existing_index] = _merge_compute_tool_call(existing_part, part)
+    if not changed:
+        return response
+    return replace(response, parts=parts)
+
+
+def _merge_compute_tool_call(existing: Any, duplicate: ToolCallPart) -> Any:
+    if not isinstance(existing, ToolCallPart):
+        return existing
+    existing_args = existing.args if isinstance(existing.args, dict) else {}
+    duplicate_args = duplicate.args if isinstance(duplicate.args, dict) else {}
+    existing_queries = existing_args.get("queries")
+    duplicate_queries = duplicate_args.get("queries")
+    if not isinstance(existing_queries, list) or not isinstance(duplicate_queries, list):
+        return existing
+    merged_queries = list(existing_queries)
+    seen = {_stable_json(query) for query in merged_queries}
+    for query in duplicate_queries:
+        key = _stable_json(query)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged_queries.append(query)
+    return replace(existing, args={**existing_args, "queries": merged_queries})
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
 def _prepare_tools_for_turn(

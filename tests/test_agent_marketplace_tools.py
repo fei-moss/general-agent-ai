@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolReturnPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models.function import FunctionModel
 
 from app.runtime.agent_factory import (
@@ -175,6 +181,46 @@ async def test_agent_marketplace_compute_tool_budget_limits_external_calls():
     assert "volume_sum" in repr(result)
 
 
+async def test_agent_marketplace_compute_merges_same_response_duplicate_tool_calls():
+    marketplace = _FakeMarketplaceAI()
+    q1 = {
+        "id": "q1",
+        "metric": "volume_sum",
+        "window": {"unit": "day", "value": 1},
+    }
+    q2 = {
+        "id": "q2",
+        "metric": "aum_latest",
+        "window": {"unit": "day", "value": 1},
+    }
+    agent = build_agent(
+        _multi_tool_calling_model(
+            [
+                ToolCallPart(
+                    tool_name=TOOL_MARKETPLACE_AGENT_COMPUTE,
+                    args={"queries": [q1]},
+                ),
+                ToolCallPart(
+                    tool_name=TOOL_MARKETPLACE_AGENT_COMPUTE,
+                    args={"queries": [q2]},
+                ),
+            ]
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("同时计算 24 小时交易量和最新 AUM", deps=deps)
+
+    assert len(marketplace.compute_calls) == 1
+    assert marketplace.compute_calls[0]["queries"] == [q1, q2]
+    assert "volume_sum" in repr(result)
+
+
 class _NoopRetriever:
     async def retrieve(self, query: str, top_k: int):
         return []
@@ -252,9 +298,27 @@ def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:
         nonlocal calls
         calls += 1
         if calls == 1:
-            from pydantic_ai.messages import ToolCallPart
-
             return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
+        for message in messages:
+            if isinstance(message, ModelRequest):
+                for part in message.parts:
+                    if isinstance(part, ToolReturnPart):
+                        return ModelResponse(
+                            parts=[TextPart(content=repr(part.content))]
+                        )
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    return FunctionModel(function=function)
+
+
+def _multi_tool_calling_model(tool_calls: list[ToolCallPart]) -> FunctionModel:
+    calls = 0
+
+    def function(messages, _info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(parts=tool_calls)
         for message in messages:
             if isinstance(message, ModelRequest):
                 for part in message.parts:
@@ -279,8 +343,6 @@ def _repeated_tool_calling_model(
                         tool_results.append(part.content)
         visible_tools = {tool.name for tool in info.function_tools}
         if len(tool_results) < repeat and tool_name in visible_tools:
-            from pydantic_ai.messages import ToolCallPart
-
             return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
         return ModelResponse(parts=[TextPart(content=repr(tool_results))])
 
