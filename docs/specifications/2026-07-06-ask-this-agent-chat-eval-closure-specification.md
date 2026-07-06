@@ -40,6 +40,7 @@
 - Permissions/authentication:
   - Live replay requires explicit `--base-url` and an auth token from an environment variable or non-committed operator input.
   - No auth token value is written to reports.
+  - Live replay uses HTTP/1.1 for curl transport so DockerHost SSE streams are evaluated with stable framing.
 - Empty, error, retry, timeout, duplicate, and partial-failure behavior:
   - Empty or duplicate case ids fail local validation.
   - Missing required coverage areas fail local validation.
@@ -124,6 +125,7 @@
 - Transaction/concurrency boundaries:
   - Local eval has no DB or network transaction.
   - Live replay sends one request per selected case and treats each case independently.
+  - Curl transport pins HTTP/1.1 for both `/chat` and `/stream/{run_id}` requests to avoid HTTP/2 stream framing differences in DockerHost checks.
 - Observability/logging/metrics:
   - Scorecards include case ids, area summaries, threshold blockers, and metadata.
   - Live reports redact auth and common secret/wallet patterns.
@@ -164,6 +166,7 @@
   - Synthetic wallet addresses are allowed only inside `fixture_proxy_payload`.
   - Real-looking secrets are rejected from fixtures and sanitized from sample ingestion.
   - Live replay stream parser handles token, tool, completion, and error events.
+  - Live replay curl commands pin `--http1.1` for both POST and SSE stream reads.
   - Missing live auth fails with a clear local CLI error.
 - Compatibility:
   - Existing golden cases and behavior tests continue to pass.

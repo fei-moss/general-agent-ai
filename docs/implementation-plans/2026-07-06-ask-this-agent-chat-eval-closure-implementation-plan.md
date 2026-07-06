@@ -74,10 +74,12 @@
   - Adds bounded replay against `/chat` and `/stream/{run_id}`, including SSE parsing, tool event capture, latency, content, and sanitized errors.
   - Supports live-only Agent, wallet, and chain-id overrides so DockerHost replay can replace synthetic fixture context without editing golden cases.
   - Supports excluding tagged legacy groups from focused live replay without deleting their golden cases.
+  - Pins curl transport to HTTP/1.1 for `/chat` and SSE stream requests in DockerHost live replay.
 - Data contract impact:
   - JSON report contract under caller-selected output path.
 - Tests to add/update:
   - Unit tests for payload building, SSE parsing, filtering, and redaction without network calls.
+  - Unit test that both live replay curl paths include `--http1.1`.
 - Verification command:
   - `.venv/bin/python -m pytest tests/test_chat_eval_closure.py -q`
 - Rollback or compatibility note:

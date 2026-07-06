@@ -295,9 +295,30 @@ def _prepare_tools_for_turn(
     turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
     if isinstance(turn_policy, dict) and turn_policy.get("tool_use") == "none":
         return []
+    tool_defs = _filter_spent_tool_budgets(ctx, tool_defs)
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
         return [tool for tool in tool_defs if tool.name != "web_search"]
     return tool_defs
+
+
+def _filter_spent_tool_budgets(
+    ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]
+) -> list[ToolDefinition]:
+    counts = ctx.deps.tool_call_counts
+    spent_tools: set[str] = set()
+    if (
+        int(counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0))
+        >= _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT
+    ):
+        spent_tools.add(TOOL_MARKETPLACE_AGENT_CONTEXT)
+    if (
+        int(counts.get(TOOL_MARKETPLACE_AGENT_COMPUTE, 0))
+        >= _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT
+    ):
+        spent_tools.add(TOOL_MARKETPLACE_AGENT_COMPUTE)
+    if not spent_tools:
+        return tool_defs
+    return [tool for tool in tool_defs if tool.name not in spent_tools]
 
 
 def _claim_tool_budget(

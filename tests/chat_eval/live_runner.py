@@ -342,6 +342,7 @@ def _curl_post(
         [
             "curl",
             "-sS",
+            "--http1.1",
             "--max-time",
             str(timeout_s),
             "-w",
@@ -364,6 +365,7 @@ def _curl_get(url: str, headers: dict[str, str], timeout_s: float) -> HttpRespon
         [
             "curl",
             "-sS",
+            "--http1.1",
             "-N",
             "--max-time",
             str(timeout_s),

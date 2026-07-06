@@ -145,7 +145,7 @@ async def test_agent_marketplace_context_tool_budget_limits_external_calls():
     result = await agent.run("连续查询两次 Agent 上下文", deps=deps)
 
     assert len(marketplace.context_calls) == 1
-    assert "marketplace_tool_budget_exhausted" in repr(result)
+    assert "BTC Trend Agent" in repr(result)
 
 
 async def test_agent_marketplace_compute_tool_budget_limits_external_calls():
@@ -172,7 +172,7 @@ async def test_agent_marketplace_compute_tool_budget_limits_external_calls():
     result = await agent.run("连续计算两次交易量", deps=deps)
 
     assert len(marketplace.compute_calls) == 1
-    assert "marketplace_tool_budget_exhausted" in repr(result)
+    assert "volume_sum" in repr(result)
 
 
 class _NoopRetriever:
@@ -270,14 +270,15 @@ def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:
 def _repeated_tool_calling_model(
     tool_name: str, args: dict[str, Any], *, repeat: int
 ) -> FunctionModel:
-    def function(messages, _info):
+    def function(messages, info):
         tool_results = []
         for message in messages:
             if isinstance(message, ModelRequest):
                 for part in message.parts:
                     if isinstance(part, ToolReturnPart):
                         tool_results.append(part.content)
-        if len(tool_results) < repeat:
+        visible_tools = {tool.name for tool in info.function_tools}
+        if len(tool_results) < repeat and tool_name in visible_tools:
             from pydantic_ai.messages import ToolCallPart
 
             return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])

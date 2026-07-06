@@ -224,6 +224,30 @@ def test_curl_timeout_with_partial_sse_is_classified_as_partial(monkeypatch):
     assert "LLM_GENERATING" in response.body
 
 
+def test_curl_transport_uses_http11_for_dockerhost_streams(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run_curl(command, *, input_text, allow_partial):
+        commands.append(command)
+        return HttpResponse(status=200, body="{}")
+
+    monkeypatch.setattr(live_runner, "_run_curl", fake_run_curl)
+
+    live_runner._curl_post(
+        "https://example.test/chat",
+        {"Authorization": "Bearer token"},
+        {"message": "hi"},
+        10,
+    )
+    live_runner._curl_get(
+        "https://example.test/stream/run_1",
+        {"Authorization": "Bearer token"},
+        10,
+    )
+
+    assert all("--http1.1" in command for command in commands)
+
+
 def test_sanitize_text_redacts_bearer_tokens_and_real_addresses():
     text = sanitize_text(
         "Bearer alice.internal 0x1234567890abcdef1234567890abcdef12345678"

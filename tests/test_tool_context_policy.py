@@ -5,7 +5,12 @@ from typing import Any
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
-from app.runtime.agent_factory import AgentDeps, build_agent
+from app.runtime.agent_factory import (
+    AgentDeps,
+    TOOL_MARKETPLACE_AGENT_COMPUTE,
+    TOOL_MARKETPLACE_AGENT_CONTEXT,
+    build_agent,
+)
 from app.runtime.tool_context import (
     build_run_context_instruction,
     mask_run_context,
@@ -117,6 +122,32 @@ async def test_ask_this_agent_hides_web_search_by_default():
     assert "search_knowledge" in seen_tool_names[0]
     assert "marketplace_agent_context" in seen_tool_names[0]
     assert "marketplace_agent_compute" in seen_tool_names[0]
+
+
+async def test_ask_this_agent_hides_marketplace_tools_after_budget_spent():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={},
+        tool_call_counts={
+            TOOL_MARKETPLACE_AGENT_CONTEXT: 1,
+            TOOL_MARKETPLACE_AGENT_COMPUTE: 1,
+        },
+    )
+
+    await agent.run("过去一天这个 Agent 的 volume_sum 怎么算?", deps=deps)
+
+    assert seen_tool_names
+    assert TOOL_MARKETPLACE_AGENT_CONTEXT not in seen_tool_names[0]
+    assert TOOL_MARKETPLACE_AGENT_COMPUTE not in seen_tool_names[0]
+    assert "search_knowledge" in seen_tool_names[0]
 
 
 async def test_agent_hides_tools_when_turn_policy_disables_tool_use():

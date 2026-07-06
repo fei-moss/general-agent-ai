@@ -21,7 +21,8 @@
 - Ask this Agent is scoped to the current Agent detail page, Marketplace AI context/compute results, and fixed platform mechanism knowledge.
 - External web search is not a user-facing capability for this product surface and should not be visible to the model by default.
 - Marketplace tools are read-only data access helpers. A single turn should not repeat the same expensive Marketplace tool indefinitely.
-- If a Marketplace tool budget is exhausted, the model receives a structured unavailable result and should answer from already-returned data or state that the data is temporarily unavailable.
+- If a Marketplace tool budget is exhausted before a tool invocation can be prepared, that tool is hidden from later model requests in the same run so the model can answer from already-returned data instead of retrying a spent tool.
+- If a Marketplace tool is invoked after its budget is exhausted through any fallback path, the model receives a structured unavailable result and should answer from already-returned data or state that the data is temporarily unavailable.
 - Stream/live-eval failure reports should distinguish partial stream timeout from a completed run with empty final content.
 
 ## API / Interface Contract
@@ -33,6 +34,7 @@
 - Internal Marketplace budget changes:
   - `marketplace_agent_context` may make at most one external call per run.
   - `marketplace_agent_compute` may make at most one external call per run.
+  - Once either Marketplace tool has reached its per-run limit, that tool is omitted from subsequent Pydantic AI tool definitions prepared for the same run.
   - Exceeding the budget returns a structured Marketplace unavailable payload with reason `marketplace_tool_budget_exhausted`.
 - Live replay report changes:
   - Curl timeout with partial SSE data is classified as stream status `206`, allowing reports to mark `stream_incomplete`.
@@ -53,6 +55,7 @@
 - Runtime responsibilities:
   - Tool visibility is enforced through Pydantic AI `PrepareTools`, not only through prompt text.
   - Marketplace per-run budgets are enforced in tool implementations before external client calls.
+  - Marketplace spent-tool hiding is enforced through the same `PrepareTools` path, using `AgentDeps.tool_call_counts` as the source of truth.
   - Live replay error classification remains test-only and does not affect production runtime.
 
 ## Acceptance Criteria
@@ -61,6 +64,7 @@
 - Identity turns continue to hide all tools.
 - Calculator/clock/search_knowledge/Marketplace tools remain available when applicable.
 - Repeated Marketplace context or compute calls in the same run do not call the external client more than once.
+- Marketplace context or compute tools are no longer visible to the model after their per-run budget has been spent.
 - Budget-exhausted Marketplace calls return a structured unavailable result that can be answered from by the model.
 - Live replay marks curl timeout partial streams as incomplete.
 - Focused tests and release verification pass.
