@@ -121,6 +121,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         model,
         deps_type=AgentDeps,
         output_type=str,
+        model_settings={"parallel_tool_calls": False},
         system_prompt=build_system_prompt(profile.policy),
         capabilities=[PrepareTools(prepare_tools_for_profile)],
     )

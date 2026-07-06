@@ -150,6 +150,22 @@ async def test_ask_this_agent_hides_marketplace_tools_after_budget_spent():
     assert "search_knowledge" in seen_tool_names[0]
 
 
+async def test_agent_disables_parallel_tool_calls_by_default():
+    seen_parallel_settings: list[bool | None] = []
+
+    def function(_messages, info):
+        settings = info.model_settings or {}
+        seen_parallel_settings.append(settings.get("parallel_tool_calls"))
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(retriever=_NoopRetriever(), tool_router=_NoopToolRouter())
+
+    await agent.run("这个 Agent 的 AUM 和 24 小时交易量是多少?", deps=deps)
+
+    assert seen_parallel_settings == [False]
+
+
 async def test_agent_hides_tools_when_turn_policy_disables_tool_use():
     seen_tool_names: list[list[str]] = []
 
