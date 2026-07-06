@@ -239,6 +239,45 @@ def test_output_guardrail_refuses_chinese_answer_for_english_target():
     assert "English" in decision.safe_response
 
 
+def test_output_guardrail_replaces_unsupported_faq_gap_speculation():
+    decision = evaluate_assistant_answer(
+        "当前 FAQ V1 未覆盖 Paused 状态不能 Redeem 的具体原因。"
+        "### 一般性理解\n"
+        "从协议设计的角度来看,Agent 进入 Paused 状态通常意味着出于风控、升级或异常处理考虑。",
+        target_language=TARGET_LANGUAGE_ZH_HANS,
+    )
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category is GuardrailCategory.UNSUPPORTED_SPECULATION
+    assert "FAQ V1" in decision.safe_response
+    assert "PM 文档" in decision.safe_response
+    assert "风控" not in decision.safe_response
+
+
+def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
+    guardrail = StreamingOutputGuardrail(target_language=TARGET_LANGUAGE_ZH_HANS)
+    outputs = []
+
+    for part in (
+        "当前 FAQ V1 未覆盖 Paused 状态不能 Redeem 的具体原因。"
+        "FAQ V1 已覆盖的 Redeem 置灰原因包括没有持有 shares 或余额不足。"
+        "下面补充足够多的安全文本,用于确保前缀释放机制已经生效。",
+        "### 一般性理解\n从协议设计的角度来看,通常意味着出于风控或升级考虑。",
+    ):
+        chunk = guardrail.push(part)
+        if chunk:
+            outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert "PM 文档" in safe_text
+    assert "一般性理解" not in safe_text
+    assert "风控" not in safe_text
+    assert guardrail.blocked is True
+
+
 def test_streaming_output_guardrail_default_tail_retains_64_chars():
     guardrail = StreamingOutputGuardrail()
 

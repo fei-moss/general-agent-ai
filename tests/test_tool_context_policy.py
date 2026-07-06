@@ -9,6 +9,7 @@ from app.runtime.agent_factory import (
     AgentDeps,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
+    TOOL_SEARCH_KNOWLEDGE,
     build_agent,
 )
 from app.runtime.chat_behavior import (
@@ -157,6 +158,31 @@ async def test_ask_this_agent_hides_marketplace_tools_after_budget_spent():
     assert TOOL_MARKETPLACE_AGENT_CONTEXT not in seen_tool_names[0]
     assert TOOL_MARKETPLACE_AGENT_COMPUTE not in seen_tool_names[0]
     assert "search_knowledge" in seen_tool_names[0]
+
+
+async def test_ask_this_agent_hides_search_after_budget_spent():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={},
+        tool_call_counts={
+            TOOL_SEARCH_KNOWLEDGE: 1,
+        },
+    )
+
+    await agent.run("过去一天这个 Agent 的 volume_sum 怎么算?", deps=deps)
+
+    assert seen_tool_names
+    assert TOOL_SEARCH_KNOWLEDGE not in seen_tool_names[0]
+    assert TOOL_MARKETPLACE_AGENT_CONTEXT in seen_tool_names[0]
+    assert TOOL_MARKETPLACE_AGENT_COMPUTE in seen_tool_names[0]
 
 
 async def test_agent_disables_parallel_tool_calls_by_default():

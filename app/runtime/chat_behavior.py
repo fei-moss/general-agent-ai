@@ -39,6 +39,7 @@ class GuardrailCategory(str, Enum):
     PERSONAL_WALLET_DATA = "personal_wallet_data"
     OUTPUT_POLICY_LEAK = "output_policy_leak"
     LANGUAGE_MISMATCH = "language_mismatch"
+    UNSUPPORTED_SPECULATION = "unsupported_speculation"
 
 
 @dataclass(frozen=True)
@@ -350,6 +351,37 @@ _STREAMING_OUTPUT_TAIL_CHARS = max(
     64,
     max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1,
 )
+_FAQ_GAP_MARKERS = (
+    "faq v1 未覆盖",
+    "faq v1 没有覆盖",
+    "faq v1 未说明",
+    "faqv1 未覆盖",
+    "当前 faq 没有明确",
+)
+_FAQ_GAP_SPECULATION_MARKERS = (
+    "一般性理解",
+    "从协议设计",
+    "通常意味着",
+    "通常是",
+    "一般来说",
+    "可能意味着",
+    "可能是因为",
+)
+_FAQ_GAP_SPECULATION_REASONS = (
+    "风控",
+    "升级",
+    "异常处理",
+    "保护策略资产",
+    "保护所有持有者",
+    "流动性",
+    "维护",
+    "安全状态",
+)
+_UNSUPPORTED_FAQ_GAP_SAFE_RESPONSE = (
+    "这个问题在当前 FAQ V1 里没有明确覆盖。\n\n"
+    "我只能按 FAQ V1 说明:相关机制的具体原因、公式或收取时机还没有被 PM 文档确认。"
+    "不能补充非官方的一般性解释或协议推断;需要 PM 或平台文档补齐后再回答。"
+)
 
 
 class StreamingOutputGuardrail:
@@ -366,6 +398,7 @@ class StreamingOutputGuardrail:
         self._pending = ""
         self._blocked = False
         self._language_gate_open = not _needs_language_gate(self._target_language)
+        self._saw_faq_gap_marker = False
         self.decision = _allow()
 
     @property
@@ -377,6 +410,9 @@ class StreamingOutputGuardrail:
         if self._blocked or not text:
             return None
         self._pending += text
+        self._saw_faq_gap_marker = self._saw_faq_gap_marker or _contains_any(
+            _normalize(self._pending), _FAQ_GAP_MARKERS
+        )
         decision = evaluate_assistant_answer(
             self._pending,
             target_language=(
@@ -384,6 +420,7 @@ class StreamingOutputGuardrail:
                 if not self._language_gate_open
                 else TARGET_LANGUAGE_UNKNOWN
             ),
+            faq_gap_context=self._saw_faq_gap_marker,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -413,6 +450,7 @@ class StreamingOutputGuardrail:
                 if not self._language_gate_open
                 else TARGET_LANGUAGE_UNKNOWN
             ),
+            faq_gap_context=self._saw_faq_gap_marker,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -614,7 +652,10 @@ def is_identity_introduction_request(message: str) -> bool:
 
 
 def evaluate_assistant_answer(
-    answer: str, *, target_language: str = TARGET_LANGUAGE_UNKNOWN
+    answer: str,
+    *,
+    target_language: str = TARGET_LANGUAGE_UNKNOWN,
+    faq_gap_context: bool = False,
 ) -> GuardrailDecision:
     """Return an output-guardrail decision for high-confidence leaks."""
     if not _normalize(answer):
@@ -625,6 +666,15 @@ def evaluate_assistant_answer(
             GuardrailCategory.OUTPUT_POLICY_LEAK,
             "assistant_output_policy_leak",
             _OUTPUT_POLICY_LEAK_SAFE_RESPONSE,
+        )
+    if _contains_unsupported_faq_gap_speculation(
+        answer, faq_gap_context=faq_gap_context
+    ):
+        return GuardrailDecision(
+            GuardrailAction.REFUSE,
+            GuardrailCategory.UNSUPPORTED_SPECULATION,
+            "assistant_output_unsupported_faq_gap_speculation",
+            _UNSUPPORTED_FAQ_GAP_SAFE_RESPONSE,
         )
     language_decision = _evaluate_language_consistency(answer, target_language)
     if language_decision.action is GuardrailAction.REFUSE:
@@ -654,6 +704,19 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
 def _contains_output_policy_leak(value: str) -> bool:
     return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS) or any(
         pattern.search(value) for pattern in _OUTPUT_SECRET_VALUE_PATTERNS
+    )
+
+
+def _contains_unsupported_faq_gap_speculation(
+    value: str, *, faq_gap_context: bool = False
+) -> bool:
+    text = _normalize(value)
+    if not faq_gap_context and not _contains_any(text, _FAQ_GAP_MARKERS):
+        return False
+    if _contains_any(text, _FAQ_GAP_SPECULATION_MARKERS):
+        return True
+    return _contains_any(text, ("可能", "一般", "通常")) and _contains_any(
+        text, _FAQ_GAP_SPECULATION_REASONS
     )
 
 

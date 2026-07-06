@@ -72,9 +72,15 @@ _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").poli
 _ASK_THIS_AGENT_PROFILE = "ask_this_agent"
 _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT = 1
 _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT = 1
+_SEARCH_KNOWLEDGE_CALL_LIMIT = 1
 _MARKETPLACE_BUDGETED_TOOLS = {
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
+}
+_TOOL_CALL_LIMITS = {
+    TOOL_SEARCH_KNOWLEDGE: _SEARCH_KNOWLEDGE_CALL_LIMIT,
+    TOOL_MARKETPLACE_AGENT_CONTEXT: _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT,
+    TOOL_MARKETPLACE_AGENT_COMPUTE: _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT,
 }
 _ASK_THIS_AGENT_TOOLS = {
     TOOL_SEARCH_KNOWLEDGE,
@@ -177,6 +183,13 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         """
         if not tool_allowed(TOOL_SEARCH_KNOWLEDGE, ctx.deps.run_context):
             return tool_denied_result(TOOL_SEARCH_KNOWLEDGE)
+        exhausted = _claim_tool_budget(
+            ctx,
+            TOOL_SEARCH_KNOWLEDGE,
+            _SEARCH_KNOWLEDGE_CALL_LIMIT,
+        )
+        if exhausted is not None:
+            return exhausted
         effective_query = str(query or "").strip() or _query_from_prompt(ctx.prompt)
         return await ctx.deps.retriever.retrieve(
             effective_query, ctx.deps.retrieval_top_k
@@ -383,16 +396,9 @@ def _filter_spent_tool_budgets(
 ) -> list[ToolDefinition]:
     counts = ctx.deps.tool_call_counts
     spent_tools: set[str] = set()
-    if (
-        int(counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0))
-        >= _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT
-    ):
-        spent_tools.add(TOOL_MARKETPLACE_AGENT_CONTEXT)
-    if (
-        int(counts.get(TOOL_MARKETPLACE_AGENT_COMPUTE, 0))
-        >= _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT
-    ):
-        spent_tools.add(TOOL_MARKETPLACE_AGENT_COMPUTE)
+    for tool_name, limit in _TOOL_CALL_LIMITS.items():
+        if int(counts.get(tool_name, 0)) >= limit:
+            spent_tools.add(tool_name)
     if not spent_tools:
         return tool_defs
     return [tool for tool in tool_defs if tool.name not in spent_tools]
@@ -408,7 +414,7 @@ def _claim_tool_budget(
     current = int(counts.get(tool_name, 0))
     if current >= limit:
         return marketplace_unavailable(
-            "marketplace_tool_budget_exhausted",
+            "tool_budget_exhausted",
             (
                 f"{tool_name} was already called for this turn. Use prior tool "
                 "results if available; otherwise explain that the requested data "
