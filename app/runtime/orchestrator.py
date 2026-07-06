@@ -395,7 +395,9 @@ class AgentOrchestrator:
                             target_language,
                         )
                     elif Agent.is_call_tools_node(node):
-                        await self._handle_tool_calls(node, run, emitter)
+                        await self._handle_tool_calls(
+                            node, run, emitter, fallback_query=user_message
+                        )
             await self._settle_provider_usage(quota_decision, run, route_type)
             if not emitted_chunks and run.result and run.result.output:
                 await self._emit_guarded_final_output(
@@ -611,19 +613,29 @@ class AgentOrchestrator:
         return True
 
     async def _handle_tool_calls(
-        self, node: Any, run: Any, emitter: _EventEmitter
+        self,
+        node: Any,
+        run: Any,
+        emitter: _EventEmitter,
+        *,
+        fallback_query: str = "",
     ) -> None:
         """处理工具调用节点:把 LLM 的工具调用/结果映射为检索或工具事件。"""
         async with node.stream(run.ctx) as handle_stream:
             async for event in handle_stream:
                 if isinstance(event, FunctionToolCallEvent):
-                    await self._emit_tool_started(emitter, event)
+                    await self._emit_tool_started(
+                        emitter, event, fallback_query=fallback_query
+                    )
                 elif isinstance(event, FunctionToolResultEvent):
                     await self._emit_tool_finished(emitter, event)
 
     @staticmethod
     async def _emit_tool_started(
-        emitter: _EventEmitter, event: FunctionToolCallEvent
+        emitter: _EventEmitter,
+        event: FunctionToolCallEvent,
+        *,
+        fallback_query: str = "",
     ) -> None:
         """工具调用开始:search_knowledge 映射为检索事件,其余为工具事件。"""
         name = event.part.tool_name
@@ -632,6 +644,7 @@ class AgentOrchestrator:
             args = event.part.args
             if isinstance(args, dict):
                 query = str(args.get("query", ""))
+            query = query.strip() or fallback_query.strip()
             await emitter.emit(EventType.RETRIEVAL_STARTED, {"query": query})
         else:
             await emitter.emit(

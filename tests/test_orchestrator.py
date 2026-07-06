@@ -33,8 +33,10 @@ class _FakeRetriever:
 
     def __init__(self, docs: list[dict[str, Any]]) -> None:
         self._docs = docs
+        self.queries: list[str] = []
 
     async def retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
+        self.queries.append(query)
         return self._docs[:top_k]
 
 
@@ -371,6 +373,40 @@ async def test_knowledge_qa_run_emits_full_event_sequence_and_persists(deps):
     assert "set_plan" not in methods
     assert "mark_succeeded" not in methods
     assert "mark_failed" not in methods
+
+
+async def test_retrieval_started_event_falls_back_to_user_message_for_empty_query(deps):
+    runtime, bus, _message_repo, _run_repo = deps
+    orchestrator = AgentOrchestrator(
+        runtime,
+        agent=build_agent(
+            _make_tool_then_answer_model(
+                "search_knowledge",
+                {"query": ""},
+                "检索完成。",
+            )
+        ),
+    )
+    agent_run_id = "run-empty-retrieval-query"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-empty-query",
+        trace_id="trace-empty-query",
+        user_message="Mint 和 Redeem 分别是什么?",
+    )
+    events = await collector
+
+    retrieval_events = [
+        event for event in events if event.type is EventType.RETRIEVAL_STARTED
+    ]
+    assert answer == "检索完成。"
+    assert retrieval_events[0].data["query"] == "Mint 和 Redeem 分别是什么?"
+    assert runtime.retriever.queries == ["Mint 和 Redeem 分别是什么?"]
 
 
 async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
