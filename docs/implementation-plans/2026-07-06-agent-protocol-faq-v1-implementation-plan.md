@@ -43,6 +43,7 @@
   - `search_knowledge` has a one-call turn budget and is hidden after it is spent, so the model cannot repeatedly retrieve until the request limit is exhausted.
   - Recognized dynamic metric turns such as `volume_sum` inject a compute-only turn policy and require `marketplace_agent_compute`.
   - Behavior policy answers `proxy_payload.chain_id` from the current system contract and forbids unofficial explanations on FAQ gaps.
+  - Output guardrails replace chain-id contract mismatches that mention fixture values or imply downstream `chain_id` context is supplied.
   - Output guardrails hold streamed FAQ-gap answers until safe and replace unsupported generic causes, "reasonable inference", possible-cause lists, or protocol inferences without emitting a terminal stream error.
 - Verification:
   - `.venv/bin/python -m pytest tests/test_rag_agent_tool.py -q`

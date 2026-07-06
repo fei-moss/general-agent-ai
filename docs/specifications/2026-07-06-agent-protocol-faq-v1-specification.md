@@ -84,6 +84,7 @@
   - The behavior policy tells the model that FAQ gaps must not be filled with unofficial generic explanations.
   - The output guardrail holds streamed FAQ-gap answers until the gap response is known safe, and replaces speculative "general understanding", "reasonable inference", possible-cause, or protocol-cause explanations with a bounded PM-doc-needed response without emitting a terminal stream `ERROR`.
   - The behavior policy states the current `proxy_payload.chain_id` rule: default not forwarded to Marketplace AI; address-only routing unless a future upstream contract reintroduces `chain_id`.
+  - The output guardrail replaces chain-id answers that imply `chain_id` is still supplied by runtime context or expose fixture values such as `999`.
   - `extract_current_agent_ref()` returns the current Agent address and intentionally omits `chain_id` by default.
 
 ## Acceptance Criteria
@@ -96,6 +97,7 @@
 - Ask this Agent live runs cannot continue into repeated `search_knowledge` loops after the retrieval budget is spent.
 - Dynamic metric questions such as `volume_sum` call `marketplace_agent_compute` before answering.
 - Questions about `proxy_payload.chain_id` receive the current address-only routing rule without requiring PM FAQ coverage.
+- Chain-id answers must not mention fixture values such as `999` or imply that runtime context supplies `chain_id` to downstream calls.
 - FAQ-gap answers do not append speculative risk-control, protocol-state, or timing explanations and do not terminate the stream as an error when replaced.
 - Marketplace Agent context/compute tools do not pass `chain_id` even when `proxy_payload` includes it.
 - Golden cases reflect the new PM FAQ source-of-truth and no longer expect invented Paused/fee formulas.

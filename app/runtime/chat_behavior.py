@@ -40,6 +40,7 @@ class GuardrailCategory(str, Enum):
     OUTPUT_POLICY_LEAK = "output_policy_leak"
     LANGUAGE_MISMATCH = "language_mismatch"
     UNSUPPORTED_SPECULATION = "unsupported_speculation"
+    CONTRACT_MISMATCH = "contract_mismatch"
 
 
 @dataclass(frozen=True)
@@ -404,6 +405,24 @@ _UNSUPPORTED_FAQ_GAP_SAFE_RESPONSE = (
     "我只能按 FAQ V1 说明：相关机制的具体原因、公式或收取时机还没有被 PM 文档确认。"
     "不能补充非官方的一般性解释或协议推断；需要 PM 或平台文档补齐后再回答。"
 )
+_CHAIN_ID_CONTEXT_MARKERS = (
+    "chain_id",
+    "proxy_payload",
+)
+_CHAIN_ID_WRONG_CONTRACT_MARKERS = (
+    "chain_id: 999",
+    "chain_id：999",
+    "chain id: 999",
+    "由服务端运行时上下文提供",
+    "由服务端上下文提供",
+    "运行时上下文提供",
+)
+_CHAIN_ID_CONTRACT_SAFE_RESPONSE = (
+    "当前系统规则是：`chain_id` 默认不透传给中心化 Marketplace AI 接口。\n\n"
+    "- `ai-context` 和 `ai-compute` 当前按 Agent 地址请求。\n"
+    "- 即使上游 `proxy_payload` 带了 `chain_id`，当前也会忽略，不作为下游请求参数。\n"
+    "- 如果未来需要使用 `chain_id`，必须通过新的明确接口合同或配置单独引入。"
+)
 
 
 class StreamingOutputGuardrail:
@@ -421,6 +440,7 @@ class StreamingOutputGuardrail:
         self._blocked = False
         self._language_gate_open = not _needs_language_gate(self._target_language)
         self._saw_faq_gap_marker = False
+        self._saw_chain_id_context = False
         self.decision = _allow()
 
     @property
@@ -436,6 +456,10 @@ class StreamingOutputGuardrail:
             self._saw_faq_gap_marker
             or _contains_faq_gap_context(self._pending)
         )
+        self._saw_chain_id_context = (
+            self._saw_chain_id_context
+            or _contains_chain_id_context(self._pending)
+        )
         decision = evaluate_assistant_answer(
             self._pending,
             target_language=(
@@ -444,6 +468,7 @@ class StreamingOutputGuardrail:
                 else TARGET_LANGUAGE_UNKNOWN
             ),
             faq_gap_context=self._saw_faq_gap_marker,
+            chain_id_context=self._saw_chain_id_context,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -455,7 +480,7 @@ class StreamingOutputGuardrail:
                 self._language_gate_open = True
             else:
                 return None
-        if self._saw_faq_gap_marker:
+        if self._saw_faq_gap_marker or self._saw_chain_id_context:
             return None
         if len(self._pending) <= self._tail_chars:
             return None
@@ -476,6 +501,7 @@ class StreamingOutputGuardrail:
                 else TARGET_LANGUAGE_UNKNOWN
             ),
             faq_gap_context=self._saw_faq_gap_marker,
+            chain_id_context=self._saw_chain_id_context,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -689,6 +715,7 @@ def evaluate_assistant_answer(
     *,
     target_language: str = TARGET_LANGUAGE_UNKNOWN,
     faq_gap_context: bool = False,
+    chain_id_context: bool = False,
 ) -> GuardrailDecision:
     """Return an output-guardrail decision for high-confidence leaks."""
     if not _normalize(answer):
@@ -708,6 +735,15 @@ def evaluate_assistant_answer(
             GuardrailCategory.UNSUPPORTED_SPECULATION,
             "assistant_output_unsupported_faq_gap_speculation",
             _UNSUPPORTED_FAQ_GAP_SAFE_RESPONSE,
+        )
+    if _contains_chain_id_contract_mismatch(
+        answer, chain_id_context=chain_id_context
+    ):
+        return GuardrailDecision(
+            GuardrailAction.REFUSE,
+            GuardrailCategory.CONTRACT_MISMATCH,
+            "assistant_output_chain_id_contract_mismatch",
+            _CHAIN_ID_CONTRACT_SAFE_RESPONSE,
         )
     language_decision = _evaluate_language_consistency(answer, target_language)
     if language_decision.action is GuardrailAction.REFUSE:
@@ -758,6 +794,20 @@ def _contains_faq_gap_context(value: str) -> bool:
     return _contains_any(text, _FAQ_GAP_MARKERS) or all(
         term in text for term in _FAQ_GAP_EARLY_CONTEXT_TERMS
     )
+
+
+def _contains_chain_id_context(value: str) -> bool:
+    text = _normalize(value)
+    return all(marker in text for marker in _CHAIN_ID_CONTEXT_MARKERS)
+
+
+def _contains_chain_id_contract_mismatch(
+    value: str, *, chain_id_context: bool = False
+) -> bool:
+    text = _normalize(value)
+    if not chain_id_context and not _contains_chain_id_context(text):
+        return False
+    return _contains_any(text, _CHAIN_ID_WRONG_CONTRACT_MARKERS)
 
 
 def _evaluate_language_consistency(

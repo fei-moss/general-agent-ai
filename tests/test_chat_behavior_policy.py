@@ -287,6 +287,44 @@ def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
     assert guardrail.blocked is True
 
 
+def test_output_guardrail_replaces_chain_id_contract_mismatch():
+    decision = evaluate_assistant_answer(
+        "proxy_payload 里的 chain_id 默认不透传。"
+        "Agent 的 chain_id 由服务端运行时上下文提供，如当前 Agent 的 chain_id: 999。",
+        target_language=TARGET_LANGUAGE_ZH_HANS,
+    )
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category is GuardrailCategory.CONTRACT_MISMATCH
+    assert "默认不透传" in decision.safe_response
+    assert "Agent 地址" in decision.safe_response
+    assert "999" not in decision.safe_response
+    assert "运行时上下文提供" not in decision.safe_response
+
+
+def test_streaming_output_guardrail_blocks_chain_id_contract_mismatch_without_prefix():
+    guardrail = StreamingOutputGuardrail(target_language=TARGET_LANGUAGE_ZH_HANS)
+    outputs = []
+
+    for part in (
+        "根据系统接口契约，proxy_payload 里的 chain_id 默认不透传。"
+        "下面补充足够多的安全文本，用于确保前缀释放机制不会提前输出错误契约。",
+        "Agent 的 chain_id 由服务端运行时上下文提供，如当前 Agent 的 chain_id: 999。",
+    ):
+        chunk = guardrail.push(part)
+        if chunk:
+            outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert safe_text.startswith("当前系统规则是")
+    assert "999" not in safe_text
+    assert "运行时上下文提供" not in safe_text
+    assert guardrail.blocked is True
+
+
 def test_streaming_output_guardrail_default_tail_retains_64_chars():
     guardrail = StreamingOutputGuardrail()
 
