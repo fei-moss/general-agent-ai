@@ -241,9 +241,9 @@ def test_output_guardrail_refuses_chinese_answer_for_english_target():
 
 def test_output_guardrail_replaces_unsupported_faq_gap_speculation():
     decision = evaluate_assistant_answer(
-        "当前 FAQ V1 未覆盖 Paused 状态不能 Redeem 的具体原因。"
-        "### 一般性理解\n"
-        "从协议设计的角度来看,Agent 进入 Paused 状态通常意味着出于风控、升级或异常处理考虑。",
+        "FAQ V1 并未给出 Paused 状态下 Redeem 受限的具体原因说明。"
+        "### 合理推断\n"
+        "基于协议设计的一般逻辑,可能原因包括资金安全保护、净值异常或底层资产问题。",
         target_language=TARGET_LANGUAGE_ZH_HANS,
     )
 
@@ -251,7 +251,7 @@ def test_output_guardrail_replaces_unsupported_faq_gap_speculation():
     assert decision.category is GuardrailCategory.UNSUPPORTED_SPECULATION
     assert "FAQ V1" in decision.safe_response
     assert "PM 文档" in decision.safe_response
-    assert "风控" not in decision.safe_response
+    assert "资金安全保护" not in decision.safe_response
 
 
 def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
@@ -262,7 +262,7 @@ def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
         "当前 FAQ V1 未覆盖 Paused 状态不能 Redeem 的具体原因。"
         "FAQ V1 已覆盖的 Redeem 置灰原因包括没有持有 shares 或余额不足。"
         "下面补充足够多的安全文本,用于确保前缀释放机制已经生效。",
-        "### 一般性理解\n从协议设计的角度来看,通常意味着出于风控或升级考虑。",
+        "### 合理推断\n基于协议设计的一般逻辑,可能原因包括资金安全保护或净值异常。",
     ):
         chunk = guardrail.push(part)
         if chunk:
@@ -273,8 +273,8 @@ def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
 
     safe_text = "".join(outputs)
     assert "PM 文档" in safe_text
-    assert "一般性理解" not in safe_text
-    assert "风控" not in safe_text
+    assert "合理推断" not in safe_text
+    assert "资金安全保护" not in safe_text
     assert guardrail.blocked is True
 
 

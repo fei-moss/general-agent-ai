@@ -81,7 +81,7 @@
   - Ask this Agent exposes only `search_knowledge`, `marketplace_agent_context`, and `marketplace_agent_compute` tools; generic calculator, clock, and web-search tools remain hidden for this profile.
   - `search_knowledge` is budgeted to one call per turn and hidden after it is spent, preventing repeated retrieval loops from exhausting the model request limit.
   - The behavior policy tells the model that FAQ gaps must not be filled with unofficial generic explanations.
-  - The output guardrail replaces FAQ-gap answers that append speculative "general understanding" or protocol-cause explanations with a bounded PM-doc-needed response.
+  - The output guardrail replaces FAQ-gap answers that append speculative "general understanding", "reasonable inference", possible-cause, or protocol-cause explanations with a bounded PM-doc-needed response.
   - The behavior policy states the current `proxy_payload.chain_id` rule: default not forwarded to Marketplace AI; address-only routing unless a future upstream contract reintroduces `chain_id`.
   - `extract_current_agent_ref()` returns the current Agent address and intentionally omits `chain_id` by default.
 

@@ -42,7 +42,7 @@
   - Ask this Agent hides generic calculator, clock, and web-search tools so Marketplace data turns do not loop into unrelated tools.
   - `search_knowledge` has a one-call turn budget and is hidden after it is spent, so the model cannot repeatedly retrieve until the request limit is exhausted.
   - Behavior policy answers `proxy_payload.chain_id` from the current system contract and forbids unofficial explanations on FAQ gaps.
-  - Output guardrails replace FAQ-gap answers that append unsupported generic causes or protocol inferences.
+  - Output guardrails replace FAQ-gap answers that append unsupported generic causes, "reasonable inference", possible-cause lists, or protocol inferences.
 - Verification:
   - `.venv/bin/python -m pytest tests/test_rag_agent_tool.py -q`
   - `.venv/bin/python -m pytest tests/test_agent_factory.py -q`
