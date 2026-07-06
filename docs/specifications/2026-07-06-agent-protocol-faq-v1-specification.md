@@ -80,8 +80,9 @@
   - Retrieval-start events use the same prompt fallback for observability when the model emits an empty query.
   - Ask this Agent exposes only `search_knowledge`, `marketplace_agent_context`, and `marketplace_agent_compute` tools; generic calculator, clock, and web-search tools remain hidden for this profile.
   - `search_knowledge` is budgeted to one call per turn and hidden after it is spent, preventing repeated retrieval loops from exhausting the model request limit.
+  - `volume_sum` and other recognized dynamic metric requests get a server-owned compute turn policy that exposes only `marketplace_agent_compute`, so the model cannot answer from context fields alone.
   - The behavior policy tells the model that FAQ gaps must not be filled with unofficial generic explanations.
-  - The output guardrail replaces FAQ-gap answers that append speculative "general understanding", "reasonable inference", possible-cause, or protocol-cause explanations with a bounded PM-doc-needed response.
+  - The output guardrail replaces FAQ-gap answers that append speculative "general understanding", "reasonable inference", possible-cause, or protocol-cause explanations with a bounded PM-doc-needed response without emitting a terminal stream `ERROR`.
   - The behavior policy states the current `proxy_payload.chain_id` rule: default not forwarded to Marketplace AI; address-only routing unless a future upstream contract reintroduces `chain_id`.
   - `extract_current_agent_ref()` returns the current Agent address and intentionally omits `chain_id` by default.
 
@@ -93,8 +94,9 @@
 - Stream events for empty model-emitted retrieval queries show the effective user prompt rather than an empty query.
 - Ask this Agent live runs cannot continue into calculator/clock/web-search loops after Marketplace tools have already answered a turn.
 - Ask this Agent live runs cannot continue into repeated `search_knowledge` loops after the retrieval budget is spent.
+- Dynamic metric questions such as `volume_sum` call `marketplace_agent_compute` before answering.
 - Questions about `proxy_payload.chain_id` receive the current address-only routing rule without requiring PM FAQ coverage.
-- FAQ-gap answers do not append speculative risk-control, protocol-state, or timing explanations.
+- FAQ-gap answers do not append speculative risk-control, protocol-state, or timing explanations and do not terminate the stream as an error when replaced.
 - Marketplace Agent context/compute tools do not pass `chain_id` even when `proxy_payload` includes it.
 - Golden cases reflect the new PM FAQ source-of-truth and no longer expect invented Paused/fee formulas.
 - Focused tests, deterministic chat eval scorecard, and release gate pass.

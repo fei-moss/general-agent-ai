@@ -55,6 +55,7 @@ from app.runtime.chat_behavior import (
     detect_target_language,
     evaluate_user_message,
     is_identity_introduction_request,
+    is_marketplace_compute_request,
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
@@ -246,6 +247,10 @@ class AgentOrchestrator:
             effective_run_context = run_context or {}
             if is_identity_introduction_request(user_message):
                 effective_run_context = _with_identity_turn_policy(
+                    effective_run_context
+                )
+            elif is_marketplace_compute_request(user_message):
+                effective_run_context = _with_marketplace_compute_turn_policy(
                     effective_run_context
                 )
             return await self._execute(
@@ -597,18 +602,17 @@ class AgentOrchestrator:
         guardrail: StreamingOutputGuardrail,
         already_reported: bool,
     ) -> bool:
-        """Emit a sanitized output-guardrail ERROR once per model request."""
+        """Record a sanitized output-guardrail replacement once per model request."""
         if already_reported or not guardrail.blocked:
             return already_reported
         decision = guardrail.decision
-        await emitter.emit(
-            EventType.ERROR,
-            {
-                "stage": "output_guardrail",
-                "category": decision.category.value,
-                "reason_code": decision.reason_code,
-                "safe_response": decision.safe_response,
-            },
+        _ = emitter
+        log_with_fields(
+            logger,
+            logging.WARNING,
+            "output guardrail replaced model output",
+            category=decision.category.value,
+            reason_code=decision.reason_code,
         )
         return True
 
@@ -1003,6 +1007,22 @@ def _with_identity_turn_policy(run_context: dict[str, Any]) -> dict[str, Any]:
             "intent": "identity_introduction",
             "tool_use": "none",
             "reason": "answer assistant identity directly with the model",
+        }
+    )
+    context["turn_policy"] = turn_policy
+    return context
+
+
+def _with_marketplace_compute_turn_policy(run_context: dict[str, Any]) -> dict[str, Any]:
+    """Return a server-owned context copy for dynamic metric compute turns."""
+    context = dict(run_context)
+    existing = context.get("turn_policy")
+    turn_policy = dict(existing) if isinstance(existing, dict) else {}
+    turn_policy.update(
+        {
+            "intent": "marketplace_compute_metric",
+            "tool_use": "marketplace_compute_only",
+            "reason": "dynamic marketplace metric requires ai-compute",
         }
     )
     context["turn_policy"] = turn_policy

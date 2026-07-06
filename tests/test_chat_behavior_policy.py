@@ -14,6 +14,7 @@ from app.runtime.chat_behavior import (
     detect_target_language,
     evaluate_assistant_answer,
     evaluate_user_message,
+    is_marketplace_compute_request,
 )
 
 
@@ -72,6 +73,12 @@ def test_input_guardrail_does_not_swallow_current_agent_description_question():
 
     assert decision.action is GuardrailAction.ALLOW
     assert decision.category is GuardrailCategory.ALLOWED
+
+
+def test_marketplace_compute_request_detects_volume_sum_metric():
+    assert is_marketplace_compute_request("过去一天这个 Agent 的 volume_sum 怎么算?")
+    assert is_marketplace_compute_request("Can you use ai-compute for volume?")
+    assert not is_marketplace_compute_request("Top Holders 应该怎么看?")
 
 
 def test_detect_target_language_prefers_explicit_user_request():

@@ -185,6 +185,56 @@ async def test_ask_this_agent_hides_search_after_budget_spent():
     assert TOOL_MARKETPLACE_AGENT_COMPUTE in seen_tool_names[0]
 
 
+async def test_compute_turn_policy_exposes_only_marketplace_compute_tool():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "marketplace_compute_metric",
+                "tool_use": "marketplace_compute_only",
+            }
+        },
+    )
+
+    await agent.run("过去一天这个 Agent 的 volume_sum 怎么算?", deps=deps)
+
+    assert seen_tool_names == [[TOOL_MARKETPLACE_AGENT_COMPUTE]]
+
+
+async def test_agent_injects_compute_turn_policy_instruction():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "marketplace_compute_metric",
+                "tool_use": "marketplace_compute_only",
+            }
+        },
+    )
+
+    await agent.run("过去一天这个 Agent 的 volume_sum 怎么算?", deps=deps)
+
+    serialized = repr(seen_messages)
+    assert "marketplace_agent_compute before answering" in serialized
+    assert "volume_sum" in serialized
+
+
 async def test_agent_disables_parallel_tool_calls_by_default():
     seen_parallel_settings: list[bool | None] = []
 

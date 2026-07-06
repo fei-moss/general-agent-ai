@@ -159,7 +159,16 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         if not isinstance(turn_policy, dict):
             return ""
         if turn_policy.get("intent") != "identity_introduction":
-            return ""
+            if turn_policy.get("intent") != "marketplace_compute_metric":
+                return ""
+            return (
+                "This turn asks for a dynamic Marketplace metric. You must call"
+                " marketplace_agent_compute before answering and must not answer"
+                " this metric from marketplace_agent_context alone. For a request"
+                " about volume_sum over the past day or 24h, call"
+                " marketplace_agent_compute with queries containing metric"
+                " volume_sum and window {unit: day, value: 1}."
+            )
         return (
             "This turn is an identity or capability question. Answer directly in"
             " your own words, but follow these product identity constraints: you"
@@ -386,6 +395,13 @@ def _prepare_tools_for_turn(
     if isinstance(turn_policy, dict) and turn_policy.get("tool_use") == "none":
         return []
     tool_defs = _filter_spent_tool_budgets(ctx, tool_defs)
+    if (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("tool_use") == "marketplace_compute_only"
+    ):
+        return [
+            tool for tool in tool_defs if tool.name == TOOL_MARKETPLACE_AGENT_COMPUTE
+        ]
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
         return [tool for tool in tool_defs if tool.name in _ASK_THIS_AGENT_TOOLS]
     return tool_defs

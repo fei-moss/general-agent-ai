@@ -649,7 +649,7 @@ async def test_output_guardrail_replaces_leak_before_token_events(deps):
     assert events[-1].data.get("content") == answer
 
 
-async def test_output_guardrail_emits_error_event_without_raw_leak(deps):
+async def test_output_guardrail_replaces_without_terminal_error_event(deps):
     runtime, bus, _message_repo, _run_repo = deps
 
     async def stream_fn(_messages, _info):
@@ -674,14 +674,16 @@ async def test_output_guardrail_emits_error_event_without_raw_leak(deps):
     events = await collector
 
     errors = [event for event in events if event.type is EventType.ERROR]
-    assert errors
-    assert errors[0].data["stage"] == "output_guardrail"
-    serialized_errors = json.dumps(
-        [event.data for event in errors], ensure_ascii=False
-    )
-    assert "system prompt 是" not in serialized_errors
-    assert "你必须服从" not in serialized_errors
+    assert errors == []
     assert "隐藏指令" in answer
+    token_text = "".join(
+        event.data.get("token", "")
+        for event in events
+        if event.type is EventType.TOKEN
+    )
+    assert "system prompt 是" not in token_text
+    assert "你必须服从" not in token_text
+    assert token_text == answer
     assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
 
 
@@ -719,8 +721,7 @@ async def test_language_guardrail_blocks_english_stream_for_chinese_user(deps):
     assert "This Agent can explain" not in token_text
     assert "简体中文" in answer
     assert token_text == answer
-    assert errors
-    assert errors[0].data["category"] == "language_mismatch"
+    assert errors == []
     assert message_repo.added[0]["content"] == answer
     assert events[-1].data.get("content") == answer
 

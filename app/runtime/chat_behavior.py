@@ -343,6 +343,11 @@ _EXPLICIT_CHINESE_PATTERNS = (
     re.compile(r"中文回答"),
     re.compile(r"简体中文"),
 )
+_MARKETPLACE_COMPUTE_REQUEST_PATTERNS = (
+    re.compile(r"\bvolume_sum\b", re.I),
+    re.compile(r"\bshare[_ -]?price[_ -]?(?:change|delta)\b", re.I),
+    re.compile(r"\bai-compute\b", re.I),
+)
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 _LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
 _ZH_MISMATCH_LATIN_THRESHOLD = 16
@@ -661,6 +666,14 @@ def is_identity_introduction_request(message: str) -> bool:
     if not text:
         return False
     return any(pattern.search(text) for pattern in _IDENTITY_INTRO_PATTERNS)
+
+
+def is_marketplace_compute_request(message: str) -> bool:
+    """Return whether a turn asks for a dynamic Marketplace metric."""
+    text = str(message or "").strip()
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in _MARKETPLACE_COMPUTE_REQUEST_PATTERNS)
 
 
 def evaluate_assistant_answer(
