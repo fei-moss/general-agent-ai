@@ -368,6 +368,11 @@ _FAQ_GAP_MARKERS = (
     "未给出具体原因说明",
     "需要 pm 或平台文档",
 )
+_FAQ_GAP_EARLY_CONTEXT_TERMS = (
+    "faq",
+    "paused",
+    "redeem",
+)
 _FAQ_GAP_SPECULATION_MARKERS = (
     "一般性理解",
     "合理推断",
@@ -396,8 +401,8 @@ _FAQ_GAP_SPECULATION_REASONS = (
 )
 _UNSUPPORTED_FAQ_GAP_SAFE_RESPONSE = (
     "这个问题在当前 FAQ V1 里没有明确覆盖。\n\n"
-    "我只能按 FAQ V1 说明:相关机制的具体原因、公式或收取时机还没有被 PM 文档确认。"
-    "不能补充非官方的一般性解释或协议推断;需要 PM 或平台文档补齐后再回答。"
+    "我只能按 FAQ V1 说明：相关机制的具体原因、公式或收取时机还没有被 PM 文档确认。"
+    "不能补充非官方的一般性解释或协议推断；需要 PM 或平台文档补齐后再回答。"
 )
 
 
@@ -427,8 +432,9 @@ class StreamingOutputGuardrail:
         if self._blocked or not text:
             return None
         self._pending += text
-        self._saw_faq_gap_marker = self._saw_faq_gap_marker or _contains_any(
-            _normalize(self._pending), _FAQ_GAP_MARKERS
+        self._saw_faq_gap_marker = (
+            self._saw_faq_gap_marker
+            or _contains_faq_gap_context(self._pending)
         )
         decision = evaluate_assistant_answer(
             self._pending,
@@ -449,6 +455,8 @@ class StreamingOutputGuardrail:
                 self._language_gate_open = True
             else:
                 return None
+        if self._saw_faq_gap_marker:
+            return None
         if len(self._pending) <= self._tail_chars:
             return None
         release_len = len(self._pending) - self._tail_chars
@@ -736,12 +744,19 @@ def _contains_unsupported_faq_gap_speculation(
     value: str, *, faq_gap_context: bool = False
 ) -> bool:
     text = _normalize(value)
-    if not faq_gap_context and not _contains_any(text, _FAQ_GAP_MARKERS):
+    if not faq_gap_context and not _contains_faq_gap_context(text):
         return False
     if _contains_any(text, _FAQ_GAP_SPECULATION_MARKERS):
         return True
     return _contains_any(text, ("可能", "一般", "通常")) and _contains_any(
         text, _FAQ_GAP_SPECULATION_REASONS
+    )
+
+
+def _contains_faq_gap_context(value: str) -> bool:
+    text = _normalize(value)
+    return _contains_any(text, _FAQ_GAP_MARKERS) or all(
+        term in text for term in _FAQ_GAP_EARLY_CONTEXT_TERMS
     )
 
 

@@ -266,9 +266,9 @@ def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
     outputs = []
 
     for part in (
-        "当前 FAQ V1 未覆盖 Paused 状态不能 Redeem 的具体原因。"
-        "FAQ V1 已覆盖的 Redeem 置灰原因包括没有持有 shares 或余额不足。"
-        "下面补充足够多的安全文本,用于确保前缀释放机制已经生效。",
+        "根据目前的 FAQ 文档，关于 Agent 暂停（Paused）状态下为什么不能 Redeem，"
+        "目前的知识库没有给出完整的具体原因说明。FAQ V1 已覆盖的 Redeem 置灰"
+        "原因包括没有持有 shares 或余额不足。下面补充足够多的安全文本。",
         "### 合理推断\n基于协议设计的一般逻辑,可能原因包括资金安全保护或净值异常。",
     ):
         chunk = guardrail.push(part)
@@ -279,7 +279,9 @@ def test_streaming_output_guardrail_blocks_unsupported_faq_gap_speculation():
         outputs.append(tail)
 
     safe_text = "".join(outputs)
+    assert safe_text.startswith("这个问题在当前 FAQ V1")
     assert "PM 文档" in safe_text
+    assert "根据目前的 FAQ 文" not in safe_text
     assert "合理推断" not in safe_text
     assert "资金安全保护" not in safe_text
     assert guardrail.blocked is True
