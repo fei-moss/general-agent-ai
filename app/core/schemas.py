@@ -76,7 +76,44 @@ class ChatRequest(BaseModel):
 
     @property
     def run_context(self) -> dict[str, Any]:
-        return self.proxy_payload
+        context = dict(self.proxy_payload or {})
+        metadata = self.metadata or {}
+        agent_context = metadata.get("agent_context")
+        existing_agent = context.get("agent")
+        normalized_agent = dict(existing_agent) if isinstance(existing_agent, dict) else None
+        if isinstance(agent_context, dict):
+            normalized_agent = {**(normalized_agent or {}), **agent_context}
+        agent_address = _metadata_agent_address(metadata, normalized_agent)
+
+        if normalized_agent is not None:
+            if agent_address:
+                normalized_agent["address"] = agent_address
+            context["agent"] = normalized_agent
+        elif agent_address:
+            context["agent"] = {"address": agent_address}
+
+        if agent_address:
+            context["agent_address"] = agent_address
+        return context
+
+
+def _metadata_agent_address(
+    metadata: dict[str, Any],
+    agent_context: dict[str, Any] | None,
+) -> str | None:
+    candidates = [metadata.get("current_agent_address")]
+    if agent_context is not None:
+        candidates.extend(
+            [
+                agent_context.get("agent_address"),
+                agent_context.get("contract_address"),
+            ]
+        )
+    for candidate in candidates:
+        address = str(candidate or "").strip()
+        if address:
+            return address
+    return None
 
 
 class ChatAccepted(BaseModel):

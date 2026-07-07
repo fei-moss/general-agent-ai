@@ -130,8 +130,8 @@ X-RateLimit-Remaining: 0
 | `message` | string | ✅ | — | 用户消息(非空) |
 | `conversation_id` | string \| null | ❌ | null | 续接已有会话;不传则**自动新建** |
 | `stream` | boolean | ❌ | `true` | 兼容字段;省略或传 `true`;`false` 会返回 422 |
-| `metadata` | object | ❌ | `{}` | 透传元数据(当前预留,后端暂未消费) |
-| `proxy_payload` | object | ❌ | `{}` | 上游代理注入的当前页面/Agent 上下文;会归一化为运行上下文 |
+| `metadata` | object | ❌ | `{}` | 透传元数据;`agent_context` / `current_agent_address` 会归一化为当前 Agent 运行上下文 |
+| `proxy_payload` | object | ❌ | `{}` | 上游代理注入的泛用页面上下文;会归一化为运行上下文 |
 
 ```json
 {
@@ -148,15 +148,23 @@ X-RateLimit-Remaining: 0
 {
   "message": "这个 Agent 支持哪条链？24 小时交易量是多少？",
   "stream": true,
-  "proxy_payload": {
-    "marketplace_agent": {
-      "address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
-    }
+  "metadata": {
+    "agent_context": {
+      "agent_address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043",
+      "contract_address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043",
+      "agent_id": "#1053",
+      "protocol": "Agent"
+    },
+    "current_agent_address": "0x17B09FC949f031dbD540D4caDE59805A08Ee5043",
+    "page_context": "agent_detail",
+    "mode": "realtime",
+    "task_type": "chat"
   }
 }
 ```
 
-`proxy_payload` 是唯一对外上下文字段。请求体里不要传 `run_context`;传入时会返回 422。
+当前 Agent 地址从 `metadata.current_agent_address` / `metadata.agent_context` 派生,不需要放进
+`proxy_payload`。请求体里不要传 `run_context`;传入时会返回 422。
 Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
 
 #### 响应: **202 Accepted**(`ChatAccepted`)

@@ -175,12 +175,17 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
   "stream": true,
   "metadata": {
     "mode": "auto | realtime | batch",
-    "task_type": "chat | file_analysis | slow_tool | batch"
+    "task_type": "chat | file_analysis | slow_tool | batch",
+    "agent_context": {
+      "agent_address": "可选；当前 Agent 合约地址",
+      "contract_address": "可选；当前 Agent 合约地址",
+      "agent_id": "可选；页面展示的 Agent ID"
+    },
+    "current_agent_address": "可选；当前 Agent 合约地址，优先于 agent_context 内地址",
+    "page_context": "可选；例如 agent_detail"
   },
   "proxy_payload": {
-    "marketplace_agent": {
-      "address": "可选；当前 Agent 合约地址"
-    }
+    "user_address": "可选；当前用户钱包或页面上下文"
   }
 }
 ```
@@ -189,9 +194,11 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
 `RAG_DEFAULT_KNOWLEDGE_BASE_ID` 决定是否在 Agent 运行中检索内部知识库；
 默认情况下客户端传入的 `knowledge_base_id` 会被忽略。
 
-上游代理或页面服务需要提供当前 Agent 上下文时,请使用 `proxy_payload`。
-`run_context` 不再作为对外请求字段兼容。`proxy_payload` 必须是合法 JSON 对象,
-示例中不能包含 `//` 注释。
+上游代理或页面服务需要提供当前 Agent 上下文时,请使用
+`metadata.agent_context` / `metadata.current_agent_address`。服务端会把这些可信页面字段
+归一化为内部 `run_context.agent_address` 和 `run_context.agent`。泛用页面上下文仍可放在
+`proxy_payload`。`run_context` 不再作为对外请求字段兼容。`proxy_payload` 必须是合法
+JSON 对象,示例中不能包含 `//` 注释。
 
 响应是 HTTP `202`：
 

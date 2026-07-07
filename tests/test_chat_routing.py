@@ -78,6 +78,69 @@ def test_chat_request_accepts_proxy_payload_as_upstream_context():
     assert body.run_context["marketplace_agent"]["address"].startswith("0x17")
 
 
+def test_chat_request_projects_metadata_agent_context_to_run_context():
+    body = ChatRequest(
+        message="hello",
+        metadata={
+            "agent_context": {
+                "agent_address": "0x5d277412d92f7c77eFd938325Dc43aA9c32bF036",
+                "agent_id": "#1053",
+                "contract_address": "0x5d277412d92f7c77eFd938325Dc43aA9c32bF036",
+                "description": "1111",
+                "protocol": "Agent",
+            },
+            "current_agent_address": "0x5d277412d92f7c77eFd938325Dc43aA9c32bF036",
+            "page_context": "agent_detail",
+            "mode": "realtime",
+            "task_type": "chat",
+        },
+    )
+
+    assert body.proxy_payload == {}
+    assert body.run_context["agent_address"] == "0x5d277412d92f7c77eFd938325Dc43aA9c32bF036"
+    assert body.run_context["agent"]["address"] == "0x5d277412d92f7c77eFd938325Dc43aA9c32bF036"
+    assert body.run_context["agent"]["agent_id"] == "#1053"
+    assert body.run_context["agent"]["protocol"] == "Agent"
+
+
+def test_chat_request_prefers_current_agent_address_over_agent_context_address():
+    body = ChatRequest(
+        message="hello",
+        metadata={
+            "agent_context": {
+                "agent_address": "0x1111111111111111111111111111111111111111",
+                "contract_address": "0x2222222222222222222222222222222222222222",
+            },
+            "current_agent_address": "0x3333333333333333333333333333333333333333",
+        },
+        proxy_payload={"user_address": "0x4444444444444444444444444444444444444444"},
+    )
+
+    assert body.run_context["agent_address"] == "0x3333333333333333333333333333333333333333"
+    assert body.run_context["agent"]["address"] == "0x3333333333333333333333333333333333333333"
+    assert body.run_context["agent"]["agent_address"] == "0x1111111111111111111111111111111111111111"
+    assert body.run_context["user_address"] == "0x4444444444444444444444444444444444444444"
+
+
+def test_chat_request_preserves_existing_proxy_agent_fields_when_metadata_sets_address():
+    body = ChatRequest(
+        message="hello",
+        metadata={
+            "current_agent_address": "0x3333333333333333333333333333333333333333",
+        },
+        proxy_payload={
+            "agent": {
+                "address": "0x1111111111111111111111111111111111111111",
+                "display_name": "Legacy Agent",
+            }
+        },
+    )
+
+    assert body.run_context["agent_address"] == "0x3333333333333333333333333333333333333333"
+    assert body.run_context["agent"]["address"] == "0x3333333333333333333333333333333333333333"
+    assert body.run_context["agent"]["display_name"] == "Legacy Agent"
+
+
 def test_chat_request_rejects_run_context_request_field():
     with pytest.raises(ValidationError):
         ChatRequest(
