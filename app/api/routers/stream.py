@@ -25,7 +25,9 @@ from fastapi import (
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import CurrentUser, ReposDep, get_event_bus
+from app.api.identity import IdentityResolutionError, resolve_websocket_identity
 from app.api.repos import Repos
+from app.core.config import get_settings
 from app.core.events import AgentEvent, EventType
 from app.core.ids import new_trace_id
 from app.core.interfaces import EventBus
@@ -36,8 +38,6 @@ from app.db.session import async_session_factory
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["stream"])
-_URL_USER_QUERY = "user_uuid"
-_MAX_USER_ID_LENGTH = 64
 
 # 终止事件:收到后结束流
 _TERMINAL_TYPES = {EventType.RUN_COMPLETED, EventType.ERROR}
@@ -86,10 +86,19 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
     if bus is None:
         await websocket.close(code=1011, reason="事件总线未就绪")
         return
-    user_id = _ws_user_id(websocket)
-    if not user_id:
-        await websocket.close(code=1008, reason="缺少鉴权凭证")
+    try:
+        identity = resolve_websocket_identity(
+            websocket, get_settings().marketplace_identity_mode
+        )
+    except IdentityResolutionError as exc:
+        reason = (
+            "缺少 Marketplace 身份"
+            if exc.status_code == 401
+            else "Marketplace 身份无效"
+        )
+        await websocket.close(code=1008, reason=reason)
         return
+    user_id = identity.owner_id
     async with async_session_factory() as session:
         repos = Repos(session)
         try:
@@ -107,29 +116,11 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
 
 
 def _ws_user_id(websocket: WebSocket) -> str | None:
-    """WebSocket 轻量鉴权:优先从 URL user_uuid 提取 user id。"""
-    user_uuid = websocket.query_params.get(_URL_USER_QUERY)
-    if user_uuid is not None:
-        stripped = user_uuid.strip()
-        if stripped and len(stripped) <= _MAX_USER_ID_LENGTH:
-            return stripped
+    """Compatibility helper used by focused legacy tests."""
+    try:
+        return resolve_websocket_identity(websocket, "legacy-compatible").owner_id
+    except IdentityResolutionError:
         return None
-    token = websocket.query_params.get("token")
-    if token and token.strip() and len(token.strip()) <= _MAX_USER_ID_LENGTH:
-        return token.strip()
-    auth = websocket.headers.get("authorization")
-    if auth:
-        candidate = auth.removeprefix("Bearer ").strip()
-        if candidate and len(candidate) <= _MAX_USER_ID_LENGTH:
-            return candidate
-        return None
-    api_key = websocket.headers.get("x-api-key")
-    if api_key:
-        candidate = api_key.strip()
-        if candidate and len(candidate) <= _MAX_USER_ID_LENGTH:
-            return candidate
-        return None
-    return None
 
 
 async def _pump_ws(
