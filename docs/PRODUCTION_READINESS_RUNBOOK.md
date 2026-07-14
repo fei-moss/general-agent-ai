@@ -7,8 +7,8 @@
 
 ## Current Request Flow
 
-1. Client calls `POST /chat` with Authorization or `X-API-Key`.
-2. FastAPI validates body, trace id, idempotency, user ownership, user rate limit, and provider preflight.
+1. Client authenticates with Marketplace; Marketplace resolves trusted account id + wallet and proxies `POST /chat` with dedicated identity headers and reserved payload.
+2. FastAPI validates header/body identity equality, trace id, idempotency, wallet ownership, wallet rate limit, and provider preflight.
 3. The API creates or reuses a conversation, writes the user message, creates `agent_run`, and routes to realtime or batch.
 4. Realtime route runs in `RealtimeRunner`; batch route enqueues Celery.
 5. `AgentOrchestrator` loads history, checks provider/model quota, runs Pydantic AI, calls tools/RAG when selected, and sends model calls to Z.AI GLM-5.2.
@@ -16,6 +16,19 @@
 7. Events are written to Redis Stream and forwarded through SSE/WS. `Last-Event-ID` replays missed events while retained.
 8. Final assistant answer and run status are persisted to Postgres.
 9. Reaper scans stale queued/running work and requeues or fails it.
+
+## Marketplace Production Identity Boundary
+
+- Set `MARKETPLACE_IDENTITY_MODE=marketplace`; legacy URL `user_uuid`, Bearer, API key,
+  query token, and partial Marketplace headers must be rejected.
+- Place Chat Server on a 私有网络 reachable by Marketplace only, and 禁止公开 Chat ingress,
+  public domain, or direct browser reachability.
+- Development DockerHost may remain public with `legacy-compatible`; this is an accepted
+  development exception and plain headers on that URL are not authentication proof.
+- The approved design does not add a second signed token, HMAC, mTLS, or encryption layer;
+  不引入服务凭证。Production trust is enforced by network reachability.
+- Release evidence must include both a Marketplace-to-Chat 正向 smoke and an
+  外部负向可达性 smoke proving the Chat endpoint cannot be reached outside the private path.
 
 ## DockerHost Deploy
 
@@ -42,6 +55,7 @@ export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=1024
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
+export MARKETPLACE_IDENTITY_MODE=marketplace
 
 envctl up \
   --name chris-general-agent-ai-chat \
@@ -72,21 +86,35 @@ curl -fsS "$BASE_URL/metrics" | head
 
 ## Smoke Checks
 
-Set `AUTH_HEADER` to the smoke identity header before running chat and stream checks.
+Set a valid smoke account and wallet before running the internal Marketplace-to-Chat smoke.
 
 ```bash
+export MARKETPLACE_USER_ID=marketplace:user:123
+export MARKETPLACE_WALLET=0x1111111111111111111111111111111111111111
+
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H "$AUTH_HEADER" \
-  -d '{"message":"用一句话回答: GLM-5.2 是否连通?","stream":true,"metadata":{"mode":"realtime"}}'
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
+  -d '{"message":"用一句话回答: GLM-5.2 是否连通?","stream":true,"metadata":{"mode":"realtime"},"proxy_payload":{"marketplace_identity":{"user_id":"marketplace:user:123","wallet_address":"0x1111111111111111111111111111111111111111"},"user_address":"0x1111111111111111111111111111111111111111","wallet_address":"0x1111111111111111111111111111111111111111"}}'
 ```
 
 Use the returned `stream_url`:
 
 ```bash
-curl -N -H "$AUTH_HEADER" "$BASE_URL/stream/<run_id>"
-curl -fsS -H "$AUTH_HEADER" "$BASE_URL/runs/<run_id>"
+curl -N \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
+  "$BASE_URL/stream/<run_id>"
+curl -fsS \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
+  "$BASE_URL/runs/<run_id>"
 ```
+
+Before promotion, run the same request through Marketplace and verify the returned owner-scoped
+conversation/run. From an external host, the direct Chat address must fail DNS, routing, or ingress;
+an application `401` from a publicly reachable Chat endpoint does not satisfy the negative smoke.
 
 RAG smoke:
 
@@ -139,7 +167,7 @@ Record p95 TTFT, error rate, and `/metrics` output in release notes.
 
 ## Residual Risks Before Full Production
 
-- Formal auth/tenant/API-key integration is intentionally pending.
+- Marketplace authentication is authoritative; private Chat network isolation remains a deployment gate.
 - Managed dashboards and alert rules still need to be wired to the `/metrics` surface.
 - Final capacity targets require a real quota-informed load test.
 - Realtime runs are not durable mid-agent graph resumes; crashes are recovered by failing/retrying at run level.

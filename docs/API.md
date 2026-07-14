@@ -8,7 +8,9 @@
 这是一个**异步 Agent 平台**,不是同步问答接口。一次对话的生命周期:
 
 ```
-POST /chat?user_uuid=<user_uuid> ──202──▶ 返回 agent_run_id + stream_url
+Marketplace 前端 ──▶ Marketplace 网关 ──POST /chat──▶ Chat Server
+                                             │
+                                             └─ 注入可信 account + wallet
                          │
                          ▼
             订阅 SSE / WebSocket 实时事件流
@@ -29,23 +31,32 @@ http://localhost:8000        # 本地默认,按部署环境替换
 ```
 
 ### 身份(业务端点必需)
-Marketplace-facing chat-flow 使用 URL-derived identity,把稳定、短的内部用户
-ID 放在 query 参数里:
+
+Marketplace 是公开登录态和 JWT 的唯一校验边界。它解析登录用户后,向 Chat Server
+的所有业务请求注入:
 
 ```http
-?user_uuid=<user_uuid>
+X-Marketplace-User-ID: marketplace:user:123
+X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
 ```
 
 规则:
 
-- `POST /chat`、`/stream/*`、`/ws/*` 和 `/runs/*` 都优先从 URL
-  `user_uuid` 取内部 `user_id`。
-- Marketplace chat-flow 调用应传 `user_uuid`;值必须非空,并且不能超过 64 个字符。
-- 不要把原始 JWT、session token 或钱包私钥作为 `user_uuid` 或 legacy
-  header user id 传给 Chat Server。
+- `X-Marketplace-User-ID` 必须匹配 `marketplace:user:<正整数>`,最长 64 字符。
+- `X-Marketplace-Wallet` 必须是 EVM 地址;Chat Server 归一化为小写,并把它作为
+  conversation、run、stream、幂等与限流的 owner。
+- `POST /chat` 还必须携带与请求头一致的保留 `proxy_payload.marketplace_identity`;
+  wallet alias 出现时也必须一致。
+- Marketplace 不再生成 URL `user_uuid`,也不把前端 Authorization 原样传给 Chat。
 - `/api/v1/chat*` 不是本项目的接口契约。
 
-Legacy/internal 路径仍支持请求头身份:
+生产使用 `MARKETPLACE_IDENTITY_MODE=marketplace`,仅接受上述专用头。部署在批准的
+私有网络内,按当前设计不需要内部服务凭证、签名或应用层加密。
+
+#### Legacy 直调(仅限开发)
+
+开发环境可使用 `MARKETPLACE_IDENTITY_MODE=legacy-compatible`,继续接受 URL
+`user_uuid`(chat-flow)或以下请求头:
 
 ```
 Authorization: Bearer <token>
@@ -53,8 +64,8 @@ Authorization: Bearer <token>
 X-API-Key: <key>
 ```
 
-> Demo 模式:`token`/`key` 或 `user_uuid` 的**值本身被当作 user_id**。
-> 值必须是上游认证后生成的短内部 ID,不能是长 JWT。
+> 这些值会被直接当作 owner,只适合本地/公开 DockerHost 联调。公开开发地址上的
+> plain Marketplace headers 也不构成密码学证明,不得当成生产安全边界。
 
 豁免鉴权的公开路径:`/healthz`、`/readyz`、`/docs`、`/redoc`、`/openapi.json`。
 
@@ -64,11 +75,11 @@ X-API-Key: <key>
 
 ### CORS
 后端开启宽松 CORS(`allow_origins: *`),前端可跨域直连(生产会收敛)。
-浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的
-`POST /chat` Marketplace 调用必须携带 URL `user_uuid`。
+浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理。生产前端只调用
+Marketplace;Marketplace 到 Chat 的代理请求携带专用身份头。
 
 ### 限流
-仅对 `POST /chat` 限流(按 user_id 滑动窗口,
+仅对 `POST /chat` 限流(按可信 wallet owner 滑动窗口,
 默认 **60 次/分钟**)。超限返回 **429**:
 ```
 HTTP 429
@@ -88,7 +99,7 @@ X-RateLimit-Remaining: 0
 | 401 | 缺少/无效身份凭证 |
 | 403 | 无权访问该资源(会话归属不符) |
 | 404 | 资源不存在 |
-| 422 | 请求体校验失败(如 message 为空、`stream:false`、`user_uuid` 超长) |
+| 422 | 请求体或 Marketplace header/body 身份校验失败 |
 | 429 | 触发限流 |
 | 503 | 任务队列 / 依赖未就绪 |
 
@@ -98,13 +109,11 @@ X-RateLimit-Remaining: 0
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| POST | `/chat?user_uuid=...` | Marketplace 提交一次对话(核心) | URL `user_uuid` |
-| GET  | `/runs/{agent_run_id}?user_uuid=...` | Marketplace 查询运行状态 | URL `user_uuid` |
-| GET  | `/stream/{agent_run_id}?user_uuid=...` | Marketplace SSE 事件流 | URL `user_uuid` |
-| WS   | `/ws/{agent_run_id}?user_uuid=...` | Marketplace WebSocket 事件流 | URL `user_uuid` |
-| POST | `/chat` | Legacy/internal 提交一次对话 | Header |
-| GET  | `/stream/{agent_run_id}` | Legacy/internal SSE 事件流 | Header* |
-| WS   | `/ws/{agent_run_id}` | Legacy/internal WebSocket 事件流 | query token/header |
+| POST | `/chat` | Marketplace 提交一次对话(核心) | Marketplace 专用头 + reserved payload |
+| GET  | `/runs/{agent_run_id}` | Marketplace 查询运行状态 | Marketplace 专用头 |
+| GET  | `/stream/{agent_run_id}` | Marketplace SSE 事件流 | Marketplace 专用头 |
+| WS   | `/ws/{agent_run_id}` | Marketplace WebSocket 事件流 | Marketplace 专用头 |
+| POST | `/chat?user_uuid=...` | Legacy 开发直调 | 仅 `legacy-compatible` |
 | GET  | `/runs/{agent_run_id}` | 查询运行状态 | ✅ |
 | POST | `/conversations` | 创建会话 | ✅ |
 | GET  | `/conversations/{id}` | 会话详情(含消息) | ✅ |
@@ -119,9 +128,15 @@ X-RateLimit-Remaining: 0
 
 ### 3.1 POST /chat — Marketplace 提交对话(核心)
 
-**URL**:`/chat?user_uuid=<user_uuid>`
+**URL**:`/chat`
 
-**请求头**:`Content-Type: application/json`
+**请求头**:
+
+```http
+Content-Type: application/json
+X-Marketplace-User-ID: marketplace:user:123
+X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
+```
 
 **请求体** `ChatRequest`:
 
@@ -131,16 +146,27 @@ X-RateLimit-Remaining: 0
 | `conversation_id` | string \| null | ❌ | null | 续接已有会话;不传则**自动新建** |
 | `stream` | boolean | ❌ | `true` | 兼容字段;省略或传 `true`;`false` 会返回 422 |
 | `metadata` | object | ❌ | `{}` | 透传元数据;`agent_context` / `current_agent_address` 会归一化为当前 Agent 运行上下文 |
-| `proxy_payload` | object | ❌ | `{}` | 上游代理注入的泛用页面上下文;会归一化为运行上下文 |
+| `proxy_payload` | object | ✅* | `{}` | Marketplace 注入的运行上下文;Marketplace flow 必须含 reserved identity |
 
 ```json
 {
   "message": "帮我算一下 (123+456)*7 等于多少",
   "conversation_id": null,
   "stream": true,
-  "proxy_payload": {}
+  "proxy_payload": {
+    "marketplace_identity": {
+      "user_id": "marketplace:user:123",
+      "wallet_address": "0x1111111111111111111111111111111111111111"
+    },
+    "user_address": "0x1111111111111111111111111111111111111111",
+    "wallet_address": "0x1111111111111111111111111111111111111111"
+  }
 }
 ```
+
+`marketplace_identity` 是 Marketplace 独占写入的保留命名空间。缺失或畸形返回
+`422 MARKETPLACE_IDENTITY_INVALID`;与专用头或 wallet alias 冲突返回
+`422 MARKETPLACE_IDENTITY_MISMATCH`。前端无需新增这些字段,由 Marketplace 网关覆盖注入。
 
 当前 Agent 页面接入示例:
 
@@ -165,7 +191,7 @@ X-RateLimit-Remaining: 0
 
 当前 Agent 地址从 `metadata.current_agent_address` / `metadata.agent_context` 派生,不需要放进
 `proxy_payload`。请求体里不要传 `run_context`;传入时会返回 422。
-Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
+Legacy caller 仅可在开发 `legacy-compatible` 模式临时使用 query/header identity。
 
 #### 响应: **202 Accepted**(`ChatAccepted`)
 
@@ -175,8 +201,8 @@ Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/stream/run_xxx?user_uuid=alice.internal",
-  "ws_url": "/ws/run_xxx?user_uuid=alice.internal"
+  "stream_url": "/stream/run_xxx",
+  "ws_url": "/ws/run_xxx"
 }
 ```
 > 拿到 `agent_run_id` 后,立刻用 `stream_url` 订阅 SSE,或 `ws_url` 连 WebSocket。
@@ -191,7 +217,7 @@ Legacy/internal caller 仍可临时使用 `POST /chat` + short header user id。
 ```
 
 脚本场景如果不想渲染逐 token，也应该订阅到 `RUN_COMPLETED`，或轮询
-`GET /runs/{agent_run_id}?user_uuid=...` 后读取
+携带同一组 Marketplace 专用头调用 `GET /runs/{agent_run_id}` 后读取
 `GET /conversations/{conversation_id}` 的消息历史。
 
 ---
@@ -251,36 +277,56 @@ data: {"event_id":"evt_x","agent_run_id":"run_x","type":"TOKEN","seq":9,"ts":178
 
 - 每帧是一条 `AgentEvent` 的 **JSON 字符串**(注意:**不带** SSE 的 `event:`/`id:` 包装,直接 `JSON.parse(frame)`)。
 - 收到终止事件后服务端关闭连接。
-- **鉴权**:浏览器 WebSocket 不能设自定义头,用 **query token**:
+- **Marketplace 鉴权**:Marketplace 的 WebSocket 代理在握手时注入两项专用头。
+- **Legacy 开发直调**:浏览器 WebSocket 不能设自定义头时,可在
+  `legacy-compatible` 模式使用 query token:
   ```
   ws://localhost:8000/ws/run_xxx?token=<你的token>
   ```
 
 ---
 
-## 5. 前端集成示例
+## 5. Marketplace 代理集成示例
 
-### 5.1 提交 + SSE(推荐:fetch-based SSE,可带鉴权头)
+前端接口不变:浏览器只携带 Marketplace 登录态调用 Marketplace,不会直接构造
+Chat Server 身份字段。以下代码表示 Marketplace 服务端到 Chat Server 的内部调用。
+
+### 5.1 提交 + SSE
 
 浏览器原生 `EventSource` **无法设置请求头**,而 `/stream` 需要鉴权头,故推荐用 [`@microsoft/fetch-event-source`](https://www.npmjs.com/package/@microsoft/fetch-event-source):
 
 ```ts
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
-const USER_UUID = 'demo-user-1';
 const BASE = 'http://localhost:8000';
+const MARKETPLACE_HEADERS = {
+  'X-Marketplace-User-ID': 'marketplace:user:123',
+  'X-Marketplace-Wallet': '0x1111111111111111111111111111111111111111',
+};
 
 // 1) 提交对话
-const res = await fetch(`${BASE}/chat?user_uuid=${encodeURIComponent(USER_UUID)}`, {
+const res = await fetch(`${BASE}/chat`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ message: '帮我算一下 (123+456)*7', stream: true }),
+  headers: { 'Content-Type': 'application/json', ...MARKETPLACE_HEADERS },
+  body: JSON.stringify({
+    message: '帮我算一下 (123+456)*7',
+    stream: true,
+    proxy_payload: {
+      marketplace_identity: {
+        user_id: 'marketplace:user:123',
+        wallet_address: '0x1111111111111111111111111111111111111111',
+      },
+      user_address: '0x1111111111111111111111111111111111111111',
+      wallet_address: '0x1111111111111111111111111111111111111111',
+    },
+  }),
 });
 const { agent_run_id, stream_url } = await res.json();
 
 // 2) 订阅事件流,拼接 TOKEN
 let answer = '';
 await fetchEventSource(`${BASE}${stream_url}`, {
+  headers: MARKETPLACE_HEADERS,
   onmessage(ev) {
     const evt = JSON.parse(ev.data);            // AgentEvent
     switch (evt.type) {
@@ -301,9 +347,8 @@ await fetchEventSource(`${BASE}${stream_url}`, {
 ### 5.2 WebSocket
 
 ```ts
-const ws = new WebSocket(
-  `ws://localhost:8000/ws/${agent_run_id}?user_uuid=${encodeURIComponent(USER_UUID)}`
-);
+// Marketplace 的服务端 WebSocket 代理负责向握手注入 MARKETPLACE_HEADERS。
+const ws = marketplaceWebSocketProxy(`/ws/${agent_run_id}`, MARKETPLACE_HEADERS);
 let answer = '';
 ws.onmessage = (e) => {
   const evt = JSON.parse(e.data);               // 直接是 AgentEvent
@@ -316,9 +361,11 @@ ws.onmessage = (e) => {
 
 | 通道 | 浏览器能否设鉴权 | 方案 |
 |------|------------------|------|
-| 原生 `EventSource` | 不需要 header | 使用返回的 `stream_url`,其中已带 `user_uuid` |
-| WebSocket | 不需要 header | 使用返回的 `ws_url`,其中已带 `user_uuid` |
-| `fetch`(普通 REST) | 不需要身份 header | `POST /chat?user_uuid=...` |
+| 原生 `EventSource` | 不能设自定义 header | 由 Marketplace 代理 SSE 并注入专用头 |
+| WebSocket | 浏览器不能设自定义 header | 由 Marketplace 代理握手并注入专用头 |
+| `fetch`(普通 REST) | 可以 | Marketplace 服务端注入专用头;前端不注入 |
+
+仅限开发直连时,可启用 `legacy-compatible` 并继续使用 `user_uuid`/query token。
 
 ---
 
