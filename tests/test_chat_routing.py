@@ -507,6 +507,9 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
             }
 
     class _Repos:
+        async def get_conversation(self, conversation_id):
+            return SimpleNamespace(id=conversation_id, user_id="user-1")
+
         async def get_idempotency_record(self, user_id, idempotency_key):
             return None
 
@@ -528,12 +531,12 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
     )
 
     response = await chat.create_chat(
-            ChatRequest(
-                message="hello",
-                conversation_id="conv-1",
-                metadata={"mode": "realtime"},
-                proxy_payload={"tenant": "alpha"},
-            ),
+        ChatRequest(
+            message="hello",
+            conversation_id="conv-1",
+            metadata={"mode": "realtime"},
+            proxy_payload={"tenant": "alpha"},
+        ),
         request,
         "user-1",
         _Repos(),

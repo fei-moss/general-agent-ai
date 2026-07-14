@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import UniqueConstraint
 
-from app.api.repos import Repos
+from app.api.repos import ConversationOwnershipError, Repos
 from app.core.enums import RunStatus
-from app.core.models import IdempotencyRecord, Message, ToolCallLog
+from app.core.models import Conversation, IdempotencyRecord, Message, ToolCallLog
 from app.core.schemas import ChatAccepted
 
 
@@ -87,3 +88,31 @@ async def test_api_repos_ensure_conversation_creates_with_requested_id():
 
     assert conversation.id == "conv_requested"
     assert await repos.get_conversation("conv_requested") is conversation
+
+
+@pytest.mark.parametrize("existing_owner", ["user-other", None])
+async def test_api_repos_ensure_conversation_rejects_foreign_or_null_owner(
+    existing_owner: str | None,
+):
+    session = _MemorySession()
+    conversation = Conversation(
+        id="conv_existing", user_id=existing_owner, title=None
+    )
+    session.rows[conversation.id] = conversation
+    repos = Repos(session)
+
+    with pytest.raises(ConversationOwnershipError):
+        await repos.ensure_conversation("conv_existing", "user-caller")
+
+
+async def test_api_repos_ensure_conversation_reuses_same_owner():
+    session = _MemorySession()
+    conversation = Conversation(
+        id="conv_existing", user_id="user-caller", title=None
+    )
+    session.rows[conversation.id] = conversation
+    repos = Repos(session)
+
+    reused = await repos.ensure_conversation("conv_existing", "user-caller")
+
+    assert reused is conversation

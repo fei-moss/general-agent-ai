@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from app.api.deps import CurrentUser, ReposDep
 from app.api.identity import ResolvedIdentity
 from app.api.idempotency import chat_request_hash
+from app.api.repos import ConversationOwnershipError
 from app.api.runner_gateway import (
     RunnerUnavailableError,
     enqueue_run,
@@ -80,6 +81,7 @@ async def create_chat(
     _validate_message(body.message)
     _validate_async_only(body.stream)
     _validate_marketplace_runtime_context(body, request)
+    await _assert_explicit_conversation_owner(body, user, repos)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
@@ -133,13 +135,6 @@ async def create_chat(
     capacity_slot: RealtimeCapacitySlot | None = None
     try:
         if route_type == "realtime":
-            if body.conversation_id:
-                existing_conversation = await repos.get_conversation(body.conversation_id)
-                if existing_conversation is not None and existing_conversation.user_id != user:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="无权访问该会话",
-                    )
             runner = _get_realtime_runner(request)
             capacity_slot = runner.try_acquire_capacity()
             if capacity_slot is None:
@@ -156,7 +151,13 @@ async def create_chat(
                     detail="CONVERSATION_BUSY",
                 )
 
-        conversation = await repos.ensure_conversation(conversation_id, user)
+        try:
+            conversation = await repos.ensure_conversation(conversation_id, user)
+        except ConversationOwnershipError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权访问该会话",
+            ) from exc
         await repos.add_message(
             conversation_id=conversation.id,
             role=MessageRole.USER,
@@ -270,6 +271,20 @@ def _anchor_payload(body: ChatRequest) -> dict[str, str] | None:
     if body.conversation_anchor is None:
         return None
     return body.conversation_anchor.model_dump()
+
+
+async def _assert_explicit_conversation_owner(
+    body: ChatRequest, user_id: str, repos: ReposDep
+) -> None:
+    """Reject an existing foreign/null-owner conversation before side effects."""
+    if not body.conversation_id:
+        return
+    conversation = await repos.get_conversation(body.conversation_id)
+    if conversation is not None and conversation.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问该会话",
+        )
 
 
 def _validate_marketplace_runtime_context(

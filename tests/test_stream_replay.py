@@ -73,6 +73,32 @@ async def test_stream_owner_mismatch_raises_403():
     assert exc.value.status_code == 403
 
 
+@pytest.mark.parametrize(
+    ("conversation", "status_code"),
+    [
+        (None, 404),
+        (SimpleNamespace(user_id=None), 403),
+        (SimpleNamespace(user_id="owner-1"), 403),
+    ],
+)
+async def test_stream_owner_check_fails_closed_for_missing_null_or_other_owner(
+    conversation, status_code: int
+):
+    from app.api.routers.stream import _assert_run_owner
+
+    class _Repos:
+        async def get_run(self, run_id):
+            return SimpleNamespace(conversation_id="conv-1")
+
+        async def get_conversation(self, conversation_id):
+            return conversation
+
+    with pytest.raises(HTTPException) as exc:
+        await _assert_run_owner("run-1", "caller", _Repos())
+
+    assert exc.value.status_code == status_code
+
+
 def test_websocket_identity_prefers_url_user_uuid_on_existing_ws_route():
     from app.api.routers.stream import _ws_user_id
 

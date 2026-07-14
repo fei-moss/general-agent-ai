@@ -26,6 +26,10 @@ from app.core.models import (
 )
 
 
+class ConversationOwnershipError(PermissionError):
+    """An existing conversation cannot be reused by the requested owner."""
+
+
 class Repos:
     """请求级仓储聚合,封装会话级数据访问。"""
 
@@ -91,6 +95,8 @@ class Repos:
         if conversation_id:
             existing = await self.get_conversation(conversation_id)
             if existing is not None:
+                if existing.user_id is None or existing.user_id != user_id:
+                    raise ConversationOwnershipError(conversation_id)
                 return existing
         return await self.create_conversation(
             user_id=user_id,

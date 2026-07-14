@@ -206,7 +206,7 @@ async def _assert_run_owner(agent_run_id: str, user_id: str, repos: Repos) -> No
             detail="会话不存在",
         )
     owner = getattr(conversation, "user_id", None)
-    if owner is not None and owner != user_id:
+    if owner != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="无权订阅该运行",
