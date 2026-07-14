@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Marketplace-injected account/wallet context authoritative across Chat creation, conversations, runs, SSE, WebSocket, idempotency, anchors, rate limiting, and task execution while retaining a development-only legacy compatibility mode.
+**Goal:** Make Marketplace-injected account/wallet context mandatory and authoritative across Chat creation, conversations, runs, SSE, WebSocket, idempotency, anchors, rate limiting, and task execution in every environment.
 
-**Architecture:** A focused identity module validates dedicated Marketplace headers and resolves either trusted Marketplace identity or legacy development identity according to one deployment setting. Middleware stores wallet owner plus account context in request state; `POST /chat` validates the reserved body identity against headers; repository and router owner checks fail closed before any route-specific side effect.
+**Architecture:** A focused identity module validates the two dedicated Marketplace headers with no user-facing Chat fallback or deployment mode switch. Middleware stores wallet owner plus account context in request state; `POST /chat` validates the reserved body identity against headers; repository and router owner checks fail closed before any route-specific side effect. The existing `/rag/*` internal-admin identity contract is independent and out of scope.
 
 **Tech Stack:** Python 3.11+, FastAPI/Starlette, Pydantic v2 settings and schemas, SQLAlchemy async repositories, pytest/httpx, SSE/WebSocket routes, DockerHost Compose adapter, repository Harness scripts.
 
@@ -15,8 +15,10 @@
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`.
 - Target branch/baseline: `chris/marketplace-trusted-chat-context` from `origin/codex/zai-glm52-dockerhost` at `176745bc036ada7f1951dd1170463b456ca248f4`.
 - `X-Marketplace-User-ID` and `X-Marketplace-Wallet` are plain upstream context, not cryptographic proof.
-- Default development mode is `legacy-compatible`; production requires `marketplace`, private reachability, and no public Chat ingress.
+- Development and production use the same mandatory Marketplace identity contract; production additionally requires private reachability and no public Chat ingress.
 - No service JWT, HMAC, mTLS, encryption envelope, schema migration, frontend route change, or event-shape change.
+- No direct or partially migrated user-facing Chat callers exist; URL `user_uuid`, raw Bearer/API-key identity, and WS query token compatibility are removed without a migration period.
+- The independent `/rag/*` internal-admin authentication contract is unchanged.
 - Existing Marketplace-created wallet owners remain readable without backfill.
 - Owner validation happens before idempotency claim, provider preflight, capacity reservation, locks, persistence, queue dispatch, or realtime dispatch.
 - AI boundary approval is recorded by the owner for runtime/API/config changes; verification still runs with `AI_BOUNDARY_APPROVED=1` where required.
@@ -40,29 +42,29 @@
   @dataclass(frozen=True, slots=True)
   class ResolvedIdentity:
       owner_id: str
-      source: Literal["marketplace", "user_uuid", "header"]
-      marketplace_user_id: str | None = None
-      marketplace_wallet: str | None = None
+      source: Literal["marketplace"]
+      marketplace_user_id: str
+      marketplace_wallet: str
 
   class IdentityResolutionError(ValueError):
       status_code: int
       detail: str
 
-  def resolve_http_identity(request: Request, mode: str) -> ResolvedIdentity
-  def resolve_websocket_identity(websocket: WebSocket, mode: str) -> ResolvedIdentity
+  def resolve_http_identity(request: Request) -> ResolvedIdentity
+  def resolve_websocket_identity(websocket: WebSocket) -> ResolvedIdentity
   ```
 
 - [ ] **Step 1: Add pure resolver red tests**
 
-  Test valid dedicated headers normalize wallet lowercase and return wallet as `owner_id`; dedicated headers override conflicting `user_uuid`, Bearer, and API key; one missing dedicated header, malformed values such as `marketplace:user:0`, over-64 user id, or malformed EVM wallet returns `422 MARKETPLACE_IDENTITY_INVALID`.
+  Test valid dedicated headers normalize wallet lowercase and return wallet as `owner_id`; conflicting `user_uuid`, Bearer, and API key do not affect ownership; one missing dedicated header, malformed values such as `marketplace:user:0`, over-64 user id, or malformed EVM wallet returns `422 MARKETPLACE_IDENTITY_INVALID`.
 
-- [ ] **Step 2: Add identity-mode red tests**
+- [ ] **Step 2: Add mandatory-identity red tests**
 
-  In `legacy-compatible`, legacy URL/header identity works only when both dedicated headers are absent. In `marketplace`, missing dedicated headers returns `401 MARKETPLACE_IDENTITY_REQUIRED`, and legacy identity is ignored.
+  On `/chat`, `/conversations`, `/runs/*`, `/stream/*`, and `/ws/*`, missing dedicated headers returns `401 MARKETPLACE_IDENTITY_REQUIRED` even when `user_uuid`, Bearer, API key, or WS query token is present.
 
 - [ ] **Step 3: Add rate-limit and WebSocket red tests**
 
-  HTTP middleware must place the trusted wallet in `request.state.user_id`, causing the API limiter capture to receive the normalized wallet. WebSocket resolution must prefer dedicated headers and reject legacy-only connections in `marketplace` mode.
+  HTTP middleware must place the trusted wallet in `request.state.user_id`, causing the API limiter capture to receive the normalized wallet. WebSocket resolution must require dedicated headers and reject legacy-only connections.
 
 - [ ] **Step 4: Run and verify RED**
 
@@ -72,7 +74,7 @@
 
   Expected: import/behavior failures because the identity module and Marketplace mode do not yet exist.
 
-### Task 2: Wire identity modes into settings, HTTP middleware, dependencies, and WebSocket
+### Task 2: Wire mandatory Marketplace identity into HTTP middleware, dependencies, and WebSocket
 
 **Files:**
 
@@ -84,24 +86,24 @@
 
 **Interfaces:**
 
-- Adds `marketplace_identity_mode: Literal["legacy-compatible", "marketplace"] = "legacy-compatible"` to `Settings`.
 - Stores `request.state.user_id`, `request.state.user_id_source`, and `request.state.marketplace_identity` for dedicated-header requests.
+- Removes `marketplace_identity_mode` and `MARKETPLACE_IDENTITY_MODE` because there is no alternate user-facing Chat mode.
 
 - [ ] **Step 1: Implement strict Marketplace header parsing**
 
   Validate account id with `^marketplace:user:[1-9][0-9]*$` and wallet with `^0x[0-9a-fA-F]{40}$`; normalize wallet to lowercase. If either dedicated header is present, require and validate both rather than falling back.
 
-- [ ] **Step 2: Preserve the legacy resolver only in compatibility mode**
+- [ ] **Step 2: Remove user-facing Chat identity fallbacks**
 
-  Reuse current route rules: `user_uuid` is considered on `/chat`, `/runs/*`, `/stream/*`, and `/ws/*`; otherwise Bearer or `X-API-Key` provides the legacy owner. Keep the existing 64-character limit and error codes for legacy development callers.
+  Delete URL `user_uuid`, Bearer, `X-API-Key`, and WebSocket query `token` from the user-facing Chat resolver. Preserve the separate `/rag/*` internal-admin authentication contract without treating it as Chat ownership.
 
 - [ ] **Step 3: Wire middleware and dependency state**
 
-  `AuthMiddleware` calls `resolve_http_identity(request, get_settings().marketplace_identity_mode)`, serializes `IdentityResolutionError` as `{"detail": detail}`, and writes the resolved owner/source/context to request state. `get_current_user` returns state owner and retains header extraction only as a unit-test/legacy fallback when middleware state is absent.
+  `AuthMiddleware` calls `resolve_http_identity(request)` for user-facing Chat routes, serializes `IdentityResolutionError` as `{"detail": detail}`, and writes the resolved owner/source/context to request state. `get_current_user` returns the middleware state owner; no unit-test or runtime Chat fallback derives owner from caller headers.
 
 - [ ] **Step 4: Wire WebSocket through the same resolver**
 
-  Replace `_ws_user_id` internals with `resolve_websocket_identity`. Missing/invalid identity closes with code `1008` and a sanitized reason; valid Marketplace headers use wallet owner and ignore conflicting query identity.
+  Call `resolve_websocket_identity` directly. Missing/invalid identity closes with code `1008` and a sanitized reason; valid Marketplace headers use wallet owner and ignore conflicting query identity.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -222,7 +224,7 @@
   git commit -m "fix: enforce chat ownership across all routes"
   ```
 
-### Task 5: Document and configure the development/production boundary
+### Task 5: Document the single identity contract and development/production network boundary
 
 **Files:**
 
@@ -235,25 +237,25 @@
 
 **Interfaces:**
 
-- Adds environment variable `MARKETPLACE_IDENTITY_MODE`.
-- Development DockerHost default remains `legacy-compatible` and public.
-- Production instructions require `MARKETPLACE_IDENTITY_MODE=marketplace`, private reachability, and no public Chat ingress.
+- Removes `MARKETPLACE_IDENTITY_MODE` from settings and DockerHost configuration.
+- Development may remain public but requires the same dedicated headers and is still not production security evidence.
+- Production instructions require private reachability and no public Chat ingress.
 
 - [ ] **Step 1: Add documentation/config contract red tests**
 
-  Assert the env example and Compose API service expose the mode, API docs describe dedicated headers/reserved payload, legacy identity is development-only, no service credential is required, and the production runbook requires private networking plus `marketplace` mode.
+  Assert the env example, Compose, and runtime settings contain no identity mode switch; API docs describe dedicated headers/reserved payload and reject legacy direct Chat identity; no service credential is required; the production runbook requires private networking.
 
-- [ ] **Step 2: Update DockerHost development configuration**
+- [ ] **Step 2: Remove DockerHost identity-mode configuration**
 
-  Add `MARKETPLACE_IDENTITY_MODE=legacy-compatible` to `dockerhost/env.example` and `${MARKETPLACE_IDENTITY_MODE:-legacy-compatible}` to the API service only. Workers/reaper do not resolve HTTP caller identity.
+  Remove `MARKETPLACE_IDENTITY_MODE` from `dockerhost/env.example` and `dockerhost/compose.yaml`; there is no alternative application identity behavior to configure.
 
 - [ ] **Step 3: Update API and integration docs**
 
-  Replace Marketplace `user_uuid` instructions with the two dedicated headers and reserved payload. Preserve a clearly labeled legacy direct-call section for development. State that plain headers are not proof on the current public development endpoint.
+  Replace Marketplace `user_uuid` instructions with the two dedicated headers and reserved payload. Remove legacy direct Chat examples. State that plain headers are not proof on the current public development endpoint.
 
 - [ ] **Step 4: Update production readiness instructions**
 
-  Require private Chat reachability, no public domain/ingress, `MARKETPLACE_IDENTITY_MODE=marketplace`, Marketplace-to-Chat positive smoke, and external negative reachability smoke. Do not add service-token or encryption procedures.
+  Require private Chat reachability, no public domain/ingress, Marketplace-to-Chat positive smoke, and external negative reachability smoke. Do not add service-token, encryption, or identity-mode procedures.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -279,7 +281,7 @@
 
 - [ ] **Step 1: Review against both Specifications**
 
-  Confirm trusted wallet consistency, header/body equality, compatibility modes, batch/realtime parity, strict null/missing owner behavior, prompt masking, frontend contract stability, and no service credential/schema migration.
+  Confirm trusted wallet consistency, header/body equality, mandatory identity in every environment, batch/realtime parity, strict null/missing owner behavior, prompt masking, frontend contract stability, and no service credential/schema migration.
 
 - [ ] **Step 2: Run focused and full verification**
 
@@ -317,7 +319,7 @@
 - Every new production behavior was preceded by an observed failing test.
 - Dedicated Marketplace identity controls HTTP, SSE, WS, rate limiting, persistence, task payloads, idempotency, and anchors.
 - Batch/realtime/forced/degraded paths enforce identical owner checks before side effects.
-- Legacy compatibility works only in `legacy-compatible`; `marketplace` rejects legacy-only identity.
+- Legacy user-facing Chat identity is rejected unconditionally and no mode switch remains.
 - Existing wallet-owned conversations remain readable without migration.
 - Focused tests, full pytest, AI boundary check, spec-contract check, Harness check, and release verification pass.
 - Development docs explicitly accept public/no-credential risk; production docs require private/no-ingress topology.
