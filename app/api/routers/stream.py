@@ -27,7 +27,6 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import CurrentUser, ReposDep, get_event_bus
 from app.api.identity import IdentityResolutionError, resolve_websocket_identity
 from app.api.repos import Repos
-from app.core.config import get_settings
 from app.core.events import AgentEvent, EventType
 from app.core.ids import new_trace_id
 from app.core.interfaces import EventBus
@@ -87,9 +86,7 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
         await websocket.close(code=1011, reason="事件总线未就绪")
         return
     try:
-        identity = resolve_websocket_identity(
-            websocket, get_settings().marketplace_identity_mode
-        )
+        identity = resolve_websocket_identity(websocket)
     except IdentityResolutionError as exc:
         reason = (
             "缺少 Marketplace 身份"
@@ -113,14 +110,6 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
         agent_run_id,
         websocket.query_params.get("last_event_id"),
     )
-
-
-def _ws_user_id(websocket: WebSocket) -> str | None:
-    """Compatibility helper used by focused legacy tests."""
-    try:
-        return resolve_websocket_identity(websocket, "legacy-compatible").owner_id
-    except IdentityResolutionError:
-        return None
 
 
 async def _pump_ws(

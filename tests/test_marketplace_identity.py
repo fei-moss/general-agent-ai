@@ -58,7 +58,7 @@ def test_dedicated_marketplace_headers_override_every_legacy_identity():
         },
     )
 
-    resolved = resolve_http_identity(request, "legacy-compatible")
+    resolved = resolve_http_identity(request)
 
     assert resolved.owner_id == WALLET
     assert resolved.source == "marketplace"
@@ -93,62 +93,66 @@ def test_partial_or_malformed_marketplace_headers_fail_without_legacy_fallback(
     request = _request(query="user_uuid=legacy-user", headers=headers)
 
     with pytest.raises(IdentityResolutionError) as exc:
-        resolve_http_identity(request, "legacy-compatible")
+        resolve_http_identity(request)
 
     assert exc.value.status_code == 422
     assert exc.value.detail == detail
 
 
-def test_marketplace_mode_rejects_legacy_only_identity():
+def test_chat_identity_rejects_legacy_only_identity_in_every_environment():
     request = _request(
         query="user_uuid=legacy-user",
         headers={"Authorization": "Bearer legacy-header"},
     )
 
     with pytest.raises(IdentityResolutionError) as exc:
-        resolve_http_identity(request, "marketplace")
+        resolve_http_identity(request)
 
     assert exc.value.status_code == 401
     assert exc.value.detail == "MARKETPLACE_IDENTITY_REQUIRED"
 
 
 @pytest.mark.parametrize(
-    ("path", "query", "headers", "owner", "source"),
+    ("path", "query", "headers"),
     [
-        ("/chat", "user_uuid=query-user", {}, "query-user", "user_uuid"),
+        ("/chat", "user_uuid=query-user", {}),
         (
             "/conversations",
             "",
             {"Authorization": "Bearer header-user"},
-            "header-user",
-            "header",
         ),
         (
             "/conversations",
             "",
             {"X-API-Key": "api-key-user"},
-            "api-key-user",
-            "header",
         ),
     ],
 )
-def test_legacy_compatible_mode_preserves_existing_development_inputs(
+def test_legacy_inputs_never_authenticate_user_facing_chat_routes(
     path: str,
     query: str,
     headers: dict[str, str],
-    owner: str,
-    source: str,
 ):
+    with pytest.raises(IdentityResolutionError) as exc:
+        resolve_http_identity(_request(path, query=query, headers=headers))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "MARKETPLACE_IDENTITY_REQUIRED"
+
+
+def test_internal_rag_admin_identity_contract_remains_independent():
     resolved = resolve_http_identity(
-        _request(path, query=query, headers=headers), "legacy-compatible"
+        _request(
+            "/rag/query",
+            headers={"Authorization": "Bearer rag-admin"},
+        )
     )
 
-    assert resolved.owner_id == owner
-    assert resolved.source == source
-    assert resolved.marketplace_user_id is None
+    assert resolved.owner_id == "rag-admin"
+    assert resolved.source == "internal-admin"
 
 
-def test_websocket_uses_marketplace_wallet_and_marketplace_mode_rejects_legacy():
+def test_websocket_uses_marketplace_wallet_and_always_rejects_legacy():
     websocket = SimpleNamespace(
         url=SimpleNamespace(path="/ws/run-1"),
         query_params={"user_uuid": "query-user", "token": "query-token"},
@@ -159,7 +163,7 @@ def test_websocket_uses_marketplace_wallet_and_marketplace_mode_rejects_legacy()
         },
     )
 
-    resolved = resolve_websocket_identity(websocket, "legacy-compatible")
+    resolved = resolve_websocket_identity(websocket)
 
     assert resolved.owner_id == WALLET
     assert resolved.source == "marketplace"
@@ -170,14 +174,13 @@ def test_websocket_uses_marketplace_wallet_and_marketplace_mode_rejects_legacy()
         headers={},
     )
     with pytest.raises(IdentityResolutionError) as exc:
-        resolve_websocket_identity(legacy, "marketplace")
+        resolve_websocket_identity(legacy)
     assert exc.value.status_code == 401
     assert exc.value.detail == "MARKETPLACE_IDENTITY_REQUIRED"
 
 
 @pytest.mark.asyncio
-async def test_http_middleware_and_rate_limit_use_trusted_wallet(monkeypatch):
-    monkeypatch.setenv("MARKETPLACE_IDENTITY_MODE", "legacy-compatible")
+async def test_http_middleware_and_rate_limit_use_trusted_wallet():
     get_settings.cache_clear()
 
     class _Limiter:
@@ -272,12 +275,11 @@ async def test_http_middleware_and_rate_limit_use_trusted_wallet(monkeypatch):
     ],
 )
 async def test_marketplace_chat_rejects_invalid_or_mismatched_reserved_context_before_repos(
-    proxy_payload: dict[str, object], detail: str, monkeypatch
+    proxy_payload: dict[str, object], detail: str
 ):
     from app.api import deps
     from app.api.main import create_app
 
-    monkeypatch.setenv("MARKETPLACE_IDENTITY_MODE", "legacy-compatible")
     get_settings.cache_clear()
     app = create_app()
 

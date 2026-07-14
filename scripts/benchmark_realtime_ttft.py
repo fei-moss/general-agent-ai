@@ -56,7 +56,7 @@ async def _read_sse_until_done(
     client: httpx.AsyncClient,
     base_url: str,
     run_id: str,
-    user_id: str,
+    identity_headers: dict[str, str],
     started_at: float,
     post_finished_at: float,
 ) -> tuple[float | None, float]:
@@ -65,7 +65,7 @@ async def _read_sse_until_done(
     async with client.stream(
         "GET",
         f"{base_url}/stream/{run_id}",
-        headers={"X-API-Key": user_id},
+        headers=identity_headers,
     ) as response:
         response.raise_for_status()
         async for raw_line in response.aiter_lines():
@@ -97,20 +97,34 @@ async def _one_run(
     run_prefix: str,
     stream_timeout_s: float,
 ) -> Sample:
-    user_id = f"bench-user-{run_prefix}-{index}"
+    marketplace_user_id = f"marketplace:user:{9_000_000 + index}"
+    marketplace_wallet = f"0x{index + 1:040x}"
+    identity_headers = {
+        "X-Marketplace-User-ID": marketplace_user_id,
+        "X-Marketplace-Wallet": marketplace_wallet,
+    }
+    proxy_payload = {
+        "marketplace_identity": {
+            "user_id": marketplace_user_id,
+            "wallet_address": marketplace_wallet,
+        },
+        "user_address": marketplace_wallet,
+        "wallet_address": marketplace_wallet,
+    }
     started_at = time.perf_counter()
     try:
         response = await client.post(
             f"{base_url}/chat",
             headers={
                 "Content-Type": "application/json",
-                "X-API-Key": user_id,
+                **identity_headers,
                 "Idempotency-Key": f"bench-{run_prefix}-{index}",
             },
             json={
                 "message": f"benchmark message {run_prefix} #{index}",
                 "stream": True,
                 "metadata": {"mode": "realtime"},
+                "proxy_payload": proxy_payload,
             },
         )
         if response.status_code != 202:
@@ -131,7 +145,7 @@ async def _one_run(
                 client,
                 base_url,
                 run_id,
-                user_id,
+                identity_headers,
                 started_at,
                 post_finished_at,
             ),

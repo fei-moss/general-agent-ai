@@ -11,6 +11,8 @@ from app.core.metrics import InMemoryMetrics
 
 _CHAT_ROUTE = "/chat"
 _OTHER_ROUTE = "/chat/admin-action"
+_MARKETPLACE_USER = "marketplace:user:7"
+_MARKETPLACE_WALLET = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
 
 
 class _CountingPipeline:
@@ -142,15 +144,18 @@ async def test_rate_limit_middleware_passes_request_path_as_route_scope():
     ) as client:
         response = await client.post(
             _CHAT_ROUTE,
-            headers={"Authorization": "Bearer route-user"},
+            headers={
+                "X-Marketplace-User-ID": _MARKETPLACE_USER,
+                "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+            },
             json={"message": "hello"},
         )
 
     assert response.status_code == 429
-    assert limiter.calls == [("route-user", _CHAT_ROUTE)]
+    assert limiter.calls == [(_MARKETPLACE_WALLET, _CHAT_ROUTE)]
 
 
-async def test_rate_limit_middleware_uses_url_user_uuid_on_chat_route():
+async def test_rate_limit_middleware_ignores_legacy_url_identity_on_chat_route():
     from app.api.main import create_app
 
     class _RecordingLimiter:
@@ -175,9 +180,13 @@ async def test_rate_limit_middleware_uses_url_user_uuid_on_chat_route():
         base_url="http://testserver",
     ) as client:
         response = await client.post(
-            f"{_CHAT_ROUTE}?user_uuid=route-user",
+            f"{_CHAT_ROUTE}?user_uuid=ignored-route-user",
+            headers={
+                "X-Marketplace-User-ID": _MARKETPLACE_USER,
+                "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+            },
             json={"message": "hello"},
         )
 
     assert response.status_code == 429
-    assert limiter.calls == [("route-user", _CHAT_ROUTE)]
+    assert limiter.calls == [(_MARKETPLACE_WALLET, _CHAT_ROUTE)]

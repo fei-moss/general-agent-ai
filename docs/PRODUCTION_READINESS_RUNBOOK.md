@@ -19,12 +19,12 @@
 
 ## Marketplace Production Identity Boundary
 
-- Set `MARKETPLACE_IDENTITY_MODE=marketplace`; legacy URL `user_uuid`, Bearer, API key,
-  query token, and partial Marketplace headers must be rejected.
+- All environments require both Marketplace identity headers; URL `user_uuid`, ordinary Bearer,
+  API key, query token, and partial Marketplace headers must be rejected for user-facing Chat.
 - Place Chat Server on a 私有网络 reachable by Marketplace only, and 禁止公开 Chat ingress,
   public domain, or direct browser reachability.
-- Development DockerHost may remain public with `legacy-compatible`; this is an accepted
-  development exception and plain headers on that URL are not authentication proof.
+- Development DockerHost may remain public but uses the same mandatory Marketplace headers;
+  this is an accepted development exception and plain headers on that URL are not authentication proof.
 - The approved design does not add a second signed token, HMAC, mTLS, or encryption layer;
   不引入服务凭证。Production trust is enforced by network reachability.
 - Release evidence must include both a Marketplace-to-Chat 正向 smoke and an
@@ -55,8 +55,6 @@ export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=1024
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
-export MARKETPLACE_IDENTITY_MODE=marketplace
-
 envctl up \
   --name chris-general-agent-ai-chat \
   --git-url git@github.com:fei-moss/general-agent-ai.git \

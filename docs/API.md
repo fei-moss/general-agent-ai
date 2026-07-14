@@ -50,22 +50,17 @@ X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
 - Marketplace 不再生成 URL `user_uuid`,也不把前端 Authorization 原样传给 Chat。
 - `/api/v1/chat*` 不是本项目的接口契约。
 
-生产使用 `MARKETPLACE_IDENTITY_MODE=marketplace`,仅接受上述专用头。部署在批准的
-私有网络内,按当前设计不需要内部服务凭证、签名或应用层加密。
+所有环境都只接受上述专用头,不存在身份模式开关。生产部署在批准的私有网络内,
+按当前设计不需要内部服务凭证、签名或应用层加密。
 
-#### Legacy 直调(仅限开发)
+#### 开发调试
 
-开发环境可使用 `MARKETPLACE_IDENTITY_MODE=legacy-compatible`,继续接受 URL
-`user_uuid`(chat-flow)或以下请求头:
+开发环境直接调试 Chat Server 时也必须手动注入上述两个 Marketplace 专用头。
+URL `user_uuid`、普通 Bearer、`X-API-Key` 和 WebSocket query token 都不能作为
+用户侧 Chat 身份。
 
-```
-Authorization: Bearer <token>
-# 或
-X-API-Key: <key>
-```
-
-> 这些值会被直接当作 owner,只适合本地/公开 DockerHost 联调。公开开发地址上的
-> plain Marketplace headers 也不构成密码学证明,不得当成生产安全边界。
+> 公开开发地址上的 plain Marketplace headers 不构成密码学证明,不得当成生产安全边界。
+> `/rag/*` 的内部管理员 Bearer/API-key 契约独立于用户侧 Chat 身份,不受本次调整影响。
 
 豁免鉴权的公开路径:`/healthz`、`/readyz`、`/docs`、`/redoc`、`/openapi.json`。
 
@@ -113,8 +108,6 @@ X-RateLimit-Remaining: 0
 | GET  | `/runs/{agent_run_id}` | Marketplace 查询运行状态 | Marketplace 专用头 |
 | GET  | `/stream/{agent_run_id}` | Marketplace SSE 事件流 | Marketplace 专用头 |
 | WS   | `/ws/{agent_run_id}` | Marketplace WebSocket 事件流 | Marketplace 专用头 |
-| POST | `/chat?user_uuid=...` | Legacy 开发直调 | 仅 `legacy-compatible` |
-| GET  | `/runs/{agent_run_id}` | 查询运行状态 | ✅ |
 | POST | `/conversations` | 创建会话 | ✅ |
 | GET  | `/conversations/{id}` | 会话详情(含消息) | ✅ |
 | GET  | `/conversations` | 会话列表(分页) | ✅ |
@@ -191,7 +184,7 @@ X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
 
 当前 Agent 地址从 `metadata.current_agent_address` / `metadata.agent_context` 派生,不需要放进
 `proxy_payload`。请求体里不要传 `run_context`;传入时会返回 422。
-Legacy caller 仅可在开发 `legacy-compatible` 模式临时使用 query/header identity。
+调用方提供的 URL `user_uuid`、普通 Authorization 或 API key 不参与 Chat owner 解析。
 
 #### 响应: **202 Accepted**(`ChatAccepted`)
 
@@ -278,11 +271,7 @@ data: {"event_id":"evt_x","agent_run_id":"run_x","type":"TOKEN","seq":9,"ts":178
 - 每帧是一条 `AgentEvent` 的 **JSON 字符串**(注意:**不带** SSE 的 `event:`/`id:` 包装,直接 `JSON.parse(frame)`)。
 - 收到终止事件后服务端关闭连接。
 - **Marketplace 鉴权**:Marketplace 的 WebSocket 代理在握手时注入两项专用头。
-- **Legacy 开发直调**:浏览器 WebSocket 不能设自定义头时,可在
-  `legacy-compatible` 模式使用 query token:
-  ```
-  ws://localhost:8000/ws/run_xxx?token=<你的token>
-  ```
+- 浏览器 WebSocket 不能设置这些内部头,因此必须通过 Marketplace 的 WebSocket 代理。
 
 ---
 
@@ -365,7 +354,7 @@ ws.onmessage = (e) => {
 | WebSocket | 浏览器不能设自定义 header | 由 Marketplace 代理握手并注入专用头 |
 | `fetch`(普通 REST) | 可以 | Marketplace 服务端注入专用头;前端不注入 |
 
-仅限开发直连时,可启用 `legacy-compatible` 并继续使用 `user_uuid`/query token。
+开发直连同样需要注入两个 Marketplace 专用头,没有 `user_uuid`/query-token 回退。
 
 ---
 

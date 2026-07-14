@@ -29,10 +29,6 @@ class Settings(BaseSettings):
     db_pool_pre_ping: bool = False
     db_pool_recycle_s: int = 1800
     redis_url: str = "redis://localhost:55379/0"
-    marketplace_identity_mode: Literal["legacy-compatible", "marketplace"] = (
-        "legacy-compatible"
-    )
-
     # --- Celery ---
     celery_broker_url: str = "redis://localhost:55379/1"
     celery_result_backend: str = "redis://localhost:55379/2"

@@ -1,7 +1,7 @@
 """核心对话入口路由。
 
-POST /chat?user_uuid=<id> 或 header 兼容流程:
-1. URL user_uuid 或 header 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
+POST /chat Marketplace 身份流程:
+1. Marketplace 专用头鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
 2. 创建或复用 conversation,写入用户消息。
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
 4. 按 route_type 分发:默认 realtime 交给常驻 Async Runner,慢任务/批任务投递 Celery。
@@ -17,7 +17,6 @@ import logging
 import math
 import re
 from typing import Any
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import ValidationError
@@ -52,8 +51,6 @@ from app.runtime.tool_context import mask_run_context
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
-_URL_USER_QUERY = "user_uuid"
-_ID_SOURCE_URL_USER_UUID = "user_uuid"
 
 # 投递任务的子任务类型(对应 task_state.task_type)
 _RUN_TASK_TYPE = "run"
@@ -117,7 +114,6 @@ async def create_chat(
         run_id,
         trace_id,
         route_type=route_type,
-        user_uuid=_request_user_uuid(request),
     )
     if idempotency_key:
         replay = await _claim_idempotency_or_replay(
@@ -331,16 +327,6 @@ def _validate_marketplace_runtime_context(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="MARKETPLACE_IDENTITY_MISMATCH",
             )
-
-
-def _request_user_uuid(request: Request) -> str | None:
-    """Return URL user_uuid when middleware selected it as the request identity."""
-    if getattr(request.state, "user_id_source", None) != _ID_SOURCE_URL_USER_UUID:
-        return None
-    user_uuid = request.query_params.get(_URL_USER_QUERY)
-    if user_uuid and user_uuid.strip():
-        return user_uuid.strip()
-    return None
 
 
 async def _apply_provider_preflight(
@@ -571,16 +557,14 @@ def _accepted(
     trace_id: str,
     *,
     route_type: str | None = None,
-    user_uuid: str | None = None,
 ) -> ChatAccepted:
     """构造 202 受理响应。"""
-    query_suffix = f"?{urlencode({_URL_USER_QUERY: user_uuid})}" if user_uuid else ""
     return ChatAccepted(
         conversation_id=conversation_id,
         agent_run_id=run_id,
         trace_id=trace_id,
         status=RunStatus.PENDING,
-        stream_url=f"/stream/{run_id}{query_suffix}",
-        ws_url=f"/ws/{run_id}{query_suffix}",
+        stream_url=f"/stream/{run_id}",
+        ws_url=f"/ws/{run_id}",
         route_type=route_type,
     )

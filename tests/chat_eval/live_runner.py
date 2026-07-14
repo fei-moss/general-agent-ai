@@ -114,6 +114,26 @@ def apply_context_overrides(
     return output
 
 
+def apply_marketplace_identity(
+    payload: dict[str, Any],
+    *,
+    marketplace_user_id: str,
+    marketplace_wallet: str,
+) -> dict[str, Any]:
+    """Overlay the server-owned identity required by the Chat boundary."""
+    normalized_wallet = marketplace_wallet.strip().lower()
+    output = dict(payload)
+    proxy_payload = dict(output.get("proxy_payload") or {})
+    proxy_payload["marketplace_identity"] = {
+        "user_id": marketplace_user_id.strip(),
+        "wallet_address": normalized_wallet,
+    }
+    proxy_payload["user_address"] = normalized_wallet
+    proxy_payload["wallet_address"] = normalized_wallet
+    output["proxy_payload"] = proxy_payload
+    return output
+
+
 def parse_sse_events(stream_text: str) -> list[dict[str, Any]]:
     """Parse a simple SSE stream into event dictionaries."""
     events: list[dict[str, Any]] = []
@@ -139,11 +159,11 @@ def replay_cases(
     cases: list[ChatBehaviorCase],
     *,
     base_url: str,
-    auth_token: str,
+    marketplace_user_id: str,
+    marketplace_wallet: str,
     timeout_s: float = 60.0,
     agent_address: str | None = None,
     chain_id: int | None = None,
-    wallet_address: str | None = None,
     drop_chain_id: bool = False,
     post: TransportPost | None = None,
     get: TransportGet | None = None,
@@ -152,9 +172,12 @@ def replay_cases(
     contract = load_coverage_contract()
     post = post or _curl_post
     get = get or _curl_get
+    marketplace_user_id = marketplace_user_id.strip()
+    marketplace_wallet = marketplace_wallet.strip().lower()
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {auth_token}",
+        "X-Marketplace-User-ID": marketplace_user_id,
+        "X-Marketplace-Wallet": marketplace_wallet,
     }
     base_url = base_url.rstrip("/")
     results: list[dict[str, Any]] = []
@@ -166,8 +189,12 @@ def replay_cases(
             payload,
             agent_address=agent_address,
             chain_id=chain_id,
-            wallet_address=wallet_address,
             drop_chain_id=drop_chain_id,
+        )
+        payload = apply_marketplace_identity(
+            payload,
+            marketplace_user_id=marketplace_user_id,
+            marketplace_wallet=marketplace_wallet,
         )
         try:
             case_headers = dict(headers)
@@ -423,7 +450,14 @@ def _truthy_env(name: str) -> bool:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--auth-token-env", default="CHAT_EVAL_AUTH_TOKEN")
+    parser.add_argument(
+        "--marketplace-user-id",
+        default=os.environ.get("CHAT_EVAL_MARKETPLACE_USER_ID"),
+    )
+    parser.add_argument(
+        "--marketplace-wallet",
+        default=os.environ.get("CHAT_EVAL_MARKETPLACE_WALLET"),
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--timeout-s", type=float, default=60.0)
     parser.add_argument("--case-id", action="append", default=[])
@@ -437,16 +471,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_truthy_env("CHAT_EVAL_DROP_CHAIN_ID"),
         help="Remove fixture chain_id values for live endpoints that identify agents by address only.",
     )
-    parser.add_argument("--wallet-address", default=os.environ.get("CHAT_EVAL_WALLET_ADDRESS"))
     parser.add_argument("--strict", action="store_true")
     return parser
 
 
 def main() -> int:
     args = _build_parser().parse_args()
-    token = os.environ.get(args.auth_token_env)
-    if not token:
-        raise SystemExit(f"missing auth token env var: {args.auth_token_env}")
+    if not args.marketplace_user_id or not args.marketplace_wallet:
+        raise SystemExit(
+            "missing Marketplace identity: set CHAT_EVAL_MARKETPLACE_USER_ID and "
+            "CHAT_EVAL_MARKETPLACE_WALLET or pass both CLI options"
+        )
     cases = select_cases(
         load_cases(),
         case_ids=set(args.case_id) if args.case_id else None,
@@ -456,11 +491,11 @@ def main() -> int:
     report = replay_cases(
         cases,
         base_url=args.base_url,
-        auth_token=token,
+        marketplace_user_id=args.marketplace_user_id,
+        marketplace_wallet=args.marketplace_wallet,
         timeout_s=args.timeout_s,
         agent_address=args.agent_address,
         chain_id=args.chain_id,
-        wallet_address=args.wallet_address,
         drop_chain_id=args.drop_chain_id,
     )
     write_report(report, args.output)

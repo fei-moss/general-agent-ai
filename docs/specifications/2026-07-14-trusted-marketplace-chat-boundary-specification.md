@@ -8,6 +8,8 @@ Parent cross-repository contract: `agent_marketplace/docs/specifications/2026-07
 
 This repository-local specification defines the Chat Server portion of the parent contract. It must not weaken the Marketplace global-auth requirements or change the approved frontend contract.
 
+Contract precedence: this specification supersedes the user-facing Chat identity clauses in earlier URL-`user_uuid`, header-auth, CORS, release-smoke, and live-eval specifications. Their non-identity behavior remains unchanged. The `/rag/*` internal-admin identity contract is explicitly not superseded.
+
 ## PRD Audit
 
 ### Covered

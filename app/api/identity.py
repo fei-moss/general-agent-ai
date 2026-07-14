@@ -2,8 +2,8 @@
 
 Marketplace requests carry two headers injected by the authenticated gateway.
 The normalized wallet is the storage/rate-limit owner while the Marketplace user
-identifier remains available as account context.  Legacy caller-supplied identities
-remain available only in the explicit development compatibility mode.
+identifier remains available as account context. User-facing Chat routes have no
+legacy identity fallback; `/rag/*` keeps its independent internal-admin contract.
 """
 
 from __future__ import annotations
@@ -13,18 +13,15 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 
-IdentitySource = Literal["marketplace", "user_uuid", "header"]
-IdentityMode = Literal["legacy-compatible", "marketplace"]
+IdentitySource = Literal["marketplace", "internal-admin"]
 
 _BEARER_PREFIX = "Bearer "
 _MARKETPLACE_USER_HEADER = "x-marketplace-user-id"
 _MARKETPLACE_WALLET_HEADER = "x-marketplace-wallet"
-_URL_USER_QUERY = "user_uuid"
 _MAX_USER_ID_LENGTH = 64
 _MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
 _EVM_WALLET_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-_CHAT_FLOW_PATHS = ("/chat",)
-_CHAT_FLOW_PREFIXES = ("/stream/", "/ws/", "/runs/")
+_RAG_PREFIX = "/rag"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,48 +43,22 @@ class IdentityResolutionError(ValueError):
         self.detail = detail
 
 
-def resolve_http_identity(request: Any, mode: IdentityMode) -> ResolvedIdentity:
-    """Resolve HTTP identity, preferring trusted Marketplace headers."""
+def resolve_http_identity(request: Any) -> ResolvedIdentity:
+    """Resolve one HTTP owner under the route-specific trust contract."""
+    if _is_rag_path(request.url.path):
+        return _resolve_internal_admin_headers(request.headers)
     marketplace = _resolve_marketplace_headers(request.headers)
     if marketplace is not None:
         return marketplace
-    if mode == "marketplace":
-        raise IdentityResolutionError(401, "MARKETPLACE_IDENTITY_REQUIRED")
-
-    if _is_chat_flow(request.url.path) and _URL_USER_QUERY in request.query_params:
-        return _legacy_identity(
-            request.query_params.get(_URL_USER_QUERY),
-            source="user_uuid",
-            missing_detail="缺少 user_uuid",
-            too_long_detail="USER_UUID_TOO_LONG",
-        )
-    return _resolve_legacy_headers(request.headers)
+    raise IdentityResolutionError(401, "MARKETPLACE_IDENTITY_REQUIRED")
 
 
-def resolve_websocket_identity(websocket: Any, mode: IdentityMode) -> ResolvedIdentity:
-    """Resolve WebSocket identity using the same trust boundary as HTTP."""
+def resolve_websocket_identity(websocket: Any) -> ResolvedIdentity:
+    """Require the dedicated Marketplace identity on WebSocket handshakes."""
     marketplace = _resolve_marketplace_headers(websocket.headers)
     if marketplace is not None:
         return marketplace
-    if mode == "marketplace":
-        raise IdentityResolutionError(401, "MARKETPLACE_IDENTITY_REQUIRED")
-
-    if _URL_USER_QUERY in websocket.query_params:
-        return _legacy_identity(
-            websocket.query_params.get(_URL_USER_QUERY),
-            source="user_uuid",
-            missing_detail="缺少 user_uuid",
-            too_long_detail="USER_UUID_TOO_LONG",
-        )
-    token = websocket.query_params.get("token")
-    if token is not None:
-        return _legacy_identity(
-            token,
-            source="header",
-            missing_detail="缺少鉴权凭证",
-            too_long_detail="USER_ID_TOO_LONG",
-        )
-    return _resolve_legacy_headers(websocket.headers)
+    raise IdentityResolutionError(401, "MARKETPLACE_IDENTITY_REQUIRED")
 
 
 def _resolve_marketplace_headers(headers: Any) -> ResolvedIdentity | None:
@@ -115,41 +86,36 @@ def _resolve_marketplace_headers(headers: Any) -> ResolvedIdentity | None:
     )
 
 
-def _resolve_legacy_headers(headers: Any) -> ResolvedIdentity:
+def _resolve_internal_admin_headers(headers: Any) -> ResolvedIdentity:
+    """Preserve the independent internal `/rag/*` admin identity contract."""
     auth = _header(headers, "authorization")
     if auth and auth.startswith(_BEARER_PREFIX):
-        return _legacy_identity(
+        return _internal_admin_identity(
             auth[len(_BEARER_PREFIX) :],
-            source="header",
             missing_detail="缺少鉴权凭证(Authorization Bearer 或 X-API-Key)",
-            too_long_detail="USER_ID_TOO_LONG",
         )
     api_key = _header(headers, "x-api-key")
     if api_key is not None:
-        return _legacy_identity(
+        return _internal_admin_identity(
             api_key,
-            source="header",
             missing_detail="缺少鉴权凭证(Authorization Bearer 或 X-API-Key)",
-            too_long_detail="USER_ID_TOO_LONG",
         )
     raise IdentityResolutionError(
         401, "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)"
     )
 
 
-def _legacy_identity(
+def _internal_admin_identity(
     value: str | None,
     *,
-    source: Literal["user_uuid", "header"],
     missing_detail: str,
-    too_long_detail: str,
 ) -> ResolvedIdentity:
     candidate = (value or "").strip()
     if not candidate:
         raise IdentityResolutionError(401, missing_detail)
     if len(candidate) > _MAX_USER_ID_LENGTH:
-        raise IdentityResolutionError(422, too_long_detail)
-    return ResolvedIdentity(owner_id=candidate, source=source)
+        raise IdentityResolutionError(422, "USER_ID_TOO_LONG")
+    return ResolvedIdentity(owner_id=candidate, source="internal-admin")
 
 
 def _header(headers: Any, name: str) -> str | None:
@@ -159,7 +125,5 @@ def _header(headers: Any, name: str) -> str | None:
     return value
 
 
-def _is_chat_flow(path: str) -> bool:
-    return path in _CHAT_FLOW_PATHS or any(
-        path.startswith(prefix) for prefix in _CHAT_FLOW_PREFIXES
-    )
+def _is_rag_path(path: str) -> bool:
+    return path == _RAG_PREFIX or path.startswith(f"{_RAG_PREFIX}/")

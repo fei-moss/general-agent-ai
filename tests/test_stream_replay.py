@@ -98,14 +98,3 @@ async def test_stream_owner_check_fails_closed_for_missing_null_or_other_owner(
 
     assert exc.value.status_code == status_code
 
-
-def test_websocket_identity_prefers_url_user_uuid_on_existing_ws_route():
-    from app.api.routers.stream import _ws_user_id
-
-    websocket = SimpleNamespace(
-        url=SimpleNamespace(path="/ws/run-1"),
-        query_params={"user_uuid": "market-user-1", "token": "legacy-token"},
-        headers={"authorization": "Bearer header-user"},
-    )
-
-    assert _ws_user_id(websocket) == "market-user-1"

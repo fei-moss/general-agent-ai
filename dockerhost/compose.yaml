@@ -10,7 +10,6 @@ services:
       REDIS_URL: redis://cache:6379/0
       CELERY_BROKER_URL: redis://cache:6379/1
       CELERY_RESULT_BACKEND: redis://cache:6379/2
-      MARKETPLACE_IDENTITY_MODE: ${MARKETPLACE_IDENTITY_MODE:-legacy-compatible}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}

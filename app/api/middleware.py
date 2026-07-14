@@ -1,8 +1,8 @@
 """请求中间件:鉴权、限流、trace_id 注入。
 
 职责:
-- 鉴权:Marketplace 专用头提供可信 wallet owner;开发兼容模式才接受
-  URL user_uuid、Authorization Bearer 或 X-API-Key。
+- 鉴权:所有用户侧 Chat 路由只接受 Marketplace 专用头提供的可信 wallet owner;
+  `/rag/*` 继续使用独立的内部管理员身份契约。
 - 限流:对写入类路径按 user_id 做滑动窗口限流,超限 429。
 - trace_id:每请求生成或透传 X-Trace-Id,注入日志上下文并回写响应头。
 
@@ -18,7 +18,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.api.identity import IdentityResolutionError, resolve_http_identity
-from app.core.config import get_settings
 from app.core.ids import new_trace_id
 from app.core.logging import get_logger, log_with_fields, set_trace_id
 
@@ -82,9 +81,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_public(request.url.path) or _is_removed_versioned_chat(request.url.path):
             return await call_next(request)
         try:
-            identity = resolve_http_identity(
-                request, get_settings().marketplace_identity_mode
-            )
+            identity = resolve_http_identity(request)
         except IdentityResolutionError as exc:
             return _json_error(exc.status_code, exc.detail)
         request.state.user_id = identity.owner_id

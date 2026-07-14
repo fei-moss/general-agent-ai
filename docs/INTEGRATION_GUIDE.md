@@ -37,7 +37,7 @@ export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.or
 ```
 
 Marketplace curl 示例使用网关从登录态解析出的 `MARKETPLACE_USER_ID` 和
-`MARKETPLACE_WALLET`;前端不直接传这两个字段。legacy 示例单独标为开发用途。
+`MARKETPLACE_WALLET`;前端不直接传这两个字段。
 
 DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
 
@@ -60,8 +60,8 @@ X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
 - `proxy_payload.user_address` / `wallet_address` 出现时也必须等于可信 wallet。
 - 冲突身份不会回退到 query、Bearer 或 API key。
 
-生产部署设置 `MARKETPLACE_IDENTITY_MODE=marketplace`,Chat Server 仅在私有网络接受
-Marketplace 流量。按批准的边界设计不需要内部服务凭证、签名或应用层加密。
+所有环境都只接受这两个 Marketplace 专用头,不存在身份模式开关。生产时 Chat Server
+仅在私有网络接受 Marketplace 流量。按批准的边界设计不需要内部服务凭证、签名或应用层加密。
 
 `POST /chat` 示例身份上下文:
 
@@ -76,23 +76,18 @@ Marketplace 流量。按批准的边界设计不需要内部服务凭证、签�
 }
 ```
 
-### Legacy 直调(仅限开发)
+### 开发直调
 
-开发 DockerHost 默认 `MARKETPLACE_IDENTITY_MODE=legacy-compatible`,可继续使用
-chat-flow URL `user_uuid` 或 header-derived identity：
+开发时直接调用 Chat Server 也必须手动注入 `X-Marketplace-User-ID` 和
+`X-Marketplace-Wallet`。以下输入不能认证用户侧 Chat 请求：
 
-```http
-Authorization: Bearer <user_id>
-```
+- URL `user_uuid`；
+- 普通 `Authorization: Bearer ...`；
+- `X-API-Key`；
+- WebSocket query `token`。
 
-或：
-
-```http
-X-API-Key: <user_id>
-```
-
-这些调用方自报值不是正式认证。公开开发地址上的 plain Marketplace headers 也不构成
-密码学证明,只能用于联调,不能替代生产私有网络边界。
+公开开发地址上的 plain Marketplace headers 也不构成密码学证明,只能用于联调,
+不能替代生产私有网络边界。
 `/rag/*` 不是普通用户接口，只允许内部知识库管理员或内部 ingestion Agent 访问。
 
 公开端点：
@@ -104,7 +99,7 @@ X-API-Key: <user_id>
 - `GET /redoc`
 - `GET /openapi.json`
 
-Marketplace chat-flow 使用两项专用头;URL `user_uuid` 只保留给开发兼容调用。
+Marketplace chat-flow 在所有环境使用两项专用头;URL `user_uuid` 不再是身份输入。
 
 ## 4. 中心化数据模型
 
@@ -325,12 +320,8 @@ data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","typ
 ws(s)://<host>/ws/run_xxx
 ```
 
-Marketplace 的 WebSocket 代理必须在握手时注入两项专用头。仅限开发的
-legacy-compatible 直调也可以在握手时传：
-
-```http
-Authorization: Bearer alice.internal
-```
+Marketplace 的 WebSocket 代理必须在握手时注入两项专用头。开发直调也必须注入
+相同专用头,普通 Authorization 或 query token 不会建立 Chat 身份。
 
 每条 WebSocket 消息是完整 `AgentEvent` JSON；处理规则和 SSE 相同：拼接
 `TOKEN.data.token`，收到 `RUN_COMPLETED` 或 `ERROR` 后结束本轮。

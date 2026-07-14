@@ -24,6 +24,9 @@ from tests.chat_eval.sample_ingestion import (
 )
 from tests.chat_eval.scorecard import build_scorecard, write_scorecard
 
+_MARKETPLACE_USER = "marketplace:user:7"
+_MARKETPLACE_WALLET = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+
 
 def test_build_chat_payload_uses_proxy_payload_and_eval_metadata():
     contract = load_coverage_contract()
@@ -100,8 +103,11 @@ def test_parse_sse_events_extracts_tool_and_completion_payloads():
 
 def test_live_replay_uses_transport_and_redacts_sensitive_values():
     case = next(case for case in load_cases() if case.id == "allow_identity_self_intro_zh")
+    seen: dict[str, object] = {}
 
-    def post(_url, _headers, _body, _timeout_s):
+    def post(_url, headers, body, _timeout_s):
+        seen["post_headers"] = headers
+        seen["post_body"] = body
         return HttpResponse(
             status=202,
             body=json.dumps(
@@ -113,7 +119,8 @@ def test_live_replay_uses_transport_and_redacts_sensitive_values():
             ),
         )
 
-    def get(_url, _headers, _timeout_s):
+    def get(_url, headers, _timeout_s):
+        seen["get_headers"] = headers
         return HttpResponse(
             status=200,
             body=(
@@ -125,7 +132,8 @@ def test_live_replay_uses_transport_and_redacts_sensitive_values():
     report = replay_cases(
         [case],
         base_url="https://example.test",
-        auth_token="secret-token",
+        marketplace_user_id=f"  {_MARKETPLACE_USER}  ",
+        marketplace_wallet="  0xAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCd  ",
         post=post,
         get=get,
     )
@@ -135,6 +143,26 @@ def test_live_replay_uses_transport_and_redacts_sensitive_values():
     assert result["status"] == "completed"
     assert "<redacted-address>" in result["content"]
     assert "0x1234567890abcdef1234567890abcdef12345678" not in json.dumps(report)
+    expected_headers = {
+        "Content-Type": "application/json",
+        "X-Marketplace-User-ID": _MARKETPLACE_USER,
+        "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+    }
+    assert {
+        key: seen["post_headers"][key]
+        for key in expected_headers
+    } == expected_headers
+    assert seen["post_headers"]["Idempotency-Key"].startswith(
+        "chat-eval-allow_identity_self_intro_zh-"
+    )
+    assert seen["get_headers"] == expected_headers
+    proxy_payload = seen["post_body"]["proxy_payload"]
+    assert proxy_payload["marketplace_identity"] == {
+        "user_id": _MARKETPLACE_USER,
+        "wallet_address": _MARKETPLACE_WALLET,
+    }
+    assert proxy_payload["user_address"] == _MARKETPLACE_WALLET
+    assert proxy_payload["wallet_address"] == _MARKETPLACE_WALLET
 
 
 def test_live_case_selection_supports_case_id_and_tag_filters():
@@ -164,7 +192,8 @@ def test_live_replay_fails_when_no_cases_are_selected():
     report = replay_cases(
         [],
         base_url="https://example.test",
-        auth_token="secret-token",
+        marketplace_user_id=_MARKETPLACE_USER,
+        marketplace_wallet=_MARKETPLACE_WALLET,
         post=lambda *_args: HttpResponse(status=202, body="{}"),
         get=lambda *_args: HttpResponse(status=200, body=""),
     )
@@ -195,7 +224,8 @@ def test_live_replay_marks_partial_stream_without_completion_as_incomplete():
     report = replay_cases(
         [case],
         base_url="https://example.test",
-        auth_token="secret-token",
+        marketplace_user_id=_MARKETPLACE_USER,
+        marketplace_wallet=_MARKETPLACE_WALLET,
         post=post,
         get=get,
     )
@@ -235,13 +265,19 @@ def test_curl_transport_uses_http11_for_dockerhost_streams(monkeypatch):
 
     live_runner._curl_post(
         "https://example.test/chat",
-        {"Authorization": "Bearer token"},
+        {
+            "X-Marketplace-User-ID": _MARKETPLACE_USER,
+            "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+        },
         {"message": "hi"},
         10,
     )
     live_runner._curl_get(
         "https://example.test/stream/run_1",
-        {"Authorization": "Bearer token"},
+        {
+            "X-Marketplace-User-ID": _MARKETPLACE_USER,
+            "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+        },
         10,
     )
 
@@ -309,5 +345,8 @@ def test_makefile_and_release_gate_expose_chat_eval_commands():
     assert "chat-eval:" in makefile
     assert "chat-eval-report:" in makefile
     assert "chat-eval-live:" in makefile
+    assert "CHAT_EVAL_MARKETPLACE_USER_ID" in makefile
+    assert "CHAT_EVAL_MARKETPLACE_WALLET" in makefile
+    assert "CHAT_EVAL_AUTH_TOKEN" not in makefile
     assert "chat_behavior_eval" in release
     assert "chat_eval_scorecard" in release

@@ -212,7 +212,11 @@ def _add_git_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_smoke_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--smoke-user", default="dockerhost-release-smoke")
+    parser.add_argument("--marketplace-user-id", default="marketplace:user:9000001")
+    parser.add_argument(
+        "--marketplace-wallet",
+        default="0x0000000000000000000000000000000000000001",
+    )
     parser.add_argument("--log-tail", type=int, default=200)
     parser.add_argument("--sse-timeout", type=int, default=45)
 
@@ -314,17 +318,37 @@ def _envctl_up_step(
 
 def _smoke_steps(args: argparse.Namespace) -> list[Step]:
     base_url = args.base_url.rstrip("/")
+    marketplace_identity = {
+        "user_id": args.marketplace_user_id.strip(),
+        "wallet_address": args.marketplace_wallet.strip().lower(),
+    }
+    proxy_payload = {
+        "marketplace_identity": marketplace_identity,
+        "user_address": marketplace_identity["wallet_address"],
+        "wallet_address": marketplace_identity["wallet_address"],
+    }
+    identity_headers = [
+        "-H",
+        f"X-Marketplace-User-ID: {marketplace_identity['user_id']}",
+        "-H",
+        f"X-Marketplace-Wallet: {marketplace_identity['wallet_address']}",
+    ]
     chat_body = json.dumps(
         {
             "message": "smoke: DockerHost async chat connectivity",
             "stream": True,
             "metadata": {"release_smoke": True},
+            "proxy_payload": proxy_payload,
         },
         ensure_ascii=False,
         separators=(",", ":"),
     )
     stream_false_body = json.dumps(
-        {"message": "smoke: stream=false must be rejected", "stream": False},
+        {
+            "message": "smoke: stream=false must be rejected",
+            "stream": False,
+            "proxy_payload": proxy_payload,
+        },
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -341,8 +365,7 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "\n%{http_code}",
                 "-H",
                 "Content-Type: application/json",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 "-d",
                 stream_false_body,
                 f"{base_url}/chat",
@@ -356,8 +379,7 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-fsS",
                 "-H",
                 "Content-Type: application/json",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 "-d",
                 chat_body,
                 f"{base_url}/chat",
@@ -372,8 +394,7 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-N",
                 "--max-time",
                 str(args.sse_timeout),
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 f"{base_url}{{stream_url}}",
             ],
             display_command=[
@@ -382,8 +403,7 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-N",
                 "--max-time",
                 str(args.sse_timeout),
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 f"{base_url}<stream-url-from-chat>",
             ],
             kind="sse",
@@ -393,15 +413,13 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
             [
                 args.curl_bin,
                 "-fsS",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 f"{base_url}/runs/{{agent_run_id}}",
             ],
             display_command=[
                 args.curl_bin,
                 "-fsS",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
+                *identity_headers,
                 f"{base_url}/runs/<agent-run-id>",
             ],
         ),

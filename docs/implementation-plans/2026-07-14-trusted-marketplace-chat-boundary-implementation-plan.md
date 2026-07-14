@@ -42,9 +42,9 @@
   @dataclass(frozen=True, slots=True)
   class ResolvedIdentity:
       owner_id: str
-      source: Literal["marketplace"]
-      marketplace_user_id: str
-      marketplace_wallet: str
+      source: Literal["marketplace", "internal-admin"]
+      marketplace_user_id: str | None = None
+      marketplace_wallet: str | None = None
 
   class IdentityResolutionError(ValueError):
       status_code: int
@@ -279,9 +279,15 @@
 - Review all files changed by Tasks 1-5.
 - Do not stage `.env`, provider keys, DockerHost tokens, release artifacts, databases, or unrelated files.
 
+**Review amendment:** Repository-owned user-facing Chat callers in `scripts/dockerhost_release.py`, `scripts/benchmark_realtime_ttft.py`, `tests/chat_eval/live_runner.py`, and the `Makefile` live-eval target must simulate Marketplace by sending both dedicated headers and matching reserved payload. `scripts/smoke_rag_pgvector.sh` remains on the independent `/rag/*` internal-admin contract.
+
 - [ ] **Step 1: Review against both Specifications**
 
   Confirm trusted wallet consistency, header/body equality, mandatory identity in every environment, batch/realtime parity, strict null/missing owner behavior, prompt masking, frontend contract stability, and no service credential/schema migration.
+
+- [ ] **Step 1a: Update repository-owned smoke, benchmark, and live-eval callers**
+
+  Add script contract tests first. Replace user-facing Chat `X-API-Key`/Bearer identity with `X-Marketplace-User-ID`, `X-Marketplace-Wallet`, and a matching `proxy_payload.marketplace_identity`; use the same headers for run/SSE follow-up. Do not change the `/rag/*` smoke identity contract.
 
 - [ ] **Step 2: Run focused and full verification**
 
