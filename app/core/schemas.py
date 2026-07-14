@@ -29,6 +29,8 @@ from app.core.enums import (
 
 
 _ANCHOR_RE = re.compile(r"[^a-z0-9_.:-]+")
+_MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
+_EVM_WALLET_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
 
 def _normalize_anchor_part(value: Any, *, max_length: int) -> str:
@@ -55,6 +57,29 @@ class ConversationAnchorIn(BaseModel):
     @classmethod
     def _normalize_key(cls, value: Any) -> str:
         return _normalize_anchor_part(value, max_length=256)
+
+
+class MarketplaceIdentityIn(BaseModel):
+    """Trusted Marketplace identity mirrored in the reserved runtime context."""
+
+    user_id: str = Field(min_length=1, max_length=64)
+    wallet_address: str
+
+    @field_validator("user_id", mode="before")
+    @classmethod
+    def _validate_user_id(cls, value: Any) -> str:
+        candidate = str(value or "").strip()
+        if _MARKETPLACE_USER_RE.fullmatch(candidate) is None:
+            raise ValueError("invalid Marketplace user id")
+        return candidate
+
+    @field_validator("wallet_address", mode="before")
+    @classmethod
+    def _validate_wallet(cls, value: Any) -> str:
+        candidate = str(value or "").strip()
+        if _EVM_WALLET_RE.fullmatch(candidate) is None:
+            raise ValueError("invalid Marketplace wallet")
+        return candidate.lower()
 
 
 class ChatRequest(BaseModel):
@@ -95,6 +120,14 @@ class ChatRequest(BaseModel):
         if agent_address:
             context["agent_address"] = agent_address
         return context
+
+    @property
+    def marketplace_identity(self) -> MarketplaceIdentityIn | None:
+        """Parse the reserved Marketplace identity without changing legacy payloads."""
+        raw = (self.proxy_payload or {}).get("marketplace_identity")
+        if raw is None:
+            return None
+        return MarketplaceIdentityIn.model_validate(raw)
 
 
 def _metadata_agent_address(

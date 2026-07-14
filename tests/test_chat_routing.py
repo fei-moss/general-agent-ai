@@ -78,6 +78,25 @@ def test_chat_request_accepts_proxy_payload_as_upstream_context():
     assert body.run_context["marketplace_agent"]["address"].startswith("0x17")
 
 
+def test_chat_request_exposes_normalized_marketplace_identity_accessor():
+    body = ChatRequest(
+        message="hello",
+        proxy_payload={
+            "marketplace_identity": {
+                "user_id": "marketplace:user:7",
+                "wallet_address": "0xAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCd",
+            }
+        },
+    )
+
+    assert body.marketplace_identity is not None
+    assert body.marketplace_identity.user_id == "marketplace:user:7"
+    assert (
+        body.marketplace_identity.wallet_address
+        == "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    )
+
+
 def test_chat_request_projects_metadata_agent_context_to_run_context():
     body = ChatRequest(
         message="hello",

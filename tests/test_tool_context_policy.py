@@ -40,6 +40,30 @@ def test_mask_run_context_hides_locked_and_secret_values():
     assert "[masked:secret]" in rendered
 
 
+def test_mask_run_context_hides_marketplace_identity_and_wallet_aliases():
+    wallet = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    masked = mask_run_context(
+        {
+            "marketplace_identity": {
+                "user_id": "marketplace:user:7",
+                "wallet_address": wallet,
+            },
+            "user_address": wallet,
+            "wallet_address": wallet,
+            "tool_permissions": {"allowed": ["marketplace_agent_context"]},
+        }
+    )
+
+    assert masked["marketplace_identity"] == "[masked:identity]"
+    assert masked["user_address"] == "[masked:identity]"
+    assert masked["wallet_address"] == "[masked:identity]"
+    assert "marketplace:user:7" not in str(masked)
+    assert wallet not in str(masked)
+    assert masked["tool_permissions"] == {
+        "allowed": ["marketplace_agent_context"]
+    }
+
+
 def test_build_run_context_instruction_omits_empty_context():
     assert build_run_context_instruction({}) == ""
 

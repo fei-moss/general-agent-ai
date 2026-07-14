@@ -231,3 +231,77 @@ async def test_http_middleware_and_rate_limit_use_trusted_wallet(monkeypatch):
         "account": USER_HEADER,
     }
     assert limiter.calls == [(WALLET, "/chat")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("proxy_payload", "detail"),
+    [
+        ({}, "MARKETPLACE_IDENTITY_INVALID"),
+        (
+            {
+                "marketplace_identity": {
+                    "user_id": "not-a-marketplace-user",
+                    "wallet_address": WALLET,
+                }
+            },
+            "MARKETPLACE_IDENTITY_INVALID",
+        ),
+        (
+            {
+                "marketplace_identity": {
+                    "user_id": "marketplace:user:8",
+                    "wallet_address": WALLET,
+                },
+                "user_address": WALLET,
+                "wallet_address": WALLET,
+            },
+            "MARKETPLACE_IDENTITY_MISMATCH",
+        ),
+        (
+            {
+                "marketplace_identity": {
+                    "user_id": USER_HEADER,
+                    "wallet_address": WALLET,
+                },
+                "user_address": "0x1111111111111111111111111111111111111111",
+                "wallet_address": WALLET,
+            },
+            "MARKETPLACE_IDENTITY_MISMATCH",
+        ),
+    ],
+)
+async def test_marketplace_chat_rejects_invalid_or_mismatched_reserved_context_before_repos(
+    proxy_payload: dict[str, object], detail: str, monkeypatch
+):
+    from app.api import deps
+    from app.api.main import create_app
+
+    monkeypatch.setenv("MARKETPLACE_IDENTITY_MODE", "legacy-compatible")
+    get_settings.cache_clear()
+    app = create_app()
+
+    async def repos_must_not_be_touched():
+        yield object()
+
+    app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.post(
+                "/chat?user_uuid=caller-query",
+                headers={
+                    "X-Marketplace-User-ID": USER_HEADER,
+                    "X-Marketplace-Wallet": MIXED_WALLET,
+                    "Authorization": "Bearer caller-header",
+                },
+                json={"message": "hello", "proxy_payload": proxy_payload},
+            )
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == detail

@@ -17,6 +17,12 @@ _SENSITIVE_KEYS = {
     "token",
     "value",
 }
+_IDENTITY_KEYS = {
+    "marketplace_identity",
+    "user_id",
+    "user_address",
+    "wallet_address",
+}
 _CONTEXT_INSTRUCTION_MAX_CHARS = 4000
 
 
@@ -68,6 +74,8 @@ def tool_denied_result(tool_name: str) -> dict[str, Any]:
 
 def _mask(value: Any, *, parent_key: str) -> Any:
     key = _canonical_key(parent_key)
+    if key in _IDENTITY_KEYS:
+        return "[masked:identity]"
     if key in _SENSITIVE_KEYS:
         return "[masked:secret]"
     if isinstance(value, dict):

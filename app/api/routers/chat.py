@@ -15,12 +15,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import ValidationError
 
 from app.api.deps import CurrentUser, ReposDep
+from app.api.identity import ResolvedIdentity
 from app.api.idempotency import chat_request_hash
 from app.api.runner_gateway import (
     RunnerUnavailableError,
@@ -76,6 +79,7 @@ async def create_chat(
     """受理一次对话/任务请求。"""
     _validate_message(body.message)
     _validate_async_only(body.stream)
+    _validate_marketplace_runtime_context(body, request)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
@@ -266,6 +270,52 @@ def _anchor_payload(body: ChatRequest) -> dict[str, str] | None:
     if body.conversation_anchor is None:
         return None
     return body.conversation_anchor.model_dump()
+
+
+def _validate_marketplace_runtime_context(
+    body: ChatRequest, request: Request
+) -> None:
+    """Require the Marketplace-owned body context to match trusted headers."""
+    trusted = getattr(request.state, "marketplace_identity", None)
+    if not isinstance(trusted, ResolvedIdentity) or trusted.source != "marketplace":
+        return
+    try:
+        reserved = body.marketplace_identity
+    except (TypeError, ValidationError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="MARKETPLACE_IDENTITY_INVALID",
+        ) from exc
+    if reserved is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="MARKETPLACE_IDENTITY_INVALID",
+        )
+    if (
+        reserved.user_id != trusted.marketplace_user_id
+        or reserved.wallet_address != trusted.marketplace_wallet
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="MARKETPLACE_IDENTITY_MISMATCH",
+        )
+
+    for alias in ("user_address", "wallet_address"):
+        if alias not in body.proxy_payload:
+            continue
+        value = body.proxy_payload.get(alias)
+        if not isinstance(value, str) or re.fullmatch(
+            r"0x[0-9a-fA-F]{40}", value.strip()
+        ) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="MARKETPLACE_IDENTITY_INVALID",
+            )
+        if value.strip().lower() != trusted.marketplace_wallet:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="MARKETPLACE_IDENTITY_MISMATCH",
+            )
 
 
 def _request_user_uuid(request: Request) -> str | None:
