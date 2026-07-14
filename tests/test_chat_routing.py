@@ -12,6 +12,28 @@ from app.core.enums import RunStatus
 from app.core.models import Conversation, Message
 from app.core.schemas import ChatRequest
 
+_MARKETPLACE_USER = "marketplace:user:7"
+_MARKETPLACE_WALLET = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+
+
+def _marketplace_headers(**extra: str) -> dict[str, str]:
+    return {
+        "X-Marketplace-User-ID": _MARKETPLACE_USER,
+        "X-Marketplace-Wallet": _MARKETPLACE_WALLET,
+        **extra,
+    }
+
+
+def _marketplace_proxy_payload() -> dict[str, object]:
+    return {
+        "marketplace_identity": {
+            "user_id": _MARKETPLACE_USER,
+            "wallet_address": _MARKETPLACE_WALLET,
+        },
+        "user_address": _MARKETPLACE_WALLET,
+        "wallet_address": _MARKETPLACE_WALLET,
+    }
+
 
 def test_chat_routing_harness_can_represent_route_metadata():
     metadata = {"mode": "auto", "task_type": "chat"}
@@ -49,7 +71,7 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.route_type == "realtime"
 
 
-def test_accepted_response_includes_encoded_user_uuid_on_existing_stream_urls():
+def test_accepted_response_has_identity_free_stream_urls():
     from app.api.routers.chat import _accepted
 
     accepted = _accepted(
@@ -57,11 +79,10 @@ def test_accepted_response_includes_encoded_user_uuid_on_existing_stream_urls():
         "run-1",
         "trace-1",
         route_type="realtime",
-        user_uuid="market user/1",
     )
 
-    assert accepted.stream_url == "/stream/run-1?user_uuid=market+user%2F1"
-    assert accepted.ws_url == "/ws/run-1?user_uuid=market+user%2F1"
+    assert accepted.stream_url == "/stream/run-1"
+    assert accepted.ws_url == "/ws/run-1"
 
 
 def test_chat_request_accepts_proxy_payload_as_upstream_context():
@@ -76,6 +97,25 @@ def test_chat_request_accepts_proxy_payload_as_upstream_context():
 
     assert body.run_context == body.proxy_payload
     assert body.run_context["marketplace_agent"]["address"].startswith("0x17")
+
+
+def test_chat_request_exposes_normalized_marketplace_identity_accessor():
+    body = ChatRequest(
+        message="hello",
+        proxy_payload={
+            "marketplace_identity": {
+                "user_id": "marketplace:user:7",
+                "wallet_address": "0xAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCd",
+            }
+        },
+    )
+
+    assert body.marketplace_identity is not None
+    assert body.marketplace_identity.user_id == "marketplace:user:7"
+    assert (
+        body.marketplace_identity.wallet_address
+        == "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    )
 
 
 def test_chat_request_projects_metadata_agent_context_to_run_context():
@@ -253,7 +293,7 @@ async def test_chat_returned_conversation_id_can_fetch_detail(monkeypatch):
         yield repos
 
     app.dependency_overrides[deps.get_repos] = override_repos
-    headers = {"Authorization": "Bearer user-conversation-detail"}
+    headers = _marketplace_headers()
 
     try:
         async with httpx.AsyncClient(
@@ -263,7 +303,10 @@ async def test_chat_returned_conversation_id_can_fetch_detail(monkeypatch):
             resp = await client.post(
                 "/chat",
                 headers=headers,
-                json={"message": "hello"},
+                json={
+                    "message": "hello",
+                    "proxy_payload": _marketplace_proxy_payload(),
+                },
             )
             assert resp.status_code == 202
             conversation_id = resp.json()["conversation_id"]
@@ -281,7 +324,9 @@ async def test_chat_returned_conversation_id_can_fetch_detail(monkeypatch):
     assert detail.json()["messages"][0]["content"] == "hello"
 
 
-async def test_chat_accepts_url_user_uuid_and_prefers_it_over_headers(monkeypatch):
+async def test_chat_ignores_legacy_identity_when_marketplace_headers_are_valid(
+    monkeypatch,
+):
     from app.api import deps
     from app.api.main import create_app
     from app.api.repos import Repos
@@ -356,13 +401,22 @@ async def test_chat_accepts_url_user_uuid_and_prefers_it_over_headers(monkeypatc
             base_url="http://testserver",
         ) as client:
             resp = await client.post(
-                "/chat?user_uuid=market-user-1",
-                headers={"Authorization": f"Bearer {'u' * 128}"},
-                json={"message": "hello", "stream": True},
+                "/chat?user_uuid=ignored-query-user",
+                headers=_marketplace_headers(
+                    Authorization=f"Bearer {'u' * 128}",
+                ),
+                json={
+                    "message": "hello",
+                    "stream": True,
+                    "proxy_payload": _marketplace_proxy_payload(),
+                },
             )
             body = resp.json()
             status_resp = await client.get(
-                f"/runs/{body['agent_run_id']}?user_uuid=market-user-1"
+                f"/runs/{body['agent_run_id']}?user_uuid=ignored-query-user",
+                headers=_marketplace_headers(
+                    Authorization="Bearer ignored-header-user",
+                ),
             )
     finally:
         app.dependency_overrides.clear()
@@ -370,9 +424,9 @@ async def test_chat_accepts_url_user_uuid_and_prefers_it_over_headers(monkeypatc
 
     assert resp.status_code == 202
     assert body["stream_url"].startswith("/stream/run_")
-    assert body["stream_url"].endswith("?user_uuid=market-user-1")
+    assert "user_uuid" not in body["stream_url"]
     assert body["ws_url"].startswith("/ws/run_")
-    assert body["ws_url"].endswith("?user_uuid=market-user-1")
+    assert "user_uuid" not in body["ws_url"]
     assert status_resp.status_code == 200
     assert status_resp.json()["agent_run_id"] == body["agent_run_id"]
     assert status_resp.json()["status"] == "PENDING"
@@ -405,14 +459,14 @@ async def test_removed_api_v1_chat_route_is_not_registered():
     assert resp.status_code == 404
 
 
-async def test_chat_rejects_overlong_url_user_uuid_before_side_effects():
+async def test_chat_rejects_legacy_url_identity_before_side_effects():
     from app.api import deps
     from app.api.main import create_app
 
     app = create_app()
 
     async def repos_must_not_be_touched():
-        raise AssertionError("overlong user_uuid must stop before repositories")
+        raise AssertionError("legacy user_uuid must stop before repositories")
         yield
 
     app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
@@ -429,18 +483,18 @@ async def test_chat_rejects_overlong_url_user_uuid_before_side_effects():
     finally:
         app.dependency_overrides.clear()
 
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "USER_UUID_TOO_LONG"
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "MARKETPLACE_IDENTITY_REQUIRED"
 
 
-async def test_legacy_chat_rejects_overlong_header_user_before_side_effects():
+async def test_chat_rejects_legacy_header_identity_before_side_effects():
     from app.api import deps
     from app.api.main import create_app
 
     app = create_app()
 
     async def repos_must_not_be_touched():
-        raise AssertionError("overlong header user must stop before repositories")
+        raise AssertionError("legacy header identity must stop before repositories")
         yield
 
     app.dependency_overrides[deps.get_repos] = repos_must_not_be_touched
@@ -458,8 +512,8 @@ async def test_legacy_chat_rejects_overlong_header_user_before_side_effects():
     finally:
         app.dependency_overrides.clear()
 
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "USER_ID_TOO_LONG"
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "MARKETPLACE_IDENTITY_REQUIRED"
 
 
 async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
@@ -488,6 +542,9 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
             }
 
     class _Repos:
+        async def get_conversation(self, conversation_id):
+            return SimpleNamespace(id=conversation_id, user_id="user-1")
+
         async def get_idempotency_record(self, user_id, idempotency_key):
             return None
 
@@ -509,12 +566,12 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
     )
 
     response = await chat.create_chat(
-            ChatRequest(
-                message="hello",
-                conversation_id="conv-1",
-                metadata={"mode": "realtime"},
-                proxy_payload={"tenant": "alpha"},
-            ),
+        ChatRequest(
+            message="hello",
+            conversation_id="conv-1",
+            metadata={"mode": "realtime"},
+            proxy_payload={"tenant": "alpha"},
+        ),
         request,
         "user-1",
         _Repos(),

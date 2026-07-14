@@ -60,8 +60,9 @@ chat-eval-report:
 
 chat-eval-live:
 	@test -n "$$CHAT_EVAL_BASE_URL" || (echo "CHAT_EVAL_BASE_URL is required" >&2; exit 1)
-	@test -n "$$CHAT_EVAL_AUTH_TOKEN" || (echo "CHAT_EVAL_AUTH_TOKEN is required" >&2; exit 1)
-	$(PY) -m tests.chat_eval.live_runner --base-url "$$CHAT_EVAL_BASE_URL" --auth-token-env CHAT_EVAL_AUTH_TOKEN --output .artifacts/release/chat_eval_live.json
+	@test -n "$$CHAT_EVAL_MARKETPLACE_USER_ID" || (echo "CHAT_EVAL_MARKETPLACE_USER_ID is required" >&2; exit 1)
+	@test -n "$$CHAT_EVAL_MARKETPLACE_WALLET" || (echo "CHAT_EVAL_MARKETPLACE_WALLET is required" >&2; exit 1)
+	$(PY) -m tests.chat_eval.live_runner --base-url "$$CHAT_EVAL_BASE_URL" --marketplace-user-id "$$CHAT_EVAL_MARKETPLACE_USER_ID" --marketplace-wallet "$$CHAT_EVAL_MARKETPLACE_WALLET" --output .artifacts/release/chat_eval_live.json
 
 verify-release:
 	PY="$(PY)" scripts/verify_release.sh

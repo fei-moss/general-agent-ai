@@ -79,8 +79,8 @@ async def list_conversations(
 
 
 def _assert_owner(owner_id: str | None, user: str) -> None:
-    """校验资源归属;归属不符返回 403。匿名归属(None)放行。"""
-    if owner_id is not None and owner_id != user:
+    """校验资源归属;空归属或归属不符均返回 403。"""
+    if owner_id != user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该会话"
         )

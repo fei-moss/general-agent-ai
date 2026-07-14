@@ -20,6 +20,10 @@ def test_deploy_dry_run_plans_ordered_release_steps_without_execution():
             "abc1234",
             "--base-url",
             "https://api.example.test",
+            "--marketplace-user-id",
+            "  marketplace:user:7  ",
+            "--marketplace-wallet",
+            "  0xAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCdEfAbCd  ",
             "--secret-env",
             "ZAI_API_KEY",
             "--secret-file",
@@ -54,6 +58,13 @@ def test_deploy_dry_run_plans_ordered_release_steps_without_execution():
     assert "ZAI_API_KEY" in deploy_step["command"]
     assert "GEMINI_API_KEY=<redacted-secret-file>" in deploy_step["command"]
     assert "/Users/chris/.secrets/gemini-key.txt" not in json.dumps(audit)
+    serialized = json.dumps(audit)
+    assert "X-Marketplace-User-ID" in serialized
+    assert "X-Marketplace-Wallet" in serialized
+    assert "marketplace_identity" in serialized
+    assert "X-API-Key" not in serialized
+    assert "  marketplace:user:7  " not in serialized
+    assert "  0xabcdefabcdefabcdefabcdefabcdefabcdefabcd  " not in serialized
 
 
 def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audit(

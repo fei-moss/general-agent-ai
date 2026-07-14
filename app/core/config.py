@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,7 +29,6 @@ class Settings(BaseSettings):
     db_pool_pre_ping: bool = False
     db_pool_recycle_s: int = 1800
     redis_url: str = "redis://localhost:55379/0"
-
     # --- Celery ---
     celery_broker_url: str = "redis://localhost:55379/1"
     celery_result_backend: str = "redis://localhost:55379/2"

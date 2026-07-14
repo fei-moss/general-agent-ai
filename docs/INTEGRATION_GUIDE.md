@@ -36,53 +36,58 @@ https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org
 export BASE_URL="https://api-chris-general-agent-ai-chat-prod.dkhost.vixmk-yo.org"
 ```
 
-Marketplace curl 示例使用 `USER_UUID` 放在 URL query；内部/legacy 示例仍可能使用
-`AUTH_HEADER` 承载当前用户身份 header。
+Marketplace curl 示例使用网关从登录态解析出的 `MARKETPLACE_USER_ID` 和
+`MARKETPLACE_WALLET`;前端不直接传这两个字段。
 
 DockerHost 地址默认视为测试/预发地址，除非运维明确声明为稳定生产入口。
 
 ## 3. 当前身份模型
 
-当前版本还没有正式登录态、OAuth、租户、API Key 管理系统。Marketplace-facing
-chat-flow 采用 URL-derived identity：
+Marketplace 是公开登录态和 JWT 的校验边界。它把已认证账户映射为可信 wallet,
+然后在所有转发到 Chat Server 的业务请求中注入:
 
 ```http
-?user_uuid=<user_uuid>
+X-Marketplace-User-ID: marketplace:user:123
+X-Marketplace-Wallet: 0x1111111111111111111111111111111111111111
 ```
 
 规则：
 
-- `user_uuid` 会被服务当成内部 `user_id`。
-- `user_uuid` 会写入数据库，用于 conversation、run、stream 的资源归属。
-- 同一个用户继续会话、查会话、查 run、订阅 stream，都必须传同一个 `user_uuid`。
-- `user_uuid` 必须是上游认证后的稳定短内部 ID，长度不能超过 64 个字符。
-- 不要把原始 JWT、session token、钱包私钥或 provider key 放进 `user_uuid`。
+- Marketplace user id 必须匹配 `marketplace:user:<正整数>`,最长 64 字符。
+- wallet 必须是 EVM 地址;Chat Server 归一化为小写后,作为 conversation、run、
+  stream、幂等和限流 owner。
+- `POST /chat` 的 `proxy_payload.marketplace_identity` 必须和专用头一致。
+- `proxy_payload.user_address` / `wallet_address` 出现时也必须等于可信 wallet。
+- 冲突身份不会回退到 query、Bearer 或 API key。
 
-示例：
+所有环境都只接受这两个 Marketplace 专用头,不存在身份模式开关。生产时 Chat Server
+仅在私有网络接受 Marketplace 流量。按批准的边界设计不需要内部服务凭证、签名或应用层加密。
 
-```http
-POST /chat?user_uuid=alice.internal
+`POST /chat` 示例身份上下文:
+
+```json
+{
+  "marketplace_identity": {
+    "user_id": "marketplace:user:123",
+    "wallet_address": "0x1111111111111111111111111111111111111111"
+  },
+  "user_address": "0x1111111111111111111111111111111111111111",
+  "wallet_address": "0x1111111111111111111111111111111111111111"
+}
 ```
 
-这会被服务理解为：
+### 开发直调
 
-```text
-user_id = alice.internal
-```
+开发时直接调用 Chat Server 也必须手动注入 `X-Marketplace-User-ID` 和
+`X-Marketplace-Wallet`。以下输入不能认证用户侧 Chat 请求：
 
-Legacy/internal 路径暂时仍支持 header-derived identity：
+- URL `user_uuid`；
+- 普通 `Authorization: Bearer ...`；
+- `X-API-Key`；
+- WebSocket query `token`。
 
-```http
-Authorization: Bearer <user_id>
-```
-
-或：
-
-```http
-X-API-Key: <user_id>
-```
-
-这不是正式认证，只是“上游服务已经完成认证后，把内部用户 ID 传给 Chat Server”的占位方式。
+公开开发地址上的 plain Marketplace headers 也不构成密码学证明,只能用于联调,
+不能替代生产私有网络边界。
 `/rag/*` 不是普通用户接口，只允许内部知识库管理员或内部 ingestion Agent 访问。
 
 公开端点：
@@ -94,7 +99,7 @@ X-API-Key: <user_id>
 - `GET /redoc`
 - `GET /openapi.json`
 
-Marketplace chat-flow 端点使用 URL `user_uuid`。内部/legacy 业务端点仍可使用身份 header。
+Marketplace chat-flow 在所有环境使用两项专用头;URL `user_uuid` 不再是身份输入。
 
 ## 4. 中心化数据模型
 
@@ -128,7 +133,7 @@ internal_rag_owner_user_id
 
 继续对话依赖 `conversation_id`：
 
-- 第一次 `POST /chat?user_uuid=<user_uuid>` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
+- 第一次 `POST /chat` 不传 `conversation_id` 时，服务会自动创建一个新 conversation。
 - 返回体里会给出 `conversation_id`。
 - 后续请求传这个 `conversation_id`，服务会加载该会话历史，再进行新一轮 Agent 执行。
 - 如果接入方不知道有哪些 conversation，可以调用 `GET /conversations` 查询当前 `user_id` 下的会话列表。
@@ -136,11 +141,11 @@ internal_rag_owner_user_id
 ## 5. 最常见接入流程
 
 ```text
-1. 业务系统确定内部 `user_uuid`
-2. POST `/chat?user_uuid=<user_uuid>`
+1. Marketplace 校验登录态并确定 account id + wallet
+2. POST `/chat`,注入专用头和 reserved payload
 3. 保存返回的 conversation_id 和 agent_run_id
 4. 订阅 stream_url，读取 TOKEN 和 RUN_COMPLETED
-5. 用户继续追问时，再 POST `/chat?user_uuid=<user_uuid>`，并传 conversation_id
+5. 用户继续追问时,再 POST `/chat`,携带同一可信 wallet 和 conversation_id
 6. 如果页面刷新或客户端丢失状态，调用 GET /conversations 找回会话
 ```
 
@@ -152,8 +157,10 @@ internal_rag_owner_user_id
 成功后立即返回 `202`，接入方要马上用返回的 `stream_url` 或 `ws_url` 接收结果。
 
 ```bash
-curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
+curl -sS -X POST "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
   -H 'Idempotency-Key: chat-001' \
   -d '{
     "message": "请用三句话介绍一下这个系统现在的能力。",
@@ -162,7 +169,14 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
       "mode": "realtime",
       "task_type": "chat"
     },
-    "proxy_payload": {}
+    "proxy_payload": {
+      "marketplace_identity": {
+        "user_id": "marketplace:user:123",
+        "wallet_address": "0x1111111111111111111111111111111111111111"
+      },
+      "user_address": "0x1111111111111111111111111111111111111111",
+      "wallet_address": "0x1111111111111111111111111111111111111111"
+    }
   }'
 ```
 
@@ -185,7 +199,9 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
     "page_context": "可选；例如 agent_detail"
   },
   "proxy_payload": {
-    "user_address": "可选；当前用户钱包或页面上下文"
+    "marketplace_identity": "Marketplace 必填保留对象",
+    "user_address": "Marketplace 注入的可信 wallet alias",
+    "wallet_address": "Marketplace 注入的可信 wallet alias"
   }
 }
 ```
@@ -197,7 +213,8 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
 上游代理或页面服务需要提供当前 Agent 上下文时,请使用
 `metadata.agent_context` / `metadata.current_agent_address`。服务端会把这些可信页面字段
 归一化为内部 `run_context.agent_address` 和 `run_context.agent`。泛用页面上下文仍可放在
-`proxy_payload`。`run_context` 不再作为对外请求字段兼容。`proxy_payload` 必须是合法
+`proxy_payload`;Marketplace 身份命名空间由网关覆盖,前端无需修改或自行填写。
+`run_context` 不再作为对外请求字段兼容。`proxy_payload` 必须是合法
 JSON 对象,示例中不能包含 `//` 注释。
 
 响应是 HTTP `202`：
@@ -208,8 +225,8 @@ JSON 对象,示例中不能包含 `//` 注释。
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/stream/run_xxx?user_uuid=alice.internal",
-  "ws_url": "/ws/run_xxx?user_uuid=alice.internal",
+  "stream_url": "/stream/run_xxx",
+  "ws_url": "/ws/run_xxx",
   "route_type": "realtime"
 }
 ```
@@ -223,7 +240,9 @@ JSON 对象,示例中不能包含 `//` 注释。
 查询运行状态：
 
 ```bash
-curl -sS "$BASE_URL/runs/run_xxx?user_uuid=$USER_UUID"
+curl -sS "$BASE_URL/runs/run_xxx" \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET"
 ```
 
 ### 6.2 用 SSE 接收 token 和最终答案
@@ -231,7 +250,9 @@ curl -sS "$BASE_URL/runs/run_xxx?user_uuid=$USER_UUID"
 拿到上一步返回的 `stream_url` 后立即订阅：
 
 ```bash
-curl -N "$BASE_URL/stream/run_xxx?user_uuid=$USER_UUID"
+curl -N "$BASE_URL/stream/run_xxx" \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET"
 ```
 
 SSE frame 示例：
@@ -296,14 +317,11 @@ data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","typ
 如果接入方更适合 WebSocket，可以使用响应里的 `ws_url`：
 
 ```text
-ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal
+ws(s)://<host>/ws/run_xxx
 ```
 
-Legacy/internal 调用也可以在握手时传：
-
-```http
-Authorization: Bearer alice.internal
-```
+Marketplace 的 WebSocket 代理必须在握手时注入两项专用头。开发直调也必须注入
+相同专用头,普通 Authorization 或 query token 不会建立 Chat 身份。
 
 每条 WebSocket 消息是完整 `AgentEvent` JSON；处理规则和 SSE 相同：拼接
 `TOKEN.data.token`，收到 `RUN_COMPLETED` 或 `ERROR` 后结束本轮。
@@ -319,7 +337,7 @@ Last-Event-ID: <last_sse_id>
 WebSocket 需要从 cursor 恢复时：
 
 ```text
-ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
+ws(s)://<host>/ws/run_xxx?last_event_id=<stream_id>
 ```
 
 如果 cursor 已超过服务端保留窗口，服务端会返回：
@@ -336,7 +354,7 @@ ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
 
 此时不要再尝试 replay token，应该查询：
 
-- `GET /runs/{agent_run_id}?user_uuid=<user_uuid>`
+- 携带 Marketplace 专用头的 `GET /runs/{agent_run_id}`
 - `GET /conversations/{conversation_id}`
 
 ### 6.5 继续已有会话
@@ -344,8 +362,10 @@ ws(s)://<host>/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
 把上一次返回的 `conversation_id` 放进请求：
 
 ```bash
-curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
+curl -sS -X POST "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
   -H 'Idempotency-Key: chat-002' \
   -d '{
     "conversation_id": "conv_xxx",
@@ -353,13 +373,21 @@ curl -sS -X POST "$BASE_URL/chat?user_uuid=$USER_UUID" \
     "stream": true,
     "metadata": {
       "mode": "realtime"
+    },
+    "proxy_payload": {
+      "marketplace_identity": {
+        "user_id": "marketplace:user:123",
+        "wallet_address": "0x1111111111111111111111111111111111111111"
+      },
+      "user_address": "0x1111111111111111111111111111111111111111",
+      "wallet_address": "0x1111111111111111111111111111111111111111"
     }
   }'
 ```
 
 注意：
 
-- `conversation_id` 必须属于当前 `user_uuid` 对应的 `user_id`。
+- `conversation_id` 必须属于当前专用头对应的可信 wallet owner。
 - 如果会话归属不匹配，返回 `403`。
 - 同一 conversation 的 realtime run 会串行化；如果上一轮还没结束，可能返回 `409 CONVERSATION_BUSY`。
 
@@ -406,7 +434,8 @@ Idempotency-Key: <client-generated-stable-key>
 ```bash
 curl -sS -X POST "$BASE_URL/conversations" \
   -H 'Content-Type: application/json' \
-  -H "$AUTH_HEADER" \
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET" \
   -d '{
     "title": "Support analysis"
   }'
@@ -428,7 +457,8 @@ curl -sS -X POST "$BASE_URL/conversations" \
 
 ```bash
 curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
-  -H "$AUTH_HEADER"
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET"
 ```
 
 返回当前 `user_id` 下的会话列表，按更新时间倒序：
@@ -454,7 +484,8 @@ curl -sS "$BASE_URL/conversations?limit=20&offset=0" \
 
 ```bash
 curl -sS "$BASE_URL/conversations/conv_xxx" \
-  -H "$AUTH_HEADER"
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET"
 ```
 
 响应包含会话和消息列表：
@@ -501,7 +532,8 @@ curl -sS "$BASE_URL/conversations/conv_xxx" \
 
 ```bash
 curl -sS "$BASE_URL/runs/run_xxx" \
-  -H "$AUTH_HEADER"
+  -H "X-Marketplace-User-ID: $MARKETPLACE_USER_ID" \
+  -H "X-Marketplace-Wallet: $MARKETPLACE_WALLET"
 ```
 
 响应：
@@ -745,10 +777,10 @@ HTTP 状态：
 
 ## 12. Agent 接入清单
 
-1. 设置 `BASE_URL`。
-2. 选择稳定的内部 `user_uuid`，不要使用原始 JWT。
-3. Marketplace chat-flow 请求把 `user_uuid` 放进 URL query。
-4. `POST /chat?user_uuid=<user_uuid>` 时带 `Idempotency-Key`。
+1. 设置 Chat Server 内部 `BASE_URL`。
+2. Marketplace 校验登录态并解析可信 account id + wallet。
+3. 所有 Chat 业务请求注入 `X-Marketplace-User-ID` 和 `X-Marketplace-Wallet`。
+4. `POST /chat` 覆盖注入匹配的 `proxy_payload.marketplace_identity`,并带 `Idempotency-Key`。
 5. 新聊天不传 `conversation_id`，服务会自动创建。
 6. 保存返回的 `conversation_id`，后续追问必须传回。
 7. 保存返回的 `agent_run_id`，用于订阅 stream 和查询 run。
@@ -757,6 +789,6 @@ HTTP 状态：
 10. 页面刷新或本地状态丢失时，调用 `GET /conversations` 找回会话列表。
 11. 需要完整历史时，调用 `GET /conversations/{conversation_id}`。
 12. SSE 断线时，用最后一个 SSE `id` 作为 `Last-Event-ID` 重连。
-13. 遇到 `STREAM_GAP`，改查 `/runs/{id}?user_uuid=<user_uuid>` 和 `/conversations/{id}`。
+13. 遇到 `STREAM_GAP`,携带相同专用头改查 `/runs/{id}` 和 `/conversations/{id}`。
 14. 不要调用 `/rag/*` 或传 `metadata.knowledge_base_id`；RAG 由服务端内部知识库配置透明生效。
 15. 接流量前检查 `/readyz`，排障时查看 `/metrics`。
