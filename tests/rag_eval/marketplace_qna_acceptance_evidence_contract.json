@@ -5,6 +5,12 @@
     "artifact_path": ".artifacts/release/marketplace_qna_golden_query_audit.json",
     "required_status": "passed"
   },
+  "gemini_preflight": {
+    "artifact_path": ".artifacts/release/marketplace_qna_gemini_preflight.json",
+    "required_status": "passed",
+    "embedding_model": "gemini-embedding-2",
+    "embedding_dimension": 256
+  },
   "ingestion": {
     "summary_artifact_path": ".artifacts/release/marketplace_qna_ingestion_summary.json",
     "knowledge_base_name": "Moss Agent Marketplace QnA",

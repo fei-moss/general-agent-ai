@@ -115,6 +115,12 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
     assert len(golden) == acceptance["thresholds"]["golden_queries"]
     assert len(chat) == acceptance["thresholds"]["chat_cases"]
+    assert acceptance["gemini_preflight"] == {
+        "artifact_path": ".artifacts/release/marketplace_qna_gemini_preflight.json",
+        "required_status": "passed",
+        "embedding_model": "gemini-embedding-2",
+        "embedding_dimension": 256,
+    }
 
 
 def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
@@ -416,6 +422,15 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         },
     )
     write(
+        "gemini_preflight",
+        {
+            "status": "passed",
+            "embedding_model": "gemini-embedding-2",
+            "embedding_dimension": 256,
+            "http_status": 200,
+        },
+    )
+    write(
         "ingestion",
         {
             "submitted_documents": 18,
@@ -519,6 +534,9 @@ def test_marketplace_qna_acceptance_validator_reports_every_threshold(tmp_path):
     path, payload = load("fixture_audit")
     payload["status"] = "failed"
     path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("gemini_preflight")
+    payload["status"] = "blocked"
+    path.write_text(json.dumps(payload), encoding="utf-8")
     path, payload = load("ingestion")
     payload["failed_jobs"] = 1
     payload["source_hash_audit"]["hash_maps_equal"] = False
@@ -541,6 +559,7 @@ def test_marketplace_qna_acceptance_validator_reports_every_threshold(tmp_path):
     errors = validate_acceptance(root=tmp_path)
 
     assert any("fixture_audit" in error for error in errors)
+    assert any("gemini_preflight" in error for error in errors)
     assert any("failed_jobs" in error for error in errors)
     assert any("source hashes" in error for error in errors)
     assert any("promptfoo" in error for error in errors)

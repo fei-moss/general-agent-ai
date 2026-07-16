@@ -45,6 +45,7 @@ def validate_acceptance(
     thresholds = contract["thresholds"]
     errors: list[str] = []
     errors.extend(_validate_audit(root, contract["fixture_audit"], thresholds))
+    errors.extend(_validate_preflight(root, contract["gemini_preflight"]))
     errors.extend(_validate_ingestion(root, contract["ingestion"], thresholds))
     errors.extend(_validate_promptfoo(root, contract["promptfoo"], thresholds))
     errors.extend(
@@ -53,6 +54,27 @@ def validate_acceptance(
     errors.extend(_validate_live_chat(root, contract["live_chat"], thresholds))
     errors.extend(_validate_release(root, contract["release_gate"]))
     return errors
+
+
+def _validate_preflight(root: Path, section: dict[str, Any]) -> list[str]:
+    _, payload, errors = _artifact(root, section)
+    if payload is None:
+        return [f"gemini_preflight: {error}" for error in errors]
+    output: list[str] = []
+    if payload.get("status") != section["required_status"]:
+        output.append(
+            f"gemini_preflight: status={payload.get('status')} expected "
+            f"{section['required_status']}"
+        )
+    if payload.get("embedding_model") != section["embedding_model"]:
+        output.append("gemini_preflight: embedding_model mismatch")
+    if int(payload.get("embedding_dimension") or 0) != int(
+        section["embedding_dimension"]
+    ):
+        output.append("gemini_preflight: embedding_dimension mismatch")
+    if int(payload.get("http_status") or 0) != 200:
+        output.append("gemini_preflight: http_status must be 200")
+    return output
 
 
 def _validate_audit(

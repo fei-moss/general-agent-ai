@@ -48,7 +48,7 @@
       "path": "tests/rag_eval/marketplace_qna_acceptance_evidence_contract.json",
       "role": "acceptance_contract",
       "row_count": null,
-      "sha256": "eda09e87e2535746eb2b8cac549dc3caaf2ef8865b173c79f44b57811d80aecd"
+      "sha256": "c9456a0f90ec2d43e7b9c815c464a5a256649a5c59c705c5c12f0b77797ddd87"
     }
   ],
   "source_set": "marketplace-qna-bilingual-2026-07-16",

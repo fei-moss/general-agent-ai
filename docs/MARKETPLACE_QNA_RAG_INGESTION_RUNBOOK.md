@@ -38,6 +38,9 @@ Verify the deterministic fixture family first:
 .venv/bin/python tests/rag_eval/marketplace_qna_fixture_builder.py
 .venv/bin/python -m tests.rag_eval.marketplace_qna_golden_query_audit \
   --output .artifacts/release/marketplace_qna_golden_query_audit.json
+.venv/bin/python -m tests.rag_eval.moss_gemini_preflight \
+  --output .artifacts/release/marketplace_qna_gemini_preflight.json \
+  --model gemini-embedding-2 --dimension 256
 .venv/bin/python -m pytest -q tests/test_marketplace_qna_eval.py \
   tests/test_rag_promptfoo_eval.py
 ```
