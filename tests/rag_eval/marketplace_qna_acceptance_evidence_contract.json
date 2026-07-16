@@ -1,0 +1,44 @@
+{
+  "contract_id": "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-ACCEPTANCE-EVIDENCE",
+  "description": "Evidence required to accept the bilingual Marketplace QnA corpus, retrieval Golden Cases, and live chat behavior.",
+  "fixture_audit": {
+    "artifact_path": ".artifacts/release/marketplace_qna_golden_query_audit.json",
+    "required_status": "passed"
+  },
+  "ingestion": {
+    "summary_artifact_path": ".artifacts/release/marketplace_qna_ingestion_summary.json",
+    "knowledge_base_name": "Moss Agent Marketplace QnA",
+    "expected_chunks": 141,
+    "required_embedding_provider": "gemini",
+    "required_embedding_model": "gemini-embedding-2",
+    "required_embedding_dimension": 256
+  },
+  "promptfoo": {
+    "artifact_path": ".artifacts/release/marketplace_qna_promptfoo_eval.json",
+    "config_path": "tests/rag_eval/marketplace_qna_promptfooconfig.yaml"
+  },
+  "live_retrieval": {
+    "artifact_path": ".artifacts/release/marketplace_qna_live_retrieval.json",
+    "strict": true,
+    "top_k": 5
+  },
+  "live_chat": {
+    "artifact_path": ".artifacts/release/marketplace_qna_live_chat.json",
+    "must_use_server_default_knowledge_base": true
+  },
+  "release_gate": {
+    "artifact_path": ".artifacts/release/summary.json",
+    "command": "scripts/verify_release.sh",
+    "must_pass": true
+  },
+  "thresholds": {
+    "source_documents": 18,
+    "golden_queries": 114,
+    "chat_cases": 18,
+    "promptfoo_required_passes": 114,
+    "live_required_passes": 114,
+    "minimum_top1_rate": 0.8,
+    "maximum_degraded_cases": 0,
+    "maximum_failed_ingestion_jobs": 0
+  }
+}

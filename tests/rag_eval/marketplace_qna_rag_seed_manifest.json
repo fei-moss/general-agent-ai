@@ -1,0 +1,56 @@
+{
+  "coverage_contract_id": "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE",
+  "embedding_target": {
+    "dimension": 256,
+    "model": "gemini-embedding-2",
+    "provider": "gemini",
+    "requires_allowed_network": true
+  },
+  "knowledge_base": {
+    "description": "Reviewed bilingual Marketplace product QnA corpus.",
+    "name": "Moss Agent Marketplace QnA",
+    "source_root_uri": "marketplace-qna://",
+    "visibility": "internal"
+  },
+  "manifest_id": "marketplace-qna-rag-seed-v1",
+  "source_files": [
+    {
+      "path": "tests/rag_eval/marketplace_qna_corpus.jsonl",
+      "role": "corpus",
+      "row_count": 18,
+      "sha256": "afdd1602d9fc2645ea466313ee0b3ed32de319aa5dfe31ca87c814fbe7990bf0"
+    },
+    {
+      "path": "tests/rag_eval/marketplace_qna_golden_queries.jsonl",
+      "role": "golden_queries",
+      "row_count": 114,
+      "sha256": "29aa21a5dba7cfb9c2850495fc7a2ac4a08579b0f3de22a139ce7594d76f90c8"
+    },
+    {
+      "path": "tests/rag_eval/marketplace_qna_golden_query_review.jsonl",
+      "role": "review_evidence",
+      "row_count": 114,
+      "sha256": "17e3859da71cb3265a715915b5dba5d2a7c11417f7e0a6355e475031a188f6d6"
+    },
+    {
+      "path": "tests/rag_eval/marketplace_qna_chat_cases.jsonl",
+      "role": "chat_cases",
+      "row_count": 18,
+      "sha256": "9997af73e352e12a9e4e77cb63a3391d3ed28a72330c988d36478982cf43b017"
+    },
+    {
+      "path": "tests/rag_eval/marketplace_qna_coverage_contract.json",
+      "role": "coverage_contract",
+      "row_count": null,
+      "sha256": "1b14b54fe47b7dbf5a7f80968702edc40cce1a882910802abd46cbc4c3298405"
+    },
+    {
+      "path": "tests/rag_eval/marketplace_qna_acceptance_evidence_contract.json",
+      "role": "acceptance_contract",
+      "row_count": null,
+      "sha256": "eda09e87e2535746eb2b8cac549dc3caaf2ef8865b173c79f44b57811d80aecd"
+    }
+  ],
+  "source_set": "marketplace-qna-bilingual-2026-07-16",
+  "spec_id": "SPEC-RAG-EVAL-002"
+}
