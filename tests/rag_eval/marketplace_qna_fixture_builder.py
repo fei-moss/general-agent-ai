@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
+CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-16"
+GENERATED_PATHS = {
+    "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
+    "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
+    "review_evidence": Path(__file__).parent / "marketplace_qna_golden_query_review.jsonl",
+    "chat_cases": Path(__file__).parent / "marketplace_qna_chat_cases.jsonl",
+}
 EXPECTED_QUESTION_COUNTS = (5, 7, 2, 16, 4, 9, 4, 7, 3)
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
@@ -45,6 +57,27 @@ class ParsedSource:
 @dataclass(frozen=True)
 class FixtureBundle:
     sources: tuple[ParsedSource, ...]
+
+
+@dataclass(frozen=True)
+class CaseDefinition:
+    id: str
+    document_id: str
+    language: str
+    query: str
+    challenge_type: str
+    required_facts: tuple[str, ...]
+    forbidden_claims: tuple[str, ...]
+    representative_chat: bool
+    review_reason: str
+
+
+@dataclass(frozen=True)
+class FixtureRows:
+    corpus: tuple[dict[str, Any], ...]
+    golden_queries: tuple[dict[str, Any], ...]
+    review_evidence: tuple[dict[str, Any], ...]
+    chat_cases: tuple[dict[str, Any], ...]
 
 
 def _language_slug(language: str) -> str:
@@ -143,3 +176,176 @@ def build_fixture_bundle() -> FixtureBundle:
                 f"expected {EXPECTED_QUESTION_COUNTS}"
             )
     return FixtureBundle(sources=sources)
+
+
+def load_case_definitions(
+    bundle: FixtureBundle | None = None,
+    path: Path = CASE_DEFINITIONS_PATH,
+) -> dict[str, CaseDefinition]:
+    bundle = bundle or build_fixture_bundle()
+    source_by_question = {
+        question.id: source
+        for source in bundle.sources
+        for question in source.questions
+    }
+    cases: dict[str, CaseDefinition] = {}
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        case = CaseDefinition(
+            id=str(row["id"]),
+            document_id=str(row["document_id"]),
+            language=str(row["language"]),
+            query=str(row["query"]).strip(),
+            challenge_type=str(row["challenge_type"]).strip(),
+            required_facts=tuple(str(value).strip() for value in row["required_facts"]),
+            forbidden_claims=tuple(str(value).strip() for value in row["forbidden_claims"]),
+            representative_chat=bool(row["representative_chat"]),
+            review_reason=str(row["review_reason"]).strip(),
+        )
+        if case.id in cases:
+            raise ValueError(f"duplicate case id at {path}:{line_number}: {case.id}")
+        source = source_by_question.get(case.id)
+        if source is None:
+            raise ValueError(f"unknown question id at {path}:{line_number}: {case.id}")
+        if case.document_id != source.id or case.language != source.language:
+            raise ValueError(f"case source mismatch at {path}:{line_number}: {case.id}")
+        cases[case.id] = case
+    if set(cases) != set(source_by_question):
+        missing = sorted(set(source_by_question) - set(cases))
+        unexpected = sorted(set(cases) - set(source_by_question))
+        raise ValueError(f"case coverage mismatch: missing={missing}, unexpected={unexpected}")
+    return cases
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def build_fixture_rows() -> FixtureRows:
+    bundle = build_fixture_bundle()
+    cases = load_case_definitions(bundle)
+    question_by_id = {
+        question.id: question
+        for source in bundle.sources
+        for question in source.questions
+    }
+    source_by_id = {source.id: source for source in bundle.sources}
+
+    corpus: list[dict[str, Any]] = []
+    for source in bundle.sources:
+        corpus.append(
+            {
+                "id": source.id,
+                "text": source.text,
+                "meta": {
+                    "source": source.source_uri,
+                    "source_uri": source.source_uri,
+                    "source_path": source.path.relative_to(Path(__file__).parents[2]).as_posix(),
+                    "filename": source.filename,
+                    "language": source.language,
+                    "document_order": source.order,
+                    "source_set": CORPUS_VERSION,
+                    "corpus_version": CORPUS_VERSION,
+                    "sha256": _sha256_bytes(source.text.encode("utf-8")),
+                },
+            }
+        )
+
+    golden_queries: list[dict[str, Any]] = []
+    review_evidence: list[dict[str, Any]] = []
+    chat_cases: list[dict[str, Any]] = []
+    for case_id in sorted(cases):
+        case = cases[case_id]
+        block = question_by_id[case_id]
+        source = source_by_id[case.document_id]
+        tags = [
+            "marketplace-qna",
+            case.language,
+            f"topic-{source.order:02d}",
+            case.challenge_type,
+        ]
+        golden_queries.append(
+            {
+                "id": case.id,
+                "query": case.query,
+                "relevant_doc_ids": [case.document_id],
+                "max_rank": 5,
+                "top_k": 5,
+                "tags": tags,
+            }
+        )
+        review_evidence.append(
+            {
+                "id": case.id,
+                "expected_doc_ids": [case.document_id],
+                "original_question": block.question,
+                "challenge_type": case.challenge_type,
+                "source_evidence": [
+                    {
+                        "source_uri": source.source_uri,
+                        "source_path": source.path.relative_to(Path(__file__).parents[2]).as_posix(),
+                        "source_lines": f"{block.answer_start_line}-{block.answer_end_line}",
+                        "claim": case.required_facts[0],
+                    }
+                ],
+                "review_reason": case.review_reason,
+            }
+        )
+        if case.representative_chat:
+            chat_cases.append(
+                {
+                    "id": case.id,
+                    "document_id": case.document_id,
+                    "language": case.language,
+                    "query": case.query,
+                    "required_facts": list(case.required_facts),
+                    "forbidden_claims": list(case.forbidden_claims),
+                    "source_uri": source.source_uri,
+                }
+            )
+    return FixtureRows(
+        corpus=tuple(corpus),
+        golden_queries=tuple(golden_queries),
+        review_evidence=tuple(review_evidence),
+        chat_cases=tuple(chat_cases),
+    )
+
+
+def _jsonl(rows: tuple[dict[str, Any], ...]) -> str:
+    return "\n".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for row in rows
+    ) + "\n"
+
+
+def write_fixture_files() -> None:
+    rows = build_fixture_rows()
+    for name, path in GENERATED_PATHS.items():
+        path.write_text(_jsonl(getattr(rows, name)), encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build Marketplace QnA RAG evaluation fixtures")
+    parser.add_argument("--write", action="store_true", help="write generated JSONL fixture files")
+    args = parser.parse_args()
+    rows = build_fixture_rows()
+    if args.write:
+        write_fixture_files()
+    print(
+        json.dumps(
+            {
+                "sources": len(rows.corpus),
+                "golden_queries": len(rows.golden_queries),
+                "review_evidence": len(rows.review_evidence),
+                "chat_cases": len(rows.chat_cases),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
