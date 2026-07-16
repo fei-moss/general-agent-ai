@@ -297,6 +297,25 @@ def test_marketplace_qna_live_fact_evaluator_accepts_alternatives_and_rejects_cl
     assert forbidden["forbidden_claims"] == ["guarantees no loss"]
 
 
+def test_marketplace_qna_fat_chat_fact_accepts_no_prior_knowledge_wording():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    case = next(
+        row
+        for row in _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+        if row["id"] == "marketplace_qna_en_01_q01"
+    )
+
+    result = evaluate_answer(
+        "Moss is built on FAT Protocol. You can use Moss without any prior "
+        "knowledge of the FAT Protocol.",
+        required_fact_groups=case["required_fact_groups"],
+        forbidden_claims=case["forbidden_claims"],
+    )
+
+    assert result["passed"] is True
+
+
 def test_marketplace_qna_live_retrieval_evaluator_requires_uri_language_and_no_degrade():
     from tests.rag_eval.marketplace_qna_live_eval import evaluate_retrieval_response
 

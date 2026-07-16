@@ -25,7 +25,17 @@ _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 # requiring the model to reproduce a full source sentence verbatim. Every
 # inner tuple is an OR group; all outer groups must be represented.
 CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
-    "marketplace_qna_en_01": (("FAT Protocol",), ("do not need", "don't need", "without studying")),
+    "marketplace_qna_en_01": (
+        ("FAT Protocol",),
+        (
+            "do not need",
+            "don't need",
+            "without studying",
+            "without any prior knowledge",
+            "no prior knowledge",
+            "underlying protocol is abstracted",
+        ),
+    ),
     "marketplace_qna_en_02": (("fully preserved", "fully retained", "preserved intact", "retained intact"),),
     "marketplace_qna_en_03": (("Perp Trading",), ("Governance",), ("Consumer",)),
     "marketplace_qna_en_04": (("no unified threshold", "no unified minimum", "no universal threshold", "no uniform threshold"), ("detail page",)),
