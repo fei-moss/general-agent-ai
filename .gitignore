@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .artifacts/
 .tools/
+.worktrees/
 
 # 虚拟环境
 .venv/
