@@ -397,7 +397,7 @@
   - `.venv/bin/python -m pytest tests/test_vector_store.py -q`
   - `.venv/bin/python -m pytest tests/test_agent_factory.py tests/test_orchestrator.py -q`
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
 - Prerelease-grade verification commands:
   - `git diff --check`
   - `.venv/bin/python -m pytest -q`

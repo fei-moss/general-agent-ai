@@ -262,7 +262,7 @@
   ```bash
   /Users/chris/AiProject/general-agent-ai/.venv/bin/python -m pytest -q tests/test_marketplace_identity.py tests/test_production_readiness.py tests/test_dockerhost_release_runbook_contract.py
   scripts/check_spec_contract.sh
-  scripts/check_harness_workflows.sh
+  scripts/check_spec_registry.sh
   ```
 
 - [ ] **Step 6: Commit the environment/documentation slice**
@@ -296,7 +296,7 @@
   /Users/chris/AiProject/general-agent-ai/.venv/bin/python -m pytest -q
   scripts/check_ai_boundaries.sh
   scripts/check_spec_contract.sh
-  scripts/check_harness_workflows.sh
+  scripts/check_spec_registry.sh
   AI_BOUNDARY_APPROVED=1 PYTHON=/Users/chris/AiProject/general-agent-ai/.venv/bin/python scripts/verify_release.sh
   ```
 

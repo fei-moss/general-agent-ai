@@ -326,7 +326,7 @@
   - Existing spec/harness validators should pass.
 - Verification command:
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
   - `AI_BOUNDARY_APPROVED=1 make verify-release`
 - Rollback or compatibility note:
   - Documentation rollback does not affect runtime.
@@ -367,7 +367,7 @@
 - Harness gates pass:
   - `git diff --check`
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
   - `AI_BOUNDARY_APPROVED=1 make verify-release`
 - DockerHost pgvector smoke is either passed and recorded or explicitly reported as blocked with reason.
 - Code review findings are fixed or explicitly accepted.

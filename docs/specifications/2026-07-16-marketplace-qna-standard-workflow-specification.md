@@ -1,7 +1,7 @@
 # Marketplace QnA Standard Acceptance Workflow Specification
 
 - Spec ID: `SPEC-RAG-EVAL-003`
-- Workflow Class: `HARNESS-EVAL-IMPROVEMENT-LOOP`
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Extends: `SPEC-RAG-EVAL-002`
 
 ## Problem Assessment

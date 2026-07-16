@@ -25,7 +25,7 @@ Implement the first absorption batch from `world-cup-chat-server`: provider key 
 .venv/bin/python -m pytest tests/test_provider_key_pool.py tests/test_api_request_rate_limit.py tests/test_chat_routing.py tests/test_agent_factory.py tests/test_lifespan_runtime_wiring.py tests/test_provider_rate_limits.py -q
 scripts/check_ai_boundaries.sh
 scripts/check_spec_contract.sh
-scripts/check_harness_workflows.sh
+scripts/check_spec_registry.sh
 scripts/verify_release.sh
 ```
 

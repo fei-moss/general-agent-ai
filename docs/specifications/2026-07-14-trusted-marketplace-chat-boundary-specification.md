@@ -303,7 +303,7 @@ Contract precedence: this specification supersedes the user-facing Chat identity
   - `.venv/bin/python -m pytest -q`.
   - `scripts/check_ai_boundaries.sh`.
   - `scripts/check_spec_contract.sh`.
-  - `scripts/check_harness_workflows.sh`.
+  - `scripts/check_spec_registry.sh`.
   - `scripts/verify_release.sh`.
 
 ## Acceptance Criteria

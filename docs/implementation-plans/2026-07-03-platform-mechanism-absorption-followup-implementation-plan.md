@@ -28,7 +28,7 @@ Implement the second absorption batch: generic conversation anchors, masked run 
 .venv/bin/python -m pytest -q
 AI_BOUNDARY_APPROVED=1 scripts/check_ai_boundaries.sh
 scripts/check_spec_contract.sh
-scripts/check_harness_workflows.sh
+scripts/check_spec_registry.sh
 AI_BOUNDARY_APPROVED=1 PYTHON=.venv/bin/python scripts/verify_release.sh
 ```
 

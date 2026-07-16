@@ -94,7 +94,7 @@
   - None.
 - Verification command:
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
 - Rollback or compatibility note:
   - Documentation-only changes; no runtime effect.
 
@@ -112,7 +112,7 @@
   - `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_orchestrator.py -q`
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `scripts/verify_release.sh`
 - Rollback or compatibility note:
   - If `scripts/verify_release.sh` fails for environment-only reasons, preserve focused test and harness output and report the blocker.

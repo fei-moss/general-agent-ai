@@ -7,7 +7,7 @@ This repository's production-like release path is DockerHost Git pull deployment
 ## Required Preflight
 
 - Run the release gate with the project virtualenv:
-  - `AI_BOUNDARY_APPROVED=1 PYTHON=.venv/bin/python scripts/verify_release.sh`
+  - `AI_BOUNDARY_APPROVED=1 AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:<reference> VERIFY_COMPARE_REF=<base> PY=.venv/bin/python scripts/verify_release.sh`
 - Validate the DockerHost adapter before deployment:
   - `envctl check-project --dir /Users/chris/AiProject/general-agent-ai`
   - `envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost`

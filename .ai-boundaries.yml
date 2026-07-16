@@ -6,7 +6,9 @@
 
 allowed:
   - README.md
+  - BLUEPRINT.md
   - docs/
+  - specs/
   - tests/
   - scripts/sample_knowledge.json
 
@@ -15,6 +17,9 @@ approval_required:
   - CLAUDE.md
   - .ai-boundaries.yml
   - .github/
+  - Makefile
+  - harness/
+  - production-deployment-contract.md
   - scripts/
   - app/api/
   - app/runtime/

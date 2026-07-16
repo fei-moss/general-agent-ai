@@ -143,7 +143,7 @@
   - Focused pytest for behavior policy and eval framework.
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `scripts/verify_release.sh`
 - Performance-sensitive class:
   - Low overhead local runtime check.

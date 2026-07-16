@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Specification: `docs/specifications/2026-07-16-marketplace-qna-standard-workflow-specification.md` (`SPEC-RAG-EVAL-003`).
-- Workflow Class: `HARNESS-EVAL-IMPROVEMENT-LOOP`.
+- Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`.
 - Required full-run environment: `GEMINI_API_KEY`, `MARKETPLACE_QNA_BASE_URL`, and `MARKETPLACE_QNA_KNOWLEDGE_BASE_ID`.
 - Persistent upload remains an explicit operator action and must already have produced `.artifacts/release/marketplace_qna_ingestion_summary.json`.
 - Semantic failures are never retried into a pass.
@@ -193,7 +193,7 @@ Run:
 ```bash
 .venv/bin/python -m pytest -q tests/test_marketplace_qna_workflow.py tests/test_marketplace_qna_eval.py
 scripts/check_spec_contract.sh
-scripts/check_harness_workflows.sh
+scripts/check_spec_registry.sh
 git diff --check
 ```
 

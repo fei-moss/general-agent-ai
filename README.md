@@ -85,15 +85,16 @@ tests/       pytest 用例
 本项目的 AI-first 治理入口:
 
 - `AGENTS.md`: 项目级 AI 工作规则; `CLAUDE.md` 指向同一文件, 避免不同工具规则分叉。
+- `BLUEPRINT.md`: 项目事实、规格、运行证据和 Harness 配置的权威映射。
 - `.ai-boundaries.yml`: AI 可编辑、需审批、禁止触碰路径边界。
-- `docs/harness-workflows.md`: 动态 Harness workflow 说明。
-- `docs/harness-workflows.json`: 可机器校验的 workflow manifest。
-- `docs/harness-source-analysis.md`: P0/P1 文章阅读、冲突裁决和采用记录。
-- `docs/harness-virtual-requirements.json`: 虚拟需求集合, 用于校验 workflow 覆盖是否落地。
-- `docs/specifications/` 与 `docs/implementation-plans/`: 行为规格和实施计划, 非模板文件必须声明 `Workflow Class: HARNESS-*`。
+- `docs/harness-workflows.md`: 四类任务路由与 Loop Contract。
+- `docs/harness-adoption.md`: 成熟仓库同步、ownership 与瘦身规则。
+- `harness/`: 固定的 `harnessctl` 版本、项目 profile 和 scaffold 清单。
+- `specs/<module>/spec.md`: 新增 governed behavior 的 Specification、Implementation Plan 与 Closeout Evidence；历史契约继续保留在 `docs/specifications/` 与 `docs/implementation-plans/`。
 
 ```bash
 make test
-make check-harness-workflows
-make verify-release
+make check-spec-registry
+VERIFY_COMPARE_REF=HEAD make verify-change
+VERIFY_COMPARE_REF=<base> make verify-release
 ```

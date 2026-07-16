@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "custom_gates": {
+    "legacy_spec_contract": {"run": "scripts/check_spec_contract.sh"},
+    "project_release": {"run": "scripts/check_project_release.sh"}
+  },
+  "symlinks": [
+    {"link": "CLAUDE.md", "target": "AGENTS.md"}
+  ],
+  "coverage_threshold": 0.0,
+  "unsealed_artifacts": ["gates.tsv"],
+  "gate_sets": {
+    "change": [
+      "change_scope",
+      "ai_boundaries",
+      "spec_registry",
+      "legacy_spec_contract"
+    ],
+    "release": [
+      "change_scope",
+      "release_context_before",
+      "symlinks",
+      "ai_boundaries",
+      "spec_registry",
+      "legacy_spec_contract",
+      "project_release",
+      "release_context_after"
+    ]
+  },
+  "profiles": {
+    "change": {
+      "evidence_modes": ["change"],
+      "gate_set": "change",
+      "skippable_gates": []
+    },
+    "pull_request": {
+      "evidence_modes": ["candidate"],
+      "gate_set": "release",
+      "skippable_gates": []
+    },
+    "nightly": {
+      "evidence_modes": ["release"],
+      "gate_set": "release",
+      "skippable_gates": []
+    },
+    "release": {
+      "evidence_modes": ["release"],
+      "gate_set": "release",
+      "skippable_gates": []
+    }
+  },
+  "conditional_gates": {
+    "test_race": {
+      "always_profiles": [],
+      "path_prefixes": [],
+      "skip_reason": "Python project does not use the Go race gate"
+    },
+    "benchmarks": {
+      "always_profiles": [],
+      "path_prefixes": [],
+      "benchmark_file_suffix": "_benchmark.py",
+      "benchmark_declaration": "benchmark_",
+      "explicit_request": false,
+      "skip_reason": "no configured Harness benchmark gate"
+    }
+  },
+  "evidence_sets": {
+    "change": {
+      "artifacts": [
+        "gates.tsv",
+        "change_scope.json",
+        "ai_boundaries.json",
+        "spec_registry.json",
+        "spec_contract.json"
+      ]
+    },
+    "release": {
+      "artifacts": [
+        "gates.tsv",
+        "change_scope.json",
+        "ai_boundaries.json",
+        "spec_registry.json",
+        "spec_contract.json",
+        "project_release_summary.json",
+        "chat_eval_scorecard.json"
+      ]
+    }
+  },
+  "evidence": {
+    "change": "change",
+    "candidate": "release",
+    "release": "release"
+  },
+  "gate_artifacts": {
+    "legacy_spec_contract": {"artifacts": ["spec_contract.json"]},
+    "project_release": {
+      "artifacts": ["project_release_summary.json", "chat_eval_scorecard.json"]
+    }
+  },
+  "machine_status_artifacts": [
+    "ai_boundaries.json",
+    "spec_registry.json",
+    "spec_contract.json",
+    "project_release_summary.json"
+  ],
+  "trusted_approval_runtime": [
+    "harness/harness.lock",
+    "harness/harness_profiles.json"
+  ]
+}

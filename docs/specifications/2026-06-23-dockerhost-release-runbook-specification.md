@@ -168,7 +168,7 @@
   - `.venv/bin/python -m pytest tests/test_dockerhost_release_cli.py -q`
   - `.venv/bin/python -m pytest tests/test_dockerhost_release_runbook_contract.py -q`
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
 - Prerelease-grade verification commands:
   - `make verify-release`
   - Live DockerHost deployment remains an operator action; this change provides a dry-run-first helper and requires `--execute` for real commands.

@@ -70,7 +70,7 @@ Date: 2026-07-03
 - Harness/release checks:
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `scripts/verify_release.sh`
 
 ## Compatibility

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "managed_paths": [
+    {"path": "AGENTS.md", "strategy": "manual_merge"},
+    {"path": "BLUEPRINT.md", "strategy": "manual_merge"},
+    {"path": ".ai-boundaries.yml", "strategy": "manual_merge"},
+    {"path": ".gitignore", "strategy": "manual_merge"},
+    {"path": "Makefile", "strategy": "manual_merge"},
+    {"path": "CLAUDE.md", "strategy": "symlink", "target": "AGENTS.md"},
+    {"path": "docs/harness-adoption.md", "strategy": "manual_merge"},
+    {"path": "docs/harness-workflows.json", "strategy": "project_overlay", "version_field": "version"},
+    {"path": "docs/harness-workflows.md", "strategy": "manual_merge"},
+    {"path": "harness/harness.lock", "strategy": "copy"},
+    {"path": "harness/harness_profiles.json", "strategy": "project_overlay", "filter_symlinks": true},
+    {"path": "harness/scaffold_manifest.json", "strategy": "project_overlay"},
+    {"path": "harness/tool_versions.env", "strategy": "manual_merge"},
+    {"path": "scripts/check_ai_boundaries.sh", "strategy": "manual_merge"},
+    {"path": "scripts/check_spec_contract.sh", "strategy": "project_overlay"},
+    {"path": "scripts/check_spec_registry.sh", "strategy": "manual_merge"},
+    {"path": "scripts/check_project_release.sh", "strategy": "project_overlay"},
+    {"path": "scripts/harnessctl.sh", "strategy": "manual_merge"},
+    {"path": "scripts/verify_candidate.sh", "strategy": "manual_merge"},
+    {"path": "scripts/verify_change.sh", "strategy": "manual_merge"},
+    {"path": "scripts/verify_release.sh", "strategy": "manual_merge"},
+    {"path": "specs/index.json", "strategy": "manual_merge"},
+    {"path": "specs/_template/spec.md", "strategy": "copy"}
+  ],
+  "retired_paths": [
+    "docs/harness-source-analysis.md",
+    "docs/harness-virtual-requirements.json",
+    "docs/implementation-plans/2026-06-16-harness-workflow-upgrade-implementation-plan.md",
+    "docs/implementation-plans/2026-06-29-source-backed-harness-refresh-implementation-plan.md",
+    "docs/specifications/2026-06-16-harness-workflow-upgrade-specification.md",
+    "docs/specifications/2026-06-29-source-backed-harness-refresh-specification.md",
+    "docs/specifications/harness_workflows/behaviors.feature",
+    "docs/specifications/harness_workflows/harness.md",
+    "docs/specifications/harness_workflows/invariants.md",
+    "docs/specifications/harness_workflows/performance.md",
+    "scripts/check_harness_workflows.sh",
+    "scripts/check_harness_workflows_test.sh"
+  ]
+}

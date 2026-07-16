@@ -152,7 +152,7 @@
   - `.venv/bin/python -m pytest tests/test_observability_alerting_runbook_contract.py tests/test_observability_assets.py -q`
 - Harness/document checks:
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
 - Optional broader gate:
   - `make verify-release`
   - `scripts/verify_release.sh` includes an `observability_assets` gate that runs `.venv/bin/python scripts/validate_observability_assets.py` directly.

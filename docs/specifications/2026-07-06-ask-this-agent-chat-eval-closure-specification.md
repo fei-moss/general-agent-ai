@@ -138,7 +138,7 @@
   - `HARNESS-SPEC-FIRST-FEATURE`
   - focused pytest for chat eval
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `scripts/verify_release.sh`
 - Performance-sensitive class:
   - Not runtime performance-sensitive.

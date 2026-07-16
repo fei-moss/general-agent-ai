@@ -30,7 +30,7 @@
   - 后续 `tests/test_dockerhost_release_runbook_contract.py` 断言 spec ID、workflow class、CLI surface 和关键验收术语存在。
 - Verification command:
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
 - Rollback or compatibility note:
   - 删除该新增 spec 即可回滚本步骤；不影响运行系统。
 
@@ -46,7 +46,7 @@
 - Tests to add/update:
   - 文档契约测试断言 plan 引用 spec ID、runbook、pytest 文件、verification commands、release/rollback 风险。
 - Verification command:
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
 - Rollback or compatibility note:
   - 删除该新增 plan 即可回滚本步骤；不影响运行系统。
 
@@ -147,7 +147,7 @@
   - `.venv/bin/python -m pytest tests/test_dockerhost_release_cli.py tests/test_dockerhost_release_runbook_contract.py -q`
 - Harness/spec:
   - `bash scripts/check_spec_contract.sh`
-  - `bash scripts/check_harness_workflows.sh`
+  - `bash scripts/check_spec_registry.sh`
 - Prerelease:
   - `make verify-release`
 - Expected constraints:

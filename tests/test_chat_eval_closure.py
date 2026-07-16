@@ -340,7 +340,7 @@ def test_scorecard_reports_threshold_blockers_when_contract_is_stricter():
 
 def test_makefile_and_release_gate_expose_chat_eval_commands():
     makefile = Path("Makefile").read_text(encoding="utf-8")
-    release = Path("scripts/verify_release.sh").read_text(encoding="utf-8")
+    release = Path("scripts/check_project_release.sh").read_text(encoding="utf-8")
 
     assert "chat-eval:" in makefile
     assert "chat-eval-report:" in makefile

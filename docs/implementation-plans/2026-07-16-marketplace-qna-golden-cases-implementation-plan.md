@@ -343,7 +343,7 @@ Run all Marketplace QnA tests and existing RAG eval tests, then commit with mess
 git diff --check
 .venv/bin/python -m pytest tests/test_marketplace_qna_eval.py tests/test_rag_promptfoo_eval.py tests/test_rag_api.py tests/test_rag_service.py -q
 scripts/check_spec_contract.sh
-scripts/check_harness_workflows.sh
+scripts/check_spec_registry.sh
 scripts/verify_release.sh
 ```
 

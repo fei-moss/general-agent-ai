@@ -190,7 +190,7 @@
   - `.venv/bin/python -m pytest tests/test_observability_alerting_runbook_contract.py tests/test_observability_assets.py -q`
   - `.venv/bin/python scripts/validate_observability_assets.py`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
 - Prerelease-grade verification commands:
   - `make verify-release` (includes the `observability_assets` validator gate)
 

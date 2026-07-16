@@ -146,7 +146,7 @@
   - `HARNESS-SPEC-FIRST-FEATURE`
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - Focused pytest and `scripts/verify_release.sh`
 - Performance-sensitive class:
   - Low overhead runtime hot path; local checks only.
@@ -159,7 +159,7 @@
   - `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_agent_factory.py tests/test_orchestrator.py -q`
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
 - Prerelease-grade verification commands:
   - `scripts/verify_release.sh`
   - `make verify-release`

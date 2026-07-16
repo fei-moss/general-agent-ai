@@ -14,7 +14,7 @@ MARKETPLACE_QNA_PREFLIGHT_OUTPUT ?= .artifacts/release/marketplace_qna_gemini_pr
 MARKETPLACE_QNA_PROMPTFOO_OUTPUT ?= .artifacts/release/marketplace_qna_promptfoo_eval.json
 MARKETPLACE_QNA_STATUS_OUTPUT ?= .artifacts/release/marketplace_qna_acceptance_status.json
 
-.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows chat-eval chat-eval-report chat-eval-live verify-release marketplace-qna-preflight marketplace-qna-local marketplace-qna-live marketplace-qna-final marketplace-qna-acceptance
+.PHONY: help up down venv install run-api run-worker test seed check-spec-registry verify-change chat-eval chat-eval-report chat-eval-live verify-release marketplace-qna-preflight marketplace-qna-local marketplace-qna-live marketplace-qna-final marketplace-qna-acceptance
 
 help:
 	@echo "可用目标:"
@@ -26,7 +26,8 @@ help:
 	@echo "  make run-worker 启动 Celery worker(全部队列)"
 	@echo "  make test       运行 pytest"
 	@echo "  make seed       初始化建表 + 灌入示例数据"
-	@echo "  make check-harness-workflows 校验 Harness workflow manifest 与 spec/plan 绑定"
+	@echo "  make check-spec-registry 校验四类 Harness workflow 与新规格注册表"
+	@echo "  make verify-change 校验相对 VERIFY_COMPARE_REF 的完整开发改动"
 	@echo "  make chat-eval 运行 Ask this Agent 聊天效果 deterministic eval"
 	@echo "  make chat-eval-report 生成 Ask this Agent 聊天效果 scorecard"
 	@echo "  make chat-eval-live 对 DockerHost/API 执行可选 live eval 回放"
@@ -61,8 +62,11 @@ test:
 seed:
 	$(PY) scripts/seed.py
 
-check-harness-workflows:
-	PY="$(PY)" scripts/check_harness_workflows.sh
+check-spec-registry:
+	scripts/check_spec_registry.sh
+
+verify-change:
+	PY="$(PY)" scripts/verify_change.sh
 
 chat-eval:
 	$(PY) -m pytest tests/test_chat_behavior_eval.py tests/test_chat_eval_closure.py -q

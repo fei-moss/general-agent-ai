@@ -101,7 +101,7 @@
   - `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_agent_factory.py tests/test_orchestrator.py -q`
   - `scripts/check_ai_boundaries.sh`
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `scripts/verify_release.sh`
 - Rollback or compatibility note:
   - If full release gate fails for environmental reasons, record blocker and focused-test evidence.

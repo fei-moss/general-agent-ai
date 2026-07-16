@@ -106,7 +106,7 @@
   - `HARNESS-SPEC-FIRST-FEATURE`
   - Focused pytest
   - `scripts/check_spec_contract.sh`
-  - `scripts/check_harness_workflows.sh`
+  - `scripts/check_spec_registry.sh`
   - `make verify-release`
 - Performance-sensitive class:
   - Not runtime performance-sensitive.

@@ -26,7 +26,7 @@ Wire Marketplace's centralized read-only Agent data interfaces into the runtime 
 /Users/chris/AiProject/general-agent-ai/.venv/bin/python -m pytest -q
 AI_BOUNDARY_APPROVED=1 scripts/check_ai_boundaries.sh
 scripts/check_spec_contract.sh
-scripts/check_harness_workflows.sh
+scripts/check_spec_registry.sh
 AI_BOUNDARY_APPROVED=1 PYTHON=/Users/chris/AiProject/general-agent-ai/.venv/bin/python scripts/verify_release.sh
 ```
 
