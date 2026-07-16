@@ -6,8 +6,15 @@ PY ?= $(VENV)/bin/python
 PIP ?= $(PY) -m pip
 APP_MODULE ?= app.api.main:app
 CELERY_APP ?= app.tasks.celery_app:celery_app
+MARKETPLACE_QNA_BASE_URL ?=
+MARKETPLACE_QNA_KNOWLEDGE_BASE_ID ?=
+MARKETPLACE_QNA_INGESTION_SUMMARY ?= .artifacts/release/marketplace_qna_ingestion_summary.json
+MARKETPLACE_QNA_AUDIT_OUTPUT ?= .artifacts/release/marketplace_qna_golden_query_audit.json
+MARKETPLACE_QNA_PREFLIGHT_OUTPUT ?= .artifacts/release/marketplace_qna_gemini_preflight.json
+MARKETPLACE_QNA_PROMPTFOO_OUTPUT ?= .artifacts/release/marketplace_qna_promptfoo_eval.json
+MARKETPLACE_QNA_STATUS_OUTPUT ?= .artifacts/release/marketplace_qna_acceptance_status.json
 
-.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows chat-eval chat-eval-report chat-eval-live verify-release
+.PHONY: help up down venv install run-api run-worker test seed check-harness-workflows chat-eval chat-eval-report chat-eval-live verify-release marketplace-qna-preflight marketplace-qna-local marketplace-qna-live marketplace-qna-final marketplace-qna-acceptance
 
 help:
 	@echo "可用目标:"
@@ -24,6 +31,11 @@ help:
 	@echo "  make chat-eval-report 生成 Ask this Agent 聊天效果 scorecard"
 	@echo "  make chat-eval-live 对 DockerHost/API 执行可选 live eval 回放"
 	@echo "  make verify-release 运行发布前 Harness 验证并写入 .artifacts/release"
+	@echo "  make marketplace-qna-preflight 校验输入、摄取证据和本地契约"
+	@echo "  make marketplace-qna-local 运行 Gemini preflight 和 114 条本地检索"
+	@echo "  make marketplace-qna-live 运行 114 条线上检索和 18 条聊天"
+	@echo "  make marketplace-qna-final 运行 release gate 和最终验收器"
+	@echo "  make marketplace-qna-acceptance 按顺序运行完整 Marketplace QnA 验收"
 
 up:
 	docker compose up -d
@@ -66,3 +78,33 @@ chat-eval-live:
 
 verify-release:
 	PY="$(PY)" scripts/verify_release.sh
+
+marketplace-qna-preflight:
+	@test -n "$$GEMINI_API_KEY" || (echo "GEMINI_API_KEY is required" >&2; exit 1)
+	@test -n "$(MARKETPLACE_QNA_BASE_URL)" || (echo "MARKETPLACE_QNA_BASE_URL is required" >&2; exit 1)
+	@test -n "$(MARKETPLACE_QNA_KNOWLEDGE_BASE_ID)" || (echo "MARKETPLACE_QNA_KNOWLEDGE_BASE_ID is required" >&2; exit 1)
+	@test -f "$(MARKETPLACE_QNA_INGESTION_SUMMARY)" || (echo "Marketplace QnA ingestion summary is required" >&2; exit 1)
+	$(PY) tests/rag_eval/marketplace_qna_fixture_builder.py
+	$(PY) -m tests.rag_eval.marketplace_qna_golden_query_audit --output "$(MARKETPLACE_QNA_AUDIT_OUTPUT)"
+	$(PY) -m pytest -q tests/test_marketplace_qna_eval.py tests/test_rag_promptfoo_eval.py
+
+marketplace-qna-local:
+	@test -n "$$GEMINI_API_KEY" || (echo "GEMINI_API_KEY is required" >&2; exit 1)
+	$(PY) -m tests.rag_eval.moss_gemini_preflight --output "$(MARKETPLACE_QNA_PREFLIGHT_OUTPUT)" --model gemini-embedding-2 --dimension 256
+	PROMPTFOO_PYTHON=$(PY) npx --yes promptfoo@latest eval -c tests/rag_eval/marketplace_qna_promptfooconfig.yaml --no-cache --output "$(MARKETPLACE_QNA_PROMPTFOO_OUTPUT)"
+
+marketplace-qna-live:
+	@test -n "$(MARKETPLACE_QNA_BASE_URL)" || (echo "MARKETPLACE_QNA_BASE_URL is required" >&2; exit 1)
+	@test -n "$(MARKETPLACE_QNA_KNOWLEDGE_BASE_ID)" || (echo "MARKETPLACE_QNA_KNOWLEDGE_BASE_ID is required" >&2; exit 1)
+	$(PY) -m tests.rag_eval.marketplace_qna_live_eval --base-url "$(MARKETPLACE_QNA_BASE_URL)" --knowledge-base-id "$(MARKETPLACE_QNA_KNOWLEDGE_BASE_ID)" --retrieval-workers 4 --chat-timeout-s 120
+
+marketplace-qna-final:
+	$(MAKE) verify-release
+	$(PY) -m tests.rag_eval.marketplace_qna_acceptance_validator
+	$(PY) -m tests.rag_eval.marketplace_qna_acceptance_status --output "$(MARKETPLACE_QNA_STATUS_OUTPUT)"
+
+marketplace-qna-acceptance:
+	$(MAKE) marketplace-qna-preflight
+	$(MAKE) marketplace-qna-local
+	$(MAKE) marketplace-qna-live
+	$(MAKE) marketplace-qna-final
