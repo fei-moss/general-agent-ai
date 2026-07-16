@@ -243,3 +243,327 @@ def test_rag_eval_provider_filters_bilingual_corpus_by_case_language():
     assert _filter_corpus_docs(docs, {"language": "zh-CN"}) == [docs[0]]
     assert _filter_corpus_docs(docs, {"language": "en"}) == [docs[1]]
     assert _filter_corpus_docs(docs, {}) == docs
+
+
+def test_marketplace_qna_chat_cases_define_deterministic_fact_groups():
+    rows = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+
+    assert len(rows) == 18
+    assert all(row["required_fact_groups"] for row in rows)
+    assert all(
+        alternatives
+        for row in rows
+        for alternatives in row["required_fact_groups"]
+    )
+    trading_cases = [row for row in rows if row["document_id"].endswith("_07")]
+    assert len(trading_cases) == 2
+    assert all("dex" in row["query"].casefold() for row in trading_cases)
+    assert all(
+        "redeem" in row["query"].casefold() or "赎回" in row["query"]
+        for row in trading_cases
+    )
+
+
+def test_marketplace_qna_live_fact_evaluator_accepts_alternatives_and_rejects_claims():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    result = evaluate_answer(
+        "Moss is non-custodial, so your private key stays in your own wallet.",
+        required_fact_groups=[
+            ["non-custodial", "does not custody"],
+            ["private key", "wallet"],
+        ],
+        forbidden_claims=["Moss guarantees no loss"],
+    )
+    forbidden = evaluate_answer(
+        "Moss guarantees no loss.",
+        required_fact_groups=[["non-custodial"]],
+        forbidden_claims=["guarantees no loss"],
+    )
+
+    assert result == {
+        "passed": True,
+        "fact_groups": [True, True],
+        "forbidden_claims": [],
+    }
+    assert forbidden["passed"] is False
+    assert forbidden["fact_groups"] == [False]
+    assert forbidden["forbidden_claims"] == ["guarantees no loss"]
+
+
+def test_marketplace_qna_live_retrieval_evaluator_requires_uri_language_and_no_degrade():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_retrieval_response
+
+    response = {
+        "degraded": False,
+        "chunks": [
+            {
+                "citation": {"source_uri": "urn:moss:marketplace-qna:en:01"},
+                "metadata": {"language": "en"},
+            }
+        ],
+    }
+    passed = evaluate_retrieval_response(
+        response,
+        expected_source_uri="urn:moss:marketplace-qna:en:01",
+        language="en",
+    )
+    wrong_language = evaluate_retrieval_response(
+        response,
+        expected_source_uri="urn:moss:marketplace-qna:en:01",
+        language="zh-CN",
+    )
+    degraded = evaluate_retrieval_response(
+        {**response, "degraded": True},
+        expected_source_uri="urn:moss:marketplace-qna:en:01",
+        language="en",
+    )
+
+    assert passed == {"passed": True, "matched_rank": 1, "degraded": False}
+    assert wrong_language["passed"] is False
+    assert wrong_language["matched_rank"] is None
+    assert degraded["passed"] is False
+
+
+def test_marketplace_qna_live_chat_payload_uses_server_default_knowledge_base():
+    from tests.rag_eval.marketplace_qna_live_eval import build_chat_payload
+
+    payload = build_chat_payload(
+        case_id="marketplace_qna_en_01_q01",
+        query="How are Moss and FAT related?",
+    )
+
+    serialized = json.dumps(payload, sort_keys=True)
+    assert "knowledge_base_id" not in serialized
+    assert "admin" not in serialized.casefold()
+    assert payload["stream"] is True
+
+
+def test_marketplace_qna_live_report_redacts_runtime_identities_and_secrets():
+    from tests.rag_eval.marketplace_qna_live_eval import sanitize_evidence
+
+    evidence = sanitize_evidence(
+        {
+            "authorization": "Bearer super-secret-admin-token",
+            "user": "sensitive-runtime-user",
+            "wallet": "sensitive-runtime-wallet",
+            "answer_preview": "safe answer",
+        },
+        sensitive_values={
+            "super-secret-admin-token",
+            "sensitive-runtime-user",
+            "sensitive-runtime-wallet",
+        },
+    )
+
+    serialized = json.dumps(evidence, sort_keys=True)
+    assert "super-secret-admin-token" not in serialized
+    assert "sensitive-runtime-user" not in serialized
+    assert "sensitive-runtime-wallet" not in serialized
+    assert "safe answer" in serialized
+
+
+def test_marketplace_qna_live_stream_failure_falls_back_without_long_retry():
+    from tests.rag_eval.marketplace_qna_live_eval import collect_stream_events_once
+
+    calls = 0
+
+    def failing_get(url: str, headers: dict[str, str], timeout_s: float):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("transient SSE disconnect")
+
+    events = collect_stream_events_once(
+        "https://example.test/stream/run-1",
+        {},
+        0.1,
+        get=failing_get,
+    )
+
+    assert events == []
+    assert calls == 1
+
+
+def _write_marketplace_acceptance_evidence(root: Path) -> None:
+    contract = json.loads(
+        (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    def artifact_path(section: str) -> str:
+        return contract[section].get("artifact_path") or contract[section][
+            "summary_artifact_path"
+        ]
+
+    def write(section: str, payload: dict) -> None:
+        path = root / artifact_path(section)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    write(
+        "fixture_audit",
+        {
+            "status": "passed",
+            "counts": {
+                "source_documents": 18,
+                "golden_queries": 114,
+                "review_rows": 114,
+                "chat_cases": 18,
+                "source_questions": 114,
+            },
+            "errors": [],
+        },
+    )
+    write(
+        "ingestion",
+        {
+            "submitted_documents": 18,
+            "persisted_documents": 18,
+            "succeeded_jobs": 18,
+            "failed_jobs": 0,
+            "persisted_chunks": 141,
+            "embedding_provider": "gemini",
+            "embedding_model": "gemini-embedding-2",
+            "embedding_dim": 256,
+            "source_hash_audit": {"hash_maps_equal": True},
+        },
+    )
+    write(
+        "promptfoo",
+        {
+            "results": {
+                "stats": {"successes": 114, "failures": 0, "errors": 0},
+                "results": [
+                    {
+                        "response": {
+                            "output": json.dumps(
+                                {"hits": [{"rank": 1, "doc_id": f"doc{index}"}]}
+                            )
+                        },
+                        "testCase": {
+                            "vars": {"relevant_doc_ids": f"doc{index}"}
+                        },
+                    }
+                    for index in range(114)
+                ],
+            }
+        },
+    )
+    write(
+        "live_retrieval",
+        {
+            "status": "passed",
+            "counts": {
+                "total": 114,
+                "passed": 114,
+                "failed": 0,
+                "top1": 92,
+                "degraded": 0,
+            },
+            "top1_rate": 92 / 114,
+            "results": [
+                {"case_id": f"q{index}", "passed": True, "matched_rank": 1}
+                for index in range(114)
+            ],
+        },
+    )
+    write(
+        "live_chat",
+        {
+            "status": "passed",
+            "server_default_knowledge_base": True,
+            "counts": {"total": 18, "passed": 18, "failed": 0},
+            "results": [
+                {
+                    "case_id": f"chat{index}",
+                    "passed": True,
+                    "terminal_status": "SUCCEEDED",
+                    "retrieval_started": True,
+                    "retrieval_finished": True,
+                    "fact_groups": [True],
+                    "forbidden_claims": [],
+                }
+                for index in range(18)
+            ],
+        },
+    )
+    write("release_gate", {"overall": "passed"})
+
+
+def test_marketplace_qna_acceptance_validator_accepts_complete_evidence(tmp_path):
+    from tests.rag_eval.marketplace_qna_acceptance_validator import validate_acceptance
+
+    _write_marketplace_acceptance_evidence(tmp_path)
+
+    assert validate_acceptance(root=tmp_path) == []
+
+
+def test_marketplace_qna_acceptance_validator_reports_every_threshold(tmp_path):
+    from tests.rag_eval.marketplace_qna_acceptance_validator import validate_acceptance
+
+    _write_marketplace_acceptance_evidence(tmp_path)
+    contract = json.loads(
+        (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    def load(section: str) -> tuple[Path, dict]:
+        artifact_path = contract[section].get("artifact_path") or contract[section][
+            "summary_artifact_path"
+        ]
+        path = tmp_path / artifact_path
+        return path, json.loads(path.read_text(encoding="utf-8"))
+
+    path, payload = load("fixture_audit")
+    payload["status"] = "failed"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("ingestion")
+    payload["failed_jobs"] = 1
+    payload["source_hash_audit"]["hash_maps_equal"] = False
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("promptfoo")
+    payload["results"]["stats"] = {"successes": 113, "failures": 1, "errors": 0}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("live_retrieval")
+    payload["counts"].update({"passed": 113, "failed": 1, "degraded": 1})
+    payload["top1_rate"] = 0.79
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("live_chat")
+    payload["counts"].update({"passed": 17, "failed": 1})
+    payload["results"][0]["retrieval_finished"] = False
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path, payload = load("release_gate")
+    payload["overall"] = "failed"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    errors = validate_acceptance(root=tmp_path)
+
+    assert any("fixture_audit" in error for error in errors)
+    assert any("failed_jobs" in error for error in errors)
+    assert any("source hashes" in error for error in errors)
+    assert any("promptfoo" in error for error in errors)
+    assert any("live_retrieval" in error and "passed" in error for error in errors)
+    assert any("top1_rate" in error for error in errors)
+    assert any("degraded" in error for error in errors)
+    assert any("live_chat" in error and "passed" in error for error in errors)
+    assert any("retrieval evidence" in error for error in errors)
+    assert any("release_gate" in error for error in errors)
+
+
+def test_marketplace_qna_review_and_runbook_cover_cases_and_corpus_defect():
+    golden = _read_jsonl(EVAL_DIR / "marketplace_qna_golden_queries.jsonl")
+    review = (Path(__file__).parents[1] / "docs/MARKETPLACE_QNA_GOLDEN_QUERIES_REVIEW.md").read_text(
+        encoding="utf-8"
+    )
+    runbook = (Path(__file__).parents[1] / "docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert all(row["id"] in review for row in golden)
+    assert "CORPUS-MPQNA-001" in review
+    assert "08_安全与风险.md:43" in review
+    assert "marketplace_qna_live_eval" in runbook
+    assert "marketplace_qna_acceptance_status" in runbook
+    assert "RAG_DEFAULT_KNOWLEDGE_BASE_ID" in runbook

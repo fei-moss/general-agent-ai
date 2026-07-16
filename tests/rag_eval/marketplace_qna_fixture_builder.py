@@ -21,6 +21,40 @@ GENERATED_PATHS = {
 EXPECTED_QUESTION_COUNTS = (5, 7, 2, 16, 4, 9, 4, 7, 3)
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
+# Representative chat cases use deterministic semantic fact groups instead of
+# requiring the model to reproduce a full source sentence verbatim. Every
+# inner tuple is an OR group; all outer groups must be represented.
+CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "marketplace_qna_en_01": (("FAT Protocol",), ("do not need", "don't need", "without studying")),
+    "marketplace_qna_en_02": (("fully preserved", "fully retained", "preserved intact", "retained intact"),),
+    "marketplace_qna_en_03": (("Perp Trading",), ("Governance",), ("Consumer",)),
+    "marketplace_qna_en_04": (("no unified threshold", "no unified minimum", "no universal threshold", "no uniform threshold"), ("detail page",)),
+    "marketplace_qna_en_05": (("number of holders", "holder count", "holders"), ("actual trading activity", "real trade records", "trading performance")),
+    "marketplace_qna_en_06": (("users invest", "other users", "investors", "participants"), ("real trading", "actual trading")),
+    "marketplace_qna_en_07": (("DEX", "Trade on DEX"), ("Redeem",)),
+    "marketplace_qna_en_08": (("non-custodial", "does not custody", "will not custody"), ("private key", "wallet")),
+    "marketplace_qna_en_09": (("not been announced", "not yet announced", "no special treatment", "currently unavailable"), ("official channels", "@MossAI_Official")),
+    "marketplace_qna_zh_cn_01": (("FAT Protocol",), ("不需要", "无需", "不必")),
+    "marketplace_qna_zh_cn_02": (("完整保留", "完整迁移", "保留完整"),),
+    "marketplace_qna_zh_cn_03": (("Perp Trading", "永续交易"), ("Governance", "治理"), ("Consumer", "消费者")),
+    "marketplace_qna_zh_cn_04": (("没有统一门槛", "没有统一的最低", "无统一门槛", "不存在统一"), ("详情页",)),
+    "marketplace_qna_zh_cn_05": (("持有人数", "持有者数量"), ("实际交易", "交易记录", "交易表现")),
+    "marketplace_qna_zh_cn_06": (("Mint", "铸造份额"), ("真实交易", "实际交易")),
+    "marketplace_qna_zh_cn_07": (("DEX", "去中心化交易所"), ("Redeem", "赎回")),
+    "marketplace_qna_zh_cn_08": (("不托管", "非托管"), ("私钥", "钱包")),
+    "marketplace_qna_zh_cn_09": (("暂未公布", "尚未公布", "还未公布"), ("官方渠道", "@MossAI_Official")),
+}
+CHAT_QUERY_OVERRIDES = {
+    "marketplace_qna_en_07_q01": (
+        "How can I sell shares that I minted? Explain separately what to do when "
+        "the Agent has a DEX trading pair and when it does not, including Redeem."
+    ),
+    "marketplace_qna_zh_cn_07_q01": (
+        "我该如何出售 Mint 的 Agent 份额？请分别说明有 DEX 交易对和没有 DEX "
+        "交易对时的处理方式，包括 Redeem（赎回）。"
+    ),
+}
+
 
 @dataclass(frozen=True)
 class SourceSpec:
@@ -294,13 +328,21 @@ def build_fixture_rows() -> FixtureRows:
             }
         )
         if case.representative_chat:
+            required_fact_groups = CHAT_REQUIRED_FACT_GROUPS.get(case.document_id)
+            if not required_fact_groups:
+                raise ValueError(
+                    f"missing chat required fact groups for {case.document_id}"
+                )
             chat_cases.append(
                 {
                     "id": case.id,
                     "document_id": case.document_id,
                     "language": case.language,
-                    "query": case.query,
+                    "query": CHAT_QUERY_OVERRIDES.get(case.id, case.query),
                     "required_facts": list(case.required_facts),
+                    "required_fact_groups": [
+                        list(alternatives) for alternatives in required_fact_groups
+                    ],
                     "forbidden_claims": list(case.forbidden_claims),
                     "source_uri": source.source_uri,
                 }
