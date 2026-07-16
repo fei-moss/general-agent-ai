@@ -44,3 +44,6 @@ def test_release_profile_runs_production_deployment_contract_checker():
     assert "project_release" in profile["gate_sets"]["release"]
     assert "production_deployment_contract" in text
     assert "check_production_deployment_contract.py" in text
+    assert '"status": "passed"' in text
+    assert '"status": "failed"' in text
+    assert '"overall":' not in text

@@ -53,9 +53,9 @@ fi
 {
   printf '{\n'
   if (( overall_status == 0 )); then
-    printf '  "overall": "passed",\n'
+    printf '  "status": "passed",\n'
   else
-    printf '  "overall": "failed",\n'
+    printf '  "status": "failed",\n'
   fi
   printf '  "checks": [\n'
   for index in "${!checks[@]}"; do
