@@ -36,7 +36,7 @@
       "path": "tests/rag_eval/marketplace_qna_chat_cases.jsonl",
       "role": "chat_cases",
       "row_count": 18,
-      "sha256": "2ebe864dc56a8a95a9c784290de93e35d29f649087c58debe6e6e8980c5311d1"
+      "sha256": "edb9712f0ed93e2686720f14bb4effc89c20c50dbcbd3d807b1aa4b8cf44a117"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_coverage_contract.json",

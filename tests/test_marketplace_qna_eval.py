@@ -361,6 +361,24 @@ def test_marketplace_qna_early_user_fact_accepts_equivalent_not_announced_wordin
     assert result["passed"] is True
 
 
+def test_marketplace_qna_fundraising_fact_accepts_actual_trades_wording():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    case = next(
+        row
+        for row in _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+        if row["id"] == "marketplace_qna_en_06_q01"
+    )
+    result = evaluate_answer(
+        "Investors mint shares, and the executor executes actual trades "
+        "according to the strategy.",
+        required_fact_groups=case["required_fact_groups"],
+        forbidden_claims=case["forbidden_claims"],
+    )
+
+    assert result["passed"] is True
+
+
 def test_marketplace_qna_live_retrieval_evaluator_requires_uri_language_and_no_degrade():
     from tests.rag_eval.marketplace_qna_live_eval import evaluate_retrieval_response
 

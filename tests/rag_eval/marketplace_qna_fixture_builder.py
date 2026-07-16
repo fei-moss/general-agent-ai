@@ -40,7 +40,16 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "marketplace_qna_en_03": (("Perp Trading",), ("Governance",), ("Consumer",)),
     "marketplace_qna_en_04": (("no unified threshold", "no unified minimum", "no universal threshold", "no uniform threshold"), ("detail page",)),
     "marketplace_qna_en_05": (("number of holders", "holder count", "holders"), ("actual trading activity", "real trade records", "trading performance")),
-    "marketplace_qna_en_06": (("users invest", "other users", "investors", "participants"), ("real trading", "actual trading")),
+    "marketplace_qna_en_06": (
+        ("users invest", "other users", "investors", "participants"),
+        (
+            "real trading",
+            "actual trading",
+            "actual trades",
+            "executes trades",
+            "execute the trading strategy",
+        ),
+    ),
     "marketplace_qna_en_07": (("DEX", "Trade on DEX"), ("Redeem",)),
     "marketplace_qna_en_08": (("non-custodial", "does not custody", "will not custody"), ("private key", "wallet")),
     "marketplace_qna_en_09": (("not been announced", "not yet announced", "no special treatment", "currently unavailable"), ("official channels", "@MossAI_Official")),
