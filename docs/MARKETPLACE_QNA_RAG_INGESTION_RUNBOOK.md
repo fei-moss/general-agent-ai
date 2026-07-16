@@ -11,6 +11,32 @@ The RAG administrator is an internal runtime identity. Store it in macOS
 Keychain or an approved secret manager only; never place it in Git, command
 output, release artifacts, or chat metadata.
 
+## Standard Workflow
+
+Complete the persistent import and DockerHost deployment described below, then
+run the canonical acceptance entrypoint:
+
+```bash
+source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
+: "${MARKETPLACE_QNA_BASE_URL:?export the target API base URL}"
+: "${MARKETPLACE_QNA_KNOWLEDGE_BASE_ID:?export the target knowledge-base id}"
+make marketplace-qna-acceptance
+```
+
+Use the stage targets only to diagnose a failed gate:
+
+```bash
+make marketplace-qna-preflight
+make marketplace-qna-local
+make marketplace-qna-live
+make marketplace-qna-final
+```
+
+The Make workflow does not upload or deploy. Those actions mutate persistent
+or remote state and remain explicit operator steps. The aggregate target checks
+all required values and the ingestion summary before any provider-backed work,
+then stops at the first failed gate.
+
 ## Preconditions
 
 - The project DockerHost adapter validates successfully.
@@ -32,17 +58,11 @@ output, release artifacts, or chat metadata.
 | Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 114 |
 | Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 18 |
 
-Verify the deterministic fixture family first:
+The standard preflight validates required values, the ingestion summary,
+fixture hashes, Golden Query coverage, and focused contracts:
 
 ```bash
-.venv/bin/python tests/rag_eval/marketplace_qna_fixture_builder.py
-.venv/bin/python -m tests.rag_eval.marketplace_qna_golden_query_audit \
-  --output .artifacts/release/marketplace_qna_golden_query_audit.json
-.venv/bin/python -m tests.rag_eval.moss_gemini_preflight \
-  --output .artifacts/release/marketplace_qna_gemini_preflight.json \
-  --model gemini-embedding-2 --dimension 256
-.venv/bin/python -m pytest -q tests/test_marketplace_qna_eval.py \
-  tests/test_rag_promptfoo_eval.py
+make marketplace-qna-preflight
 ```
 
 The file hashes must match
@@ -72,13 +92,11 @@ logical document or duplicate chunks.
 
 ## Local Semantic Evaluation
 
-Run the production embedding model and production chunk settings:
+Run Gemini preflight and the 114-case Promptfoo suite with production embedding
+and chunk settings:
 
 ```bash
-PROMPTFOO_PYTHON=.venv/bin/python npx --yes promptfoo@latest eval \
-  -c tests/rag_eval/marketplace_qna_promptfooconfig.yaml \
-  --no-cache \
-  --output .artifacts/release/marketplace_qna_promptfoo_eval.json
+make marketplace-qna-local
 ```
 
 Acceptance requires 114/114 top-5 passes, no degraded cases, and Top-1 at least
@@ -110,11 +128,7 @@ ephemeral Marketplace test identity when chat identity variables are absent.
 Raw identities are redacted before evidence is written.
 
 ```bash
-.venv/bin/python -m tests.rag_eval.marketplace_qna_live_eval \
-  --base-url <api_base_url> \
-  --knowledge-base-id <knowledge_base_id> \
-  --retrieval-workers 4 \
-  --chat-timeout-s 120
+make marketplace-qna-live
 ```
 
 The chat payload intentionally contains no `knowledge_base_id`. Every one of
@@ -122,12 +136,10 @@ the 18 chat cases must reach `SUCCEEDED`, emit `RETRIEVAL_STARTED` and
 `RETRIEVAL_FINISHED`, include all required fact groups, and contain no forbidden
 claim.
 
-After `scripts/verify_release.sh` passes, produce the final status:
+Run the repository release harness and produce the final acceptance status:
 
 ```bash
-.venv/bin/python -m tests.rag_eval.marketplace_qna_acceptance_validator
-.venv/bin/python -m tests.rag_eval.marketplace_qna_acceptance_status \
-  --output .artifacts/release/marketplace_qna_acceptance_status.json
+make marketplace-qna-final
 ```
 
 ## Rollback and Retention

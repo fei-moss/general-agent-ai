@@ -602,6 +602,6 @@ def test_marketplace_qna_review_and_runbook_cover_cases_and_corpus_defect():
     assert all(row["id"] in review for row in golden)
     assert "CORPUS-MPQNA-001" in review
     assert "08_安全与风险.md:43" in review
-    assert "marketplace_qna_live_eval" in runbook
-    assert "marketplace_qna_acceptance_status" in runbook
+    assert "make marketplace-qna-live" in runbook
+    assert "make marketplace-qna-final" in runbook
     assert "RAG_DEFAULT_KNOWLEDGE_BASE_ID" in runbook

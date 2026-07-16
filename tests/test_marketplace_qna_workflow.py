@@ -118,3 +118,14 @@ def test_marketplace_qna_make_dry_run_is_ordered_without_secret_echo():
     assert [output.index(stage) for stage in stages] == sorted(
         output.index(stage) for stage in stages
     )
+
+
+def test_marketplace_qna_runbook_uses_make_as_the_canonical_entrypoint():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "make marketplace-qna-acceptance" in runbook
+    assert "make marketplace-qna-preflight" in runbook
+    assert "make marketplace-qna-local" in runbook
+    assert "make marketplace-qna-live" in runbook
+    assert "make marketplace-qna-final" in runbook
+    assert "does not upload or deploy" in runbook
