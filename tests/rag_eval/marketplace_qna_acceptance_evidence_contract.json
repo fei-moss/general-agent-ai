@@ -13,8 +13,8 @@
   },
   "ingestion": {
     "summary_artifact_path": ".artifacts/release/marketplace_qna_ingestion_summary.json",
-    "knowledge_base_name": "Moss Agent Marketplace QnA",
-    "expected_chunks": 141,
+    "knowledge_base_name": "Moss Agent Marketplace QnA V2",
+    "expected_chunks": 143,
     "required_embedding_provider": "gemini",
     "required_embedding_model": "gemini-embedding-2",
     "required_embedding_dimension": 256

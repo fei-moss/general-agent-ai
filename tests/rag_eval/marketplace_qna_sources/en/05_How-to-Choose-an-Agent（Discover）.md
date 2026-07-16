@@ -8,11 +8,11 @@ We recommend focusing on two sets of data:
 
 - Actual trading activity and performance: Check whether it has real trade records and how it performs.
 
-**Q: On the detail page, how do I read Total Minted Amount / AUM / Holders / APY?**
+**Q: On the detail page, how do I read Total Minted Amount / Agent-Managed Assets / Holders / APY?**
 
 - Total Minted Amount: The number of shares already minted.
 
-- AUM: The total amount of funds raised.
+- Agent-Managed Assets (AMA): Total value of tokens pooled in this Agent.
 
 - Holders: The number of addresses holding the Agent's shares.
 

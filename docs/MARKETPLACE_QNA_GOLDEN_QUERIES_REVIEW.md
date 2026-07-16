@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The seed is an exact in-repository copy of 9 Chinese and 9 English Marketplace QnA Markdown files. It covers 114 source questions with one same-language semantic retrieval case per question and 18 representative end-to-end chat cases.
+This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The V2 seed (`marketplace-qna-rag-seed-v2`) is an exact in-repository copy of 9 Chinese and 9 English Marketplace QnA Markdown files. It covers 114 source questions with one same-language semantic retrieval case per question and 18 representative end-to-end chat cases.
 
 Machine-readable authorities:
 
@@ -21,23 +21,15 @@ The current acceptance target is deliberately strict:
 - local Promptfoo: 114/114 top-5, zero degraded, Top-1 at least 80%;
 - DockerHost `/rag/query`: 114/114 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
 - live chat: 18/18 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
-- persistent ingestion: 18 documents, 18 successful jobs, 141 chunks, zero failed jobs, exact source-hash equality.
+- persistent ingestion: 18 documents, 18 successful jobs, 143 chunks, zero failed jobs, exact source-hash equality.
 
 ## Corpus Quality Finding
 
-### CORPUS-MPQNA-001 — Tool-built versus template-deployed Agent answer is underspecified
+### CORPUS-MPQNA-001 — Resolved in V2: Tool-built versus template-deployed Agent
 
 Source: `tests/rag_eval/marketplace_qna_sources/zh-CN/08_安全与风险.md:43-45`.
 
-The question asks whether Tool-built and official/template-deployed Agents differ in trustworthiness and risk. The answer only says they are different layers: Tool provides the trading strategy, while template deployment provides an on-chain fundraising channel. It does not explicitly answer how to assess trust or risk, and it contains little of the question's trust/risk vocabulary.
-
-Observed effect: a natural paraphrase and even the original question were outranked by documents about Discover, Tool, deployment, and fundraising. Adding the natural topic scope “Moss 安全与风险” retrieved the intended document at rank 1. This indicates a source specificity/structure weakness, not a pgvector, embedding, chunking, or language-filter defect.
-
-Recommended content revision for the content owner:
-
-> Tool 自建和模板部署解决的是不同层面的问题。Tool 是策略创建与执行层；模板部署是链上募集资金和份额管理渠道。无论采用哪种方式，都不代表官方背书或风险保证。判断可信度与风险时，应结合链上记录、创建者披露、合约参数、历史交易表现和风险控制措施，而不能只看“Tool 自建”或“模板部署”标签。
-
-Also consider giving this Q&A its own subheading or cross-linking it to the Discover evaluation criteria. The item is a recommended corpus correction; it does not block the present acceptance because the reviewed contextual case is source-grounded and the complete suite meets the declared thresholds.
+V2 now states the layer distinction, explicitly rejects official endorsement or risk guarantees, and names the evidence users should assess: on-chain records, creator disclosures, contract parameters, trading history, and risk controls. It also cross-references the Discover guidance. The earlier corpus-specificity finding is therefore closed; the V2 required fact is checked directly against this answer block.
 
 ## Golden Query Inventory
 
@@ -80,4 +72,3 @@ Final acceptance is determined by:
 ```
 
 The repeatable operational procedure is documented in `docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md`.
-

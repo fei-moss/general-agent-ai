@@ -10,7 +10,7 @@ The Agent detail page checks whether the Agent's shares have a corresponding DEX
 
 **Q: If the secondary market has no buyers or poor liquidity and I cannot sell, what do I do?**
 
-When secondary market liquidity is insufficient, you can redeem your funds via Redeem.
+When secondary market liquidity is insufficient, you can redeem your tokens via Redeem.
 
 **Q: The share price on the DEX differs from the Mint / Redeem price (NAV). Why? Which one should I follow?**
 

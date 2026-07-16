@@ -6,7 +6,7 @@ A special treatment plan has not been announced yet. If any programs or incentiv
 
 **Q: Can agents created on other platforms (Minara, VergeX, and so on) be brought to Moss?**
 
-This is not being considered for now. In theory they could come to raise funds, since we are not involved in how the trading strategy is produced.
+This is not being considered for now. In theory they could Tokenize on Moss, since we are not involved in how the trading strategy is produced.
 
 **Q: What is the upcoming roadmap? Which chains / agent types will be added?**
 

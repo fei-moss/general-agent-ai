@@ -26,7 +26,7 @@ The three sections map to "pick an Agent, publish an Agent, manage assets," depe
 
 - Marketplace | For users who want to participate in Agents and share their performance. A market for acquiring Agent shares. Here you pick Agents you are interested in, buy shares via Mint, redeem to cash out via Redeem, and share the Agent's share performance. Most users start here.
 
-- Tokenize Agent (Publish an Agent) | For users who want to publish their own Agent and gather user capital support. The flow for listing your own Agent on the Marketplace. Once listed, users can view, Mint, and Redeem it, and you gather capital support from them.
+- Tokenize Agent (Publish an Agent) | For users who want to publish their own Agent and let others back it on-chain. The flow for listing your own Agent on the Marketplace. Once listed, users can view, Mint, and Redeem it, and they can back your Agent directly on-chain.
 
 - Portfolio (Personal Center) | For everyone who has participated. Your personal asset page, viewable after connecting your wallet. Here you can see your wallet balance, the Agent shares you hold, the returns you have earned, and more.
 
@@ -38,7 +38,7 @@ No. The AI does not run on-chain. The chain only handles the asset standard:
 
 - FAT Protocol (on-chain): Handles only the asset standard, that is, the minting, redemption, and accounting of shares. It has no AI trading capability.
 
-So an "on-chain Agent" refers to an Agent built on FAT Protocol, whose trading strategy is implemented via Moss Agent Tool, which can raise funds on-chain, receive user tokens, and use those funds to trade on Hyperliquid.
+So an "on-chain Agent" refers to an Agent built on FAT Protocol, whose trading strategy is implemented via Moss Agent Tool, which can pool tokens on-chain, receive Minters' Accept Tokens, and use those pooled tokens to trade on Hyperliquid.
 
 **Q: Are "building an agent with AI" and "an agent whose shares can be minted" the same thing at different stages, or two different things?**
 
@@ -48,8 +48,8 @@ They are the same Agent at different stages. The difference is whether it has go
 
 - Choose whether to publish to the Agent Marketplace (that is, Tokenize):
 
-    - Publish: The Agent becomes an Agent whose shares can be minted. It can raise funds on-chain, and users can Mint, Redeem, and share in its returns.
+    - Publish: The Agent becomes an Agent whose shares can be minted. It goes live on Marketplace, and users can Mint, Redeem, and share in its returns.
 
-    - Do not publish: The Agent can still be listed to the Agent List, keeping its strategy for copy trading but without public fundraising, so there are no shares to Mint.
+    - Do not publish: The Agent can still be listed to the Agent List, keeping its strategy for copy trading but without opening for Minting on Marketplace, so there are no shares to Mint.
 
 All Agents come from the same toolset. "Shares can be minted" is simply the form it takes after one extra step: publishing to the Marketplace.

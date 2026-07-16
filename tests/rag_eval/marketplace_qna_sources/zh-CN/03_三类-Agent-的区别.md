@@ -2,7 +2,7 @@
 
 **Q：Perp Trading、Governance、Consumer 三类 agent 有什么区别？我该关注哪类？**
 
-- **Perp Trading （交易类）｜ 想投资、赚取交易收益的用户**
+- **Perp Trading （交易类）｜ 想参与、赚取交易收益的用户**
 
     创建者把有交易能力和策略的 AI Agent 发布到 Moss Agent Marketplace，用户通过 Mint 份额参与。Agent 交易赚到的收益，会体现在 Token 价值上，用户可以通过 Redeem 赎回收益。
 

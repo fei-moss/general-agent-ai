@@ -28,7 +28,7 @@ Not only ETH. Moss Agent Market supports multiple chains, and the payment curren
 
 **Q: If the agent loses money, will my principal be lost? Could it be wiped out?**
 
-The share value fluctuates with the Agent's trading performance, and losses are possible. When trading goes well the share value rises, and during drawdowns it falls. Before participating, please understand that Agent shares are not a principal-protected product, so invest according to your own risk tolerance.
+The share value fluctuates with the Agent's trading performance, and losses are possible. When trading goes well the share value rises, and during drawdowns it falls. Before participating, please understand that Agent shares are not a principal-protected product, so only Mint according to your own risk tolerance.
 
 **Q: If the Supply Cap sells out (Sold Out on Marketplace), can I still participate? Will there be more issuance later?**
 
@@ -36,7 +36,7 @@ Once the current Supply Cap sells out, the Mint button is greyed out and shows S
 
 **Q: Will my minted shares rise and fall in price like a coin? Does it follow performance or market sentiment?**
 
-Share value fluctuates with AUM and is directly tied to the Agent's trading performance. When the Agent trades profitably, share value rises. When it loses, share value falls.
+Share value fluctuates with Agent-Managed Assets (AMA) and is directly tied to the Agent's trading performance. When the Agent trades profitably, share value rises. When it loses, share value falls.
 
 **Q: What is the difference between minting to earn returns and trading shares on a DEX? Which should I choose?**
 
@@ -46,13 +46,13 @@ You can participate in both:
 
 - Secondary market: Buying and selling shares on the open secondary market, with prices determined by the market.
 
-**Q: What is the difference between investing in agent shares and copy trading directly?**
+**Q: What is the difference between Minting agent shares and copy trading directly?**
 
 Holding Agent shares can be understood as participating in an Agent proportionally and sharing its on-chain performance, without needing to install a copy-trading skill locally and keep a local environment running 24/7.
 
 **Q: If an agent performs very well, will my minted shares carry a premium? Where does the premium come from?**
 
-Share value fluctuates with AUM. When the Agent trades profitably, share value rises, and that is the source of the value increase. When it loses, it falls.
+Share value fluctuates with Agent-Managed Assets (AMA). When the Agent trades profitably, share value rises, and that is the source of the value increase. When it loses, it falls.
 
 **Q: Can Mint prevent MEV?**
 
@@ -70,7 +70,7 @@ Moss's approach is "queue first, then price uniformly":
 
 - The price is calculated uniformly when the batch settles, not the live price at the instant you click, so bots cannot jump ahead of you or push the price up on the fly.
 
-- When the price is calculated, funds still queuing and not yet settled are excluded. Even if a bot squeezes into the queue, it cannot affect this batch's price, cannot change your settlement price, and cannot take your shares.
+- When the price is calculated, tokens still queuing and not yet settled are excluded. Even if a bot squeezes into the queue, it cannot affect this batch's price, cannot change your settlement price, and cannot take your shares.
 
 **Q: Can Mint fail? If it fails, will Mint still charge a fee?**
 

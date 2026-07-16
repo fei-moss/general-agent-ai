@@ -51,6 +51,9 @@ then stops at the first failed gate.
 
 ## Reviewed Seed
 
+Current manifest: `marketplace-qna-rag-seed-v2`; source set:
+`marketplace-qna-bilingual-2026-07-16-v2`.
+
 | Role | Path | Rows |
 | --- | --- | ---: |
 | Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 18 |
@@ -82,7 +85,7 @@ The file hashes must match
 
 4. Submit every body through `POST /rag/documents` as the RAG administrator.
 5. Poll `GET /rag/ingestion-jobs/{job_id}` until every job is terminal.
-6. Require 18 `SUCCEEDED`, 0 failed, 18 persisted documents, 141 chunks, and
+6. Require 18 `SUCCEEDED`, 0 failed, 18 persisted documents, 143 chunks, and
    equality between uploaded SHA-256 metadata and the source manifest.
 7. Save the redacted result as
    `.artifacts/release/marketplace_qna_ingestion_summary.json`.

@@ -14,10 +14,14 @@
 - User authorization:
   - The source documents may be committed to this repository as non-sensitive product material.
   - The DockerHost test knowledge base may be configured, populated, and evaluated end to end.
-- Current live baseline:
+- Pre-V2 rollback baseline:
   - Environment: `chris-general-agent-ai-chat-prod`.
   - Knowledge base: `kb_f7fc8efd685c40e4b309cc42acc618ee`.
   - 18 documents are `EMBEDDED`; 18 ingestion jobs are `SUCCEEDED`; 141 chunks use `gemini-embedding-2`, dimension 256, index version `v1`.
+- V2 candidate:
+  - Manifest: `marketplace-qna-rag-seed-v2`; source set: `marketplace-qna-bilingual-2026-07-16-v2`.
+  - Knowledge base: `kb_d7a8e9ba87f94ad4bb8e0f8466859b39`.
+  - 18 documents are `EMBEDDED`; 18 ingestion jobs are `SUCCEEDED`; 143 chunks use `gemini-embedding-2`, dimension 256, index version `v1`.
 
 ## Goal
 

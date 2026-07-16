@@ -11,7 +11,7 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-16"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-16-v2"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
@@ -153,6 +153,7 @@ def _language_slug(language: str) -> str:
 def _source_specs() -> tuple[SourceSpec, ...]:
     specs: list[SourceSpec] = []
     for language in ("zh-CN", "en"):
+        language_key = "cn" if language == "zh-CN" else "en"
         paths = sorted((SOURCE_ROOT / language).glob("*.md"))
         for path in paths:
             prefix, separator, _ = path.name.partition("_")
@@ -166,7 +167,7 @@ def _source_specs() -> tuple[SourceSpec, ...]:
                     language=language,
                     order=order,
                     id=document_id,
-                    source_uri=f"marketplace-qna://{language}/{path.name}",
+                    source_uri=f"urn:moss:marketplace-qna:{language_key}:{order:02d}",
                 )
             )
     return tuple(specs)

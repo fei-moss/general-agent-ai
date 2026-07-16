@@ -58,11 +58,31 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
     )
     assert all(case.challenge_type for case in cases.values())
     assert all(case.required_facts for case in cases.values())
+    assert all(
+        fact in source_questions[case_id].answer
+        for case_id, case in cases.items()
+        for fact in case.required_facts
+    )
     assert all(case.review_reason for case in cases.values())
     assert sum(case.representative_chat for case in cases.values()) == 18
     assert Counter(
         case.document_id for case in cases.values() if case.representative_chat
     ) == {source.id: 1 for source in bundle.sources}
+
+
+def test_marketplace_qna_v2_queries_use_current_product_language():
+    from tests.rag_eval.marketplace_qna_fixture_builder import (
+        build_fixture_bundle,
+        load_case_definitions,
+    )
+
+    cases = load_case_definitions(build_fixture_bundle())
+    tokenize_query = cases["marketplace_qna_zh_cn_02_q02"].query
+    risk_query = cases["marketplace_qna_zh_cn_08_q06"].query
+
+    assert "Tokenize" in tokenize_query and "Marketplace" in tokenize_query
+    assert "募集资金" not in tokenize_query
+    assert "Mint" in risk_query and "AMA" in risk_query
 
 
 def test_marketplace_qna_generated_fixture_rows_are_complete_and_traceable():
@@ -123,6 +143,23 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
 
 
+def test_marketplace_qna_v2_expected_chunk_count_matches_production_chunking():
+    from app.rag.chunker import chunk_text
+
+    acceptance = json.loads(
+        (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    corpus = _read_jsonl(EVAL_DIR / "marketplace_qna_corpus.jsonl")
+    chunk_count = sum(
+        len(chunk_text(row["text"], chunk_size=400, overlap=80)) for row in corpus
+    )
+
+    assert chunk_count == 143
+    assert acceptance["ingestion"]["expected_chunks"] == chunk_count
+
+
 def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
     manifest = json.loads(
         (EVAL_DIR / "marketplace_qna_rag_seed_manifest.json").read_text(encoding="utf-8")
@@ -151,6 +188,26 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
             assert entry["row_count"] == len(_read_jsonl(path))
 
 
+def test_marketplace_qna_v2_seed_is_explicitly_versioned():
+    from tests.rag_eval.marketplace_qna_fixture_builder import CORPUS_VERSION
+
+    manifest = json.loads(
+        (EVAL_DIR / "marketplace_qna_rag_seed_manifest.json").read_text(encoding="utf-8")
+    )
+    acceptance = json.loads(
+        (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-07-16-v2"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v2"
+    assert manifest["source_set"] == CORPUS_VERSION
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V2"
+    assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
+    assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
+
+
 def test_marketplace_qna_import_payloads_match_rag_document_schema():
     from app.core.schemas import RAGDocumentCreate
     from tests.rag_eval.marketplace_qna_import_payloads import build_document_payloads
@@ -161,14 +218,19 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
     assert {payload["metadata"]["doc_id"] for payload in payloads} == {
         row["id"] for row in _read_jsonl(EVAL_DIR / "marketplace_qna_corpus.jsonl")
     }
+    assert {payload["source_uri"] for payload in payloads} == {
+        f"urn:moss:marketplace-qna:{language}:{order:02d}"
+        for language in ("cn", "en")
+        for order in range(1, 10)
+    }
     for payload in payloads:
         parsed = RAGDocumentCreate(**payload)
         assert parsed.knowledge_base_id == "kb_marketplace_qna"
         assert parsed.source_type == "api"
         assert parsed.mime_type == "text/markdown"
-        assert parsed.source_uri.startswith("marketplace-qna://")
+        assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-16"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-16-v2"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
@@ -536,7 +598,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
             "persisted_documents": 18,
             "succeeded_jobs": 18,
             "failed_jobs": 0,
-            "persisted_chunks": 141,
+            "persisted_chunks": contract["ingestion"]["expected_chunks"],
             "embedding_provider": "gemini",
             "embedding_model": "gemini-embedding-2",
             "embedding_dim": 256,

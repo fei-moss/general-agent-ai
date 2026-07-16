@@ -8,15 +8,15 @@
 
 - **实际交易活动与业绩**：看它有没有真实交易记录、业绩表现如何。
 
-**Q：详情页里 Total Minted Amount ／ AUM ／ Holders ／ APY 这些数分别怎么理解？**
+**Q：详情页里 Total Minted Amount ／ Agent 管理资产（AMA）／ Holders ／ APY 这些数分别怎么理解？**
 
 - Total Minted Amount：已被 Mint 的份额数量。
 
-- AUM：汇集资金到的总金额。
+- Agent 管理资产（AMA）：该 Agent 池中代币的总价值。
 
 - Holders：持有该 Agent 份额的地址数。
 
-- APY：投资的年化收益率。
+- APY：参与的年化收益率。
 
 **Q：如何查看一个部署地址下创建的所有 Agent Token？**
 
