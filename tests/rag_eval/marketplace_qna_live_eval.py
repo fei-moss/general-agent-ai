@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import time
@@ -42,6 +43,33 @@ def _normalized(value: str) -> str:
     return "".join(character.casefold() for character in str(value) if character.isalnum())
 
 
+def _matches_required_alternative(answer: str, alternative: str) -> bool:
+    normalized_alternative = _normalized(alternative)
+    expected_tokens = re.findall(r"[a-z0-9]+", alternative.casefold())
+    segments = re.split(r"[.!?。！？\n]+", answer)
+    for segment in segments:
+        if normalized_alternative and normalized_alternative in _normalized(segment):
+            return True
+        if not alternative.isascii() or len(expected_tokens) < 2:
+            continue
+        answer_tokens = re.findall(r"[a-z0-9]+", segment.casefold())
+        cursor = -1
+        for expected in expected_tokens:
+            start = cursor + 1
+            upper_bound = (
+                len(answer_tokens)
+                if cursor < 0
+                else min(len(answer_tokens), start + 4)
+            )
+            try:
+                cursor = answer_tokens.index(expected, start, upper_bound)
+            except ValueError:
+                break
+        else:
+            return True
+    return False
+
+
 def evaluate_answer(
     answer: str,
     *,
@@ -49,11 +77,11 @@ def evaluate_answer(
     forbidden_claims: list[str],
 ) -> dict[str, Any]:
     """Evaluate semantic fact alternatives using deterministic text evidence."""
-    normalized_answer = _normalized(answer)
     group_results = [
-        any(_normalized(alternative) in normalized_answer for alternative in group)
+        any(_matches_required_alternative(answer, alternative) for alternative in group)
         for group in required_fact_groups
     ]
+    normalized_answer = _normalized(answer)
     matched_forbidden = [
         claim
         for claim in forbidden_claims

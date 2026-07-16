@@ -316,6 +316,51 @@ def test_marketplace_qna_fat_chat_fact_accepts_no_prior_knowledge_wording():
     assert result["passed"] is True
 
 
+def test_marketplace_qna_fact_matching_allows_ordered_english_modifiers():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    result = evaluate_answer(
+        "There is no unified platform-wide minimum threshold. The exact price "
+        "is shown on the Agent detail page.",
+        required_fact_groups=[
+            ["no unified threshold"],
+            ["detail page"],
+        ],
+        forbidden_claims=[],
+    )
+
+    assert result["passed"] is True
+
+
+def test_marketplace_qna_fact_matching_does_not_join_unrelated_sentences():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    result = evaluate_answer(
+        "There is no platform fee. A unified minimum threshold applies.",
+        required_fact_groups=[["no unified threshold"]],
+        forbidden_claims=[],
+    )
+
+    assert result["passed"] is False
+
+
+def test_marketplace_qna_early_user_fact_accepts_equivalent_not_announced_wording():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    case = next(
+        row
+        for row in _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+        if row["id"] == "marketplace_qna_zh_cn_09_q01"
+    )
+    result = evaluate_answer(
+        "早期用户暂时没有公布任何特殊待遇，后续会通过官方渠道发布。",
+        required_fact_groups=case["required_fact_groups"],
+        forbidden_claims=case["forbidden_claims"],
+    )
+
+    assert result["passed"] is True
+
+
 def test_marketplace_qna_live_retrieval_evaluator_requires_uri_language_and_no_degrade():
     from tests.rag_eval.marketplace_qna_live_eval import evaluate_retrieval_response
 

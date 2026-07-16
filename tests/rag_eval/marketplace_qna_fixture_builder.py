@@ -52,7 +52,17 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "marketplace_qna_zh_cn_06": (("Mint", "铸造份额"), ("真实交易", "实际交易")),
     "marketplace_qna_zh_cn_07": (("DEX", "去中心化交易所"), ("Redeem", "赎回")),
     "marketplace_qna_zh_cn_08": (("不托管", "非托管"), ("私钥", "钱包")),
-    "marketplace_qna_zh_cn_09": (("暂未公布", "尚未公布", "还未公布"), ("官方渠道", "@MossAI_Official")),
+    "marketplace_qna_zh_cn_09": (
+        (
+            "暂未公布",
+            "尚未公布",
+            "还未公布",
+            "暂时没有公布",
+            "尚未宣布",
+            "目前无特殊待遇",
+        ),
+        ("官方渠道", "@MossAI_Official"),
+    ),
 }
 CHAT_QUERY_OVERRIDES = {
     "marketplace_qna_en_07_q01": (
