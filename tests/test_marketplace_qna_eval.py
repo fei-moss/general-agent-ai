@@ -361,6 +361,23 @@ def test_marketplace_qna_early_user_fact_accepts_equivalent_not_announced_wordin
     assert result["passed"] is True
 
 
+def test_marketplace_qna_early_user_fact_accepts_currently_not_published_wording():
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    case = next(
+        row
+        for row in _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+        if row["id"] == "marketplace_qna_zh_cn_09_q01"
+    )
+    result = evaluate_answer(
+        "目前还没有公布任何特殊待遇，尚未推出专项计划；后续会通过官方渠道发布。",
+        required_fact_groups=case["required_fact_groups"],
+        forbidden_claims=case["forbidden_claims"],
+    )
+
+    assert result["passed"] is True
+
+
 def test_marketplace_qna_fundraising_fact_accepts_actual_trades_wording():
     from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
 
