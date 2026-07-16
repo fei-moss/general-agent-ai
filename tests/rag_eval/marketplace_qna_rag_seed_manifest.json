@@ -24,7 +24,7 @@
       "path": "tests/rag_eval/marketplace_qna_golden_queries.jsonl",
       "role": "golden_queries",
       "row_count": 114,
-      "sha256": "29aa21a5dba7cfb9c2850495fc7a2ac4a08579b0f3de22a139ce7594d76f90c8"
+      "sha256": "5bdf9da244c95487db9cd350e632dc99e9b8a301acdaa777c955e7ca950bef4e"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_query_review.jsonl",

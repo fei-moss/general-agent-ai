@@ -13,7 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_CORPUS_PATH = Path(__file__).with_name("corpus.jsonl")
-_RETRIEVER_CACHE: dict[tuple[str, int, int, tuple[tuple[str, str], ...]], Any] = {}
+_RETRIEVER_CACHE: dict[tuple[Any, ...], Any] = {}
 
 
 def call_api(prompt: str, options: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -25,13 +25,33 @@ def call_api(prompt: str, options: dict[str, Any] | None = None, context: dict[s
     query = str(vars_.get("query") or prompt or "").strip()
     top_k = int(vars_.get("top_k") or config.get("top_k") or 3)
     corpus_path = _resolve_path(config.get("corpus_path") or DEFAULT_CORPUS_PATH)
+    language = str(vars_.get("language") or "").strip()
+    metadata_filters = {"language": language} if language else {}
 
-    output = asyncio.run(_run_retrieval(query=query, top_k=top_k, corpus_path=corpus_path, config=config))
+    output = asyncio.run(
+        _run_retrieval(
+            query=query,
+            top_k=top_k,
+            corpus_path=corpus_path,
+            config=config,
+            metadata_filters=metadata_filters,
+        )
+    )
     return {"output": json.dumps(output, ensure_ascii=False)}
 
 
-async def _run_retrieval(query: str, top_k: int, corpus_path: Path, config: dict[str, Any]) -> dict[str, Any]:
-    retriever = await _build_retriever(str(corpus_path), _settings_key(config))
+async def _run_retrieval(
+    query: str,
+    top_k: int,
+    corpus_path: Path,
+    config: dict[str, Any],
+    metadata_filters: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    retriever = await _build_retriever(
+        str(corpus_path),
+        _settings_key(config),
+        metadata_filters=metadata_filters or {},
+    )
     result = await retriever.retrieve(query, top_k=top_k)
     hits = [
         {
@@ -52,13 +72,19 @@ async def _run_retrieval(query: str, top_k: int, corpus_path: Path, config: dict
     }
 
 
-async def _build_retriever(corpus_path: str, settings_key: tuple[tuple[str, str], ...]):
+async def _build_retriever(
+    corpus_path: str,
+    settings_key: tuple[tuple[str, str], ...],
+    *,
+    metadata_filters: dict[str, str],
+):
     from app.core.config import Settings
     from app.rag.retriever import RAGRetriever
 
     path = Path(corpus_path)
     stat = path.stat()
-    cache_key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size, settings_key)
+    filter_key = tuple(sorted(metadata_filters.items()))
+    cache_key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size, settings_key, filter_key)
     cached = _RETRIEVER_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -75,10 +101,26 @@ async def _build_retriever(corpus_path: str, settings_key: tuple[tuple[str, str]
         retrieval_top_k=int(_config_value(config, "retrieval_top_k", "3")),
     )
     retriever = RAGRetriever(settings=settings, timeout_s=float(_config_value(config, "timeout_s", "30")))
-    docs = _load_corpus(path)
-    await retriever.ingest(docs)
+    docs = _filter_corpus_docs(_load_corpus(path), metadata_filters)
+    if not docs:
+        raise ValueError(f"RAG eval corpus has no documents for filters: {metadata_filters}")
+    await _ingest_corpus(
+        retriever,
+        docs,
+        batch_size=int(_config_value(config, "ingest_batch_size", "20")),
+    )
     _RETRIEVER_CACHE[cache_key] = retriever
     return retriever
+
+
+async def _ingest_corpus(retriever: Any, docs: list[dict[str, Any]], *, batch_size: int) -> int:
+    """Ingest eval documents in bounded batches so provider batch limits are respected."""
+    if batch_size <= 0:
+        raise ValueError("ingest_batch_size must be positive")
+    ingested = 0
+    for start in range(0, len(docs), batch_size):
+        ingested += await retriever.ingest(docs[start : start + batch_size])
+    return ingested
 
 
 def _load_corpus(path: Path) -> list[dict[str, Any]]:
@@ -97,6 +139,18 @@ def _load_corpus(path: Path) -> list[dict[str, Any]]:
     return docs
 
 
+def _filter_corpus_docs(
+    docs: list[dict[str, Any]], metadata_filters: dict[str, str]
+) -> list[dict[str, Any]]:
+    if not metadata_filters:
+        return docs
+    return [
+        doc
+        for doc in docs
+        if all((doc.get("meta") or {}).get(key) == value for key, value in metadata_filters.items())
+    ]
+
+
 def _settings_key(config: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     keys = [
         "embedding_provider",
@@ -106,6 +160,7 @@ def _settings_key(config: dict[str, Any]) -> tuple[tuple[str, str], ...]:
         "rag_chunk_overlap",
         "retrieval_top_k",
         "timeout_s",
+        "ingest_batch_size",
     ]
     values = {key: str(config[key]) for key in keys if key in config}
     return tuple(sorted(values.items()))

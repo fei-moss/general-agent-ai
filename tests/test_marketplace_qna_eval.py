@@ -4,6 +4,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
+import pytest
 
 
 EVAL_DIR = Path(__file__).parent / "rag_eval"
@@ -162,3 +163,83 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.source_uri.startswith("marketplace-qna://")
         assert parsed.metadata["sha256"]
         assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-16"
+
+
+def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
+    from tests.rag_eval.marketplace_qna_test_cases import generate_tests
+
+    cases = generate_tests()
+    config = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(encoding="utf-8")
+
+    assert len(cases) == 114
+    assert all(case["vars"]["max_rank"] == 5 for case in cases)
+    assert all(case["vars"]["top_k"] == 5 for case in cases)
+    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 57, "en": 57}
+    assert all(case["assert"] == [{"type": "python", "value": "file://assert_retrieval.py"}] for case in cases)
+    for expected in (
+        'corpus_path: "marketplace_qna_corpus.jsonl"',
+        'embedding_provider: "gemini"',
+        'embedding_model: "gemini-embedding-2"',
+        "embedding_dim: 256",
+        "rag_chunk_size: 400",
+        "rag_chunk_overlap: 80",
+        "retrieval_top_k: 5",
+    ):
+        assert expected in config
+
+
+def test_marketplace_qna_golden_query_audit_reports_full_coverage():
+    from tests.rag_eval.marketplace_qna_golden_query_audit import build_audit_report
+
+    report = build_audit_report()
+
+    assert report["status"] == "passed"
+    assert report["counts"] == {
+        "source_documents": 18,
+        "golden_queries": 114,
+        "review_rows": 114,
+        "chat_cases": 18,
+        "source_questions": 114,
+    }
+    assert report["gaps"] == {
+        "missing_query_ids": [],
+        "unexpected_query_ids": [],
+        "missing_review_ids": [],
+        "unknown_document_ids": [],
+        "missing_topic_groups": [],
+        "invalid_source_evidence": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_rag_eval_provider_ingests_large_corpora_in_bounded_document_batches():
+    from tests.rag_eval.provider import _ingest_corpus
+
+    class RecordingRetriever:
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        async def ingest(self, docs: list[dict]) -> int:
+            self.calls.append([doc["id"] for doc in docs])
+            return len(docs)
+
+    retriever = RecordingRetriever()
+    docs = [{"id": f"doc-{index}", "text": "body"} for index in range(5)]
+
+    ingested = await _ingest_corpus(retriever, docs, batch_size=2)
+
+    assert ingested == 5
+    assert retriever.calls == [["doc-0", "doc-1"], ["doc-2", "doc-3"], ["doc-4"]]
+
+
+def test_rag_eval_provider_filters_bilingual_corpus_by_case_language():
+    from tests.rag_eval.provider import _filter_corpus_docs
+
+    docs = [
+        {"id": "zh", "text": "中文", "meta": {"language": "zh-CN"}},
+        {"id": "en", "text": "English", "meta": {"language": "en"}},
+    ]
+
+    assert _filter_corpus_docs(docs, {"language": "zh-CN"}) == [docs[0]]
+    assert _filter_corpus_docs(docs, {"language": "en"}) == [docs[1]]
+    assert _filter_corpus_docs(docs, {}) == docs
