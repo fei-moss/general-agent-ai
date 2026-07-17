@@ -47,6 +47,7 @@ from app.runtime.chat_behavior import (
     get_behavior_profile,
 )
 from app.runtime.marketplace_ai import (
+    MarketplaceComputeQueries,
     MarketplaceViewerContext,
     current_agent_missing_result,
     extract_current_agent_ref,
@@ -73,6 +74,7 @@ _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").poli
 _ASK_THIS_AGENT_PROFILE = "ask_this_agent"
 _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT = 1
 _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT = 1
+_MARKETPLACE_AGENT_COMPUTE_CORRECTION_LIMIT = 1
 _SEARCH_KNOWLEDGE_CALL_LIMIT = 1
 _MARKETPLACE_BUDGETED_TOOLS = {
     TOOL_MARKETPLACE_AGENT_CONTEXT,
@@ -115,6 +117,7 @@ class AgentDeps:
     marketplace_ai: Any | None = None
     marketplace_viewer_context: MarketplaceViewerContext | None = None
     tool_call_counts: dict[str, int] = field(default_factory=dict)
+    marketplace_compute_retry_allowed: bool = False
 
 
 def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
@@ -155,6 +158,15 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         return build_run_context_instruction(mask_run_context(ctx.deps.run_context or {}))
 
     @agent.instructions
+    def internal_tool_process_policy(_ctx: RunContext[AgentDeps]) -> str:
+        """Keep tool execution mechanics out of the user-facing answer."""
+        return (
+            "After tools return, answer only with the user-facing result. You must not "
+            "expose internal tool planning, validation, or correction, including parameter "
+            "guessing and phrases such as 'let me fix the format' or 'call again'."
+        )
+
+    @agent.instructions
     def turn_policy_instruction(ctx: RunContext[AgentDeps]) -> str:
         """Inject server-owned turn policy instructions."""
         turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
@@ -169,7 +181,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 " this metric from marketplace_agent_context alone. For a request"
                 " about volume_sum over the past day or 24h, call"
                 " marketplace_agent_compute with queries containing metric"
-                " volume_sum and window {unit: day, value: 1}."
+                " volume_sum and window {unit: hour, value: 24}."
             )
         return (
             "This turn is an identity or capability question. Answer directly in"
@@ -281,14 +293,38 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             include_raw=include_raw,
         )
 
-    @agent.tool
+    @agent.tool(retries=1)
     async def marketplace_agent_compute(
         ctx: RunContext[AgentDeps],
-        queries: list[dict[str, Any]],
+        queries: MarketplaceComputeQueries,
     ) -> dict[str, Any]:
         """按需计算当前 Agent 的 Marketplace 指标或报告搜索结果。
 
-        结果中的 available/status/reason/message 必须按原义使用。
+        queries 每项只允许 id、metric、window、time_range、limit、query、
+        include_raw。metric 必须使用 Schema 枚举值。volume_sum 和
+        share_price_change 必须提供 window 或 time_range；window.unit 只能是
+        hour/day，window.value 必须大于 0。report_search 必须提供非空 query；
+        recent_reports/report_search 的 limit 为 1-20。
+
+        24 小时成交量示例：
+        {"queries": [
+          {"id": "volume-24h", "metric": "volume_sum",
+           "window": {"unit": "hour", "value": 24}}
+        ]}
+
+        用户状态示例：
+        {"queries": [{"id": "user-status", "metric": "user_status"}]}
+
+        多指标一次调用示例：
+        {"queries": [
+          {"id": "user-status", "metric": "user_status"},
+          {"id": "volume-24h", "metric": "volume_sum",
+           "window": {"unit": "hour", "value": 24}}
+        ]}
+
+        当前 Agent 地址与用户身份只能来自服务端 deps/run_context，绝不能放入
+        queries。结果中的 available/status/reason/message 必须按原义使用。最终回答
+        只给用户结果，不描述工具格式修正、重试或参数猜测过程。
         """
         if not tool_allowed(TOOL_MARKETPLACE_AGENT_COMPUTE, ctx.deps.run_context):
             return tool_denied_result(TOOL_MARKETPLACE_AGENT_COMPUTE)
@@ -313,19 +349,22 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 "marketplace_viewer_context_missing",
                 "Trusted Marketplace viewer context is required for compute.",
             )
-        exhausted = _claim_tool_budget(
-            ctx,
-            TOOL_MARKETPLACE_AGENT_COMPUTE,
-            _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT,
-        )
+        exhausted = _claim_compute_tool_budget(ctx)
         if exhausted is not None:
             return exhausted
-        return await client.compute_agent_metrics(
+        result = await client.compute_agent_metrics(
             ref.address,
             normalized_queries,
             viewer_context=ctx.deps.marketplace_viewer_context,
             chain_id=ref.chain_id,
         )
+        ctx.deps.marketplace_compute_retry_allowed = (
+            int(ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_COMPUTE, 0))
+            < _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT
+            + _MARKETPLACE_AGENT_COMPUTE_CORRECTION_LIMIT
+            and _is_correctable_compute_failure(result)
+        )
+        return result
 
     return agent
 
@@ -422,8 +461,12 @@ def _filter_spent_tool_budgets(
     counts = ctx.deps.tool_call_counts
     spent_tools: set[str] = set()
     for tool_name, limit in _TOOL_CALL_LIMITS.items():
+        if tool_name == TOOL_MARKETPLACE_AGENT_COMPUTE:
+            continue
         if int(counts.get(tool_name, 0)) >= limit:
             spent_tools.add(tool_name)
+    if _compute_tool_budget_spent(ctx):
+        spent_tools.add(TOOL_MARKETPLACE_AGENT_COMPUTE)
     if not spent_tools:
         return tool_defs
     return [tool for tool in tool_defs if tool.name not in spent_tools]
@@ -449,6 +492,58 @@ def _claim_tool_budget(
         )
     counts[tool_name] = current + 1
     return None
+
+
+def _compute_tool_budget_spent(ctx: RunContext[AgentDeps]) -> bool:
+    attempts = int(
+        ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_COMPUTE, 0)
+    )
+    max_attempts = (
+        _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT
+        + _MARKETPLACE_AGENT_COMPUTE_CORRECTION_LIMIT
+    )
+    return attempts >= max_attempts or (
+        attempts >= _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT
+        and not ctx.deps.marketplace_compute_retry_allowed
+    )
+
+
+def _claim_compute_tool_budget(
+    ctx: RunContext[AgentDeps],
+) -> dict[str, Any] | None:
+    if _compute_tool_budget_spent(ctx):
+        return marketplace_unavailable(
+            "tool_budget_exhausted",
+            (
+                "marketplace_agent_compute already succeeded or used its single "
+                "corrective retry for this turn. Use the prior result."
+            ),
+            status="limited",
+        )
+    counts = ctx.deps.tool_call_counts
+    counts[TOOL_MARKETPLACE_AGENT_COMPUTE] = int(
+        counts.get(TOOL_MARKETPLACE_AGENT_COMPUTE, 0)
+    ) + 1
+    ctx.deps.marketplace_compute_retry_allowed = False
+    return None
+
+
+def _is_correctable_compute_failure(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(_is_correctable_compute_failure(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    status = str(value.get("status") or "").strip().lower()
+    reason = str(value.get("reason") or "").strip().lower()
+    if reason == "invalid_window" or (
+        status == "invalid_request" and reason == "query_required"
+    ):
+        return True
+    return any(
+        _is_correctable_compute_failure(value.get(key))
+        for key in ("data", "results")
+        if key in value
+    )
 
 
 def _query_from_prompt(prompt: Any) -> str:

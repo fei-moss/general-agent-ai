@@ -15,6 +15,7 @@ from app.runtime.agent_factory import (
     AgentDeps,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
+    _is_correctable_compute_failure,
     build_agent,
 )
 from app.runtime.marketplace_ai import MarketplaceViewerContext
@@ -75,7 +76,7 @@ async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chai
                     {
                         "id": "q1",
                         "metric": "volume_sum",
-                        "window": {"unit": "day", "value": 1},
+                        "window": {"unit": "hour", "value": 24},
                     }
                 ]
             },
@@ -99,7 +100,7 @@ async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chai
                 {
                     "id": "q1",
                     "metric": "volume_sum",
-                    "window": {"unit": "day", "value": 1},
+                    "window": {"unit": "hour", "value": 24},
                 }
             ],
             "viewer_context": VIEWER,
@@ -130,7 +131,7 @@ async def test_agent_marketplace_compute_requires_trusted_viewer_context():
     agent = build_agent(
         _tool_calling_model(
             TOOL_MARKETPLACE_AGENT_COMPUTE,
-            {"queries": [{"metric": "volume_sum"}]},
+            {"queries": [{"metric": "user_status"}]},
         )
     )
     deps = AgentDeps(
@@ -160,7 +161,85 @@ def test_marketplace_tool_schemas_do_not_accept_agent_address_or_wallet():
     assert "contract_address" not in rendered
 
 
-async def test_compute_query_cannot_override_server_agent_or_viewer_identity():
+def test_marketplace_compute_tool_schema_describes_query_contract():
+    agent = build_agent(_tool_calling_model(TOOL_MARKETPLACE_AGENT_COMPUTE, {}))
+    schema = agent._function_toolset.tools[
+        TOOL_MARKETPLACE_AGENT_COMPUTE
+    ].function_schema.json_schema
+
+    query_schema = schema["$defs"]["MarketplaceComputeQuery"]
+    query_properties = query_schema["properties"]
+    assert set(query_properties) == {
+        "id",
+        "metric",
+        "window",
+        "time_range",
+        "limit",
+        "query",
+        "include_raw",
+    }
+    assert query_properties["metric"]["enum"] == [
+        "share_price_change",
+        "volume_sum",
+        "aum_change",
+        "top_holder",
+        "recent_reports",
+        "report_search",
+        "pnl",
+        "user_pnl",
+        "user_position",
+        "user_status",
+    ]
+    window_schema = schema["$defs"]["MarketplaceComputeWindow"]
+    assert window_schema["properties"]["unit"]["enum"] == ["hour", "day"]
+    assert window_schema["properties"]["value"]["minimum"] == 1
+    time_range_schema = schema["$defs"]["MarketplaceComputeTimeRange"]
+    assert set(time_range_schema["properties"]) == {"from", "to"}
+    assert time_range_schema["properties"]["from"]["format"] == "date-time"
+    assert schema["properties"]["queries"]["items"] != {
+        "type": "object",
+        "additionalProperties": True,
+    }
+
+    rendered = repr(schema).lower()
+    for forbidden in (
+        "agent_address",
+        "contract_address",
+        "wallet",
+        "wallet_address",
+        "user_id",
+    ):
+        assert forbidden not in rendered
+
+
+def test_marketplace_compute_tool_description_is_self_describing():
+    agent = build_agent(_tool_calling_model(TOOL_MARKETPLACE_AGENT_COMPUTE, {}))
+    description = agent._function_toolset.tools[
+        TOOL_MARKETPLACE_AGENT_COMPUTE
+    ].description
+
+    assert '"metric": "volume_sum"' in description
+    assert '"unit": "hour", "value": 24' in description
+    assert '"metric": "user_status"' in description
+    assert "一次调用" in description
+
+
+def test_compute_retry_only_accepts_model_correctable_failures():
+    assert _is_correctable_compute_failure(
+        {
+            "data": {
+                "results": [
+                    {"status": "invalid_request", "reason": "invalid_window"}
+                ]
+            }
+        }
+    )
+    assert not _is_correctable_compute_failure(
+        {"status": "invalid_request", "reason": "marketplace_http_400"}
+    )
+
+
+async def test_compute_query_rejects_model_supplied_agent_or_viewer_identity():
     marketplace = _FakeMarketplaceAI()
     agent = build_agent(
         _tool_calling_model(
@@ -168,7 +247,7 @@ async def test_compute_query_cannot_override_server_agent_or_viewer_identity():
             {
                 "queries": [
                     {
-                        "metric": "volume_sum",
+                        "metric": "user_status",
                         "wallet": "0x1111111111111111111111111111111111111111",
                         "agent_address": "0x2222222222222222222222222222222222222222",
                     }
@@ -186,14 +265,7 @@ async def test_compute_query_cannot_override_server_agent_or_viewer_identity():
 
     await agent.run("计算 volume_sum", deps=deps)
 
-    assert marketplace.compute_calls == [
-        {
-            "address": ADDRESS,
-            "chain_id": None,
-            "queries": [{"metric": "volume_sum"}],
-            "viewer_context": VIEWER,
-        }
-    ]
+    assert marketplace.compute_calls == []
 
 
 async def test_agent_marketplace_tool_permission_denial_blocks_client_call():
@@ -275,8 +347,7 @@ async def test_agent_marketplace_compute_merges_same_response_duplicate_tool_cal
     }
     q2 = {
         "id": "q2",
-        "metric": "aum_latest",
-        "window": {"unit": "day", "value": 1},
+        "metric": "user_status",
     }
     agent = build_agent(
         _multi_tool_calling_model(
@@ -305,6 +376,112 @@ async def test_agent_marketplace_compute_merges_same_response_duplicate_tool_cal
     assert len(marketplace.compute_calls) == 1
     assert marketplace.compute_calls[0]["queries"] == [q1, q2]
     assert "volume_sum" in repr(result)
+
+
+async def test_agent_marketplace_compute_combines_user_status_and_volume_in_one_call():
+    marketplace = _FakeMarketplaceAI()
+    queries = [
+        {"id": "user-status", "metric": "user_status"},
+        {
+            "id": "volume-24h",
+            "metric": "volume_sum",
+            "window": {"unit": "hour", "value": 24},
+        },
+    ]
+    agent = build_agent(
+        _tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_COMPUTE,
+            {"queries": queries},
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    await agent.run("当前用户状态和过去 24 小时成交量", deps=deps)
+
+    assert len(marketplace.compute_calls) == 1
+    assert marketplace.compute_calls[0]["queries"] == queries
+
+
+async def test_agent_marketplace_compute_allows_one_corrective_retry_only():
+    marketplace = _CorrectableThenSuccessMarketplaceAI()
+    first_queries = [
+        {
+            "id": "volume-24h",
+            "metric": "volume_sum",
+            "window": {"unit": "day", "value": 1},
+        }
+    ]
+    corrected_queries = [
+        {
+            "id": "volume-24h",
+            "metric": "volume_sum",
+            "window": {"unit": "hour", "value": 24},
+        }
+    ]
+    agent = build_agent(
+        _sequenced_tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_COMPUTE,
+            [
+                {"queries": first_queries},
+                {"queries": corrected_queries},
+                {"queries": corrected_queries},
+            ],
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("过去 24 小时成交量", deps=deps)
+
+    assert [call["queries"] for call in marketplace.compute_calls] == [
+        first_queries,
+        corrected_queries,
+    ]
+    assert "volume_sum" in repr(result)
+
+
+async def test_acceptance_flow_calls_context_then_compute_once_without_internal_narration():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(_acceptance_flow_model())
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run(
+        "请先获取当前 Agent 的基础上下文和最近报告，再计算当前用户状态以及过去 24 小时成交量。"
+        "请直接给出结果，不要描述工具调用过程。",
+        deps=deps,
+    )
+
+    assert len(marketplace.context_calls) == 1
+    assert len(marketplace.compute_calls) == 1
+    assert marketplace.compute_calls[0]["queries"] == [
+        {"id": "user-status", "metric": "user_status"},
+        {
+            "id": "volume-24h",
+            "metric": "volume_sum",
+            "window": {"unit": "hour", "value": 24},
+        },
+    ]
+    output = result.output
+    assert "基础上下文" in output
+    for internal_phrase in ("格式有误", "让我修正", "再次调用", "工具参数"):
+        assert internal_phrase not in output
 
 
 class _NoopRetriever:
@@ -385,6 +562,57 @@ class _FakeMarketplaceAI:
         }
 
 
+class _CorrectableThenSuccessMarketplaceAI(_FakeMarketplaceAI):
+    async def compute_agent_metrics(
+        self,
+        address: str,
+        queries: list[dict[str, Any]],
+        *,
+        chain_id: int | None = None,
+        viewer_context: MarketplaceViewerContext | None = None,
+    ) -> dict[str, Any]:
+        self.compute_calls.append(
+            {
+                "address": address,
+                "chain_id": chain_id,
+                "queries": queries,
+                "viewer_context": viewer_context,
+            }
+        )
+        if len(self.compute_calls) == 1:
+            return {
+                "ok": True,
+                "source": "marketplace_ai",
+                "data": {
+                    "results": [
+                        {
+                            "id": "volume-24h",
+                            "metric": "volume_sum",
+                            "available": False,
+                            "status": "invalid_request",
+                            "reason": "invalid_window",
+                            "message": "Provide a valid window.",
+                        }
+                    ]
+                },
+            }
+        return {
+            "ok": True,
+            "source": "marketplace_ai",
+            "data": {
+                "results": [
+                    {
+                        "id": "volume-24h",
+                        "metric": "volume_sum",
+                        "available": True,
+                        "status": "ok",
+                        "value": "123.45",
+                        "unit": "usd",
+                    }
+                ]
+            },
+        }
+
 def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:
     calls = 0
 
@@ -439,5 +667,87 @@ def _repeated_tool_calling_model(
         if len(tool_results) < repeat and tool_name in visible_tools:
             return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
         return ModelResponse(parts=[TextPart(content=repr(tool_results))])
+
+    return FunctionModel(function=function)
+
+
+def _sequenced_tool_calling_model(
+    tool_name: str,
+    args_sequence: list[dict[str, Any]],
+) -> FunctionModel:
+    def function(messages, info):
+        tool_results = []
+        for message in messages:
+            if isinstance(message, ModelRequest):
+                for part in message.parts:
+                    if isinstance(part, ToolReturnPart):
+                        tool_results.append(part.content)
+        visible_tools = {tool.name for tool in info.function_tools}
+        if len(tool_results) < len(args_sequence) and tool_name in visible_tools:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=tool_name,
+                        args=args_sequence[len(tool_results)],
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content=repr(tool_results))])
+
+    return FunctionModel(function=function)
+
+
+def _acceptance_flow_model() -> FunctionModel:
+    def function(messages, info):
+        returned_tools = []
+        for message in messages:
+            if isinstance(message, ModelRequest):
+                for part in message.parts:
+                    if isinstance(part, ToolReturnPart):
+                        returned_tools.append(part.tool_name)
+        visible_tools = {tool.name for tool in info.function_tools}
+        if (
+            TOOL_MARKETPLACE_AGENT_CONTEXT not in returned_tools
+            and TOOL_MARKETPLACE_AGENT_CONTEXT in visible_tools
+        ):
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                        args={"reports_limit": 5, "include_raw": False},
+                    )
+                ]
+            )
+        if (
+            TOOL_MARKETPLACE_AGENT_COMPUTE not in returned_tools
+            and TOOL_MARKETPLACE_AGENT_COMPUTE in visible_tools
+        ):
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_COMPUTE,
+                        args={
+                            "queries": [
+                                {"id": "user-status", "metric": "user_status"},
+                                {
+                                    "id": "volume-24h",
+                                    "metric": "volume_sum",
+                                    "window": {"unit": "hour", "value": 24},
+                                },
+                            ]
+                        },
+                    )
+                ]
+            )
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    content=(
+                        "基础上下文：BTC Trend Agent，最近报告为空。\n"
+                        "当前用户状态：已获取。过去 24 小时成交量：0 USD。"
+                    )
+                )
+            ]
+        )
 
     return FunctionModel(function=function)

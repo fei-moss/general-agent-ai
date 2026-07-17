@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 import httpx
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from app.core.config import Settings
 
@@ -14,6 +23,89 @@ _ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 _MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
 _MAX_REPORTS_LIMIT = 20
 _MAX_QUERIES = 10
+
+MarketplaceComputeMetric = Literal[
+    "share_price_change",
+    "volume_sum",
+    "aum_change",
+    "top_holder",
+    "recent_reports",
+    "report_search",
+    "pnl",
+    "user_pnl",
+    "user_position",
+    "user_status",
+]
+
+
+class MarketplaceComputeWindow(BaseModel):
+    """Relative time window accepted by Marketplace compute."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unit: Literal["hour", "day"]
+    value: int = Field(ge=1)
+
+
+class MarketplaceComputeTimeRange(BaseModel):
+    """Absolute UTC-compatible time range accepted by Marketplace compute."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: datetime = Field(alias="from")
+    to: datetime | None = None
+
+    @field_validator("from_", "to")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("time_range timestamps must include a UTC offset")
+        return value
+
+    @model_validator(mode="after")
+    def validate_order(self) -> MarketplaceComputeTimeRange:
+        if self.to is not None and self.from_ >= self.to:
+            raise ValueError("time_range.from must be earlier than time_range.to")
+        return self
+
+
+class MarketplaceComputeQuery(BaseModel):
+    """One self-contained metric request for Marketplace compute."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = None
+    metric: MarketplaceComputeMetric
+    window: MarketplaceComputeWindow | None = None
+    time_range: MarketplaceComputeTimeRange | None = None
+    limit: int | None = Field(default=None, ge=1, le=_MAX_REPORTS_LIMIT)
+    query: str | None = None
+    include_raw: bool = False
+
+    @field_validator("id", "query", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return str(value).strip()
+
+    @model_validator(mode="after")
+    def validate_metric_requirements(self) -> MarketplaceComputeQuery:
+        if (
+            self.metric in {"volume_sum", "share_price_change"}
+            and self.window is None
+            and self.time_range is None
+        ):
+            raise ValueError(f"{self.metric} requires a valid window or time_range")
+        if self.metric == "report_search" and not self.query:
+            raise ValueError("report_search requires a non-empty query")
+        return self
+
+
+MarketplaceComputeQueries = Annotated[
+    list[MarketplaceComputeQuery],
+    Field(min_length=1, max_length=_MAX_QUERIES),
+]
 
 
 @dataclass(frozen=True)
@@ -146,7 +238,7 @@ class MarketplaceAIClient:
     async def compute_agent_metrics(
         self,
         address: str,
-        queries: list[dict[str, Any]],
+        queries: list[MarketplaceComputeQuery | dict[str, Any]],
         *,
         viewer_context: MarketplaceViewerContext | None = None,
         chain_id: int | None = None,
@@ -157,12 +249,19 @@ class MarketplaceAIClient:
                 "marketplace_viewer_context_missing",
                 "Trusted Marketplace viewer context is required for compute.",
             )
+        try:
+            normalized_queries = normalize_compute_queries(queries)
+        except ValueError as exc:
+            return marketplace_unavailable(
+                "marketplace_queries_invalid",
+                str(exc),
+                status="invalid_request",
+            )
         if not self._base_url:
             return marketplace_unavailable(
                 "marketplace_not_configured",
                 "Marketplace AI base URL is not configured.",
             )
-        normalized_queries = normalize_compute_queries(queries)
         if not normalized_queries:
             return marketplace_unavailable(
                 "marketplace_queries_missing",
@@ -305,29 +404,34 @@ def extract_current_agent_ref(
     return None
 
 
-def normalize_compute_queries(queries: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
-    """Return a bounded, pass-through query list for Marketplace compute."""
+def normalize_compute_queries(queries: Any) -> list[dict[str, Any]]:
+    """Validate and serialize a bounded Marketplace compute query list."""
     if not isinstance(queries, list):
         return []
+    if len(queries) > _MAX_QUERIES:
+        raise ValueError(f"Marketplace compute accepts at most {_MAX_QUERIES} queries")
     normalized: list[dict[str, Any]] = []
-    for item in queries[:_MAX_QUERIES]:
-        if not isinstance(item, dict):
-            continue
-        metric = str(item.get("metric") or "").strip()
-        if not metric:
-            continue
-        query: dict[str, Any] = {"metric": metric}
-        for field in (
-            "id",
-            "window",
-            "time_range",
-            "limit",
-            "query",
-            "include_raw",
-        ):
-            if field in item:
-                query[field] = item[field]
-        normalized.append(query)
+    for index, item in enumerate(queries):
+        try:
+            query = (
+                item
+                if isinstance(item, MarketplaceComputeQuery)
+                else MarketplaceComputeQuery.model_validate(item)
+            )
+        except ValidationError as exc:
+            first_error = exc.errors(include_url=False)[0]
+            message = str(first_error.get("msg") or "invalid compute query")
+            if message.startswith("Value error, "):
+                message = message.removeprefix("Value error, ")
+            raise ValueError(f"queries[{index}]: {message}") from exc
+        normalized.append(
+            query.model_dump(
+                mode="json",
+                by_alias=True,
+                exclude_none=True,
+                exclude_defaults=True,
+            )
+        )
     return normalized
 
 

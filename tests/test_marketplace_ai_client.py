@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
 from app.runtime.marketplace_ai import (
     MarketplaceAIClient,
+    MarketplaceComputeQuery,
+    MarketplaceComputeTimeRange,
+    MarketplaceComputeWindow,
     MarketplaceViewerContext,
     extract_current_agent_ref,
 )
@@ -175,6 +180,84 @@ async def test_marketplace_ai_compute_requires_trusted_viewer_without_request():
     assert calls == 0
     assert result["status"] == "unavailable"
     assert result["reason"] == "marketplace_viewer_context_missing"
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        (
+            {"metric": "volume_sum"},
+            "volume_sum requires a valid window or time_range",
+        ),
+        (
+            {"metric": "share_price_change"},
+            "share_price_change requires a valid window or time_range",
+        ),
+        (
+            {"metric": "report_search", "query": "   "},
+            "report_search requires a non-empty query",
+        ),
+    ],
+)
+def test_marketplace_compute_query_rejects_missing_metric_requirements(query, message):
+    with pytest.raises(ValidationError, match=message):
+        MarketplaceComputeQuery.model_validate(query)
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        {"unit": "minute", "value": 24},
+        {"unit": "hour", "value": 0},
+        {"unit": "day", "value": -1},
+    ],
+)
+def test_marketplace_compute_window_rejects_invalid_unit_or_value(window):
+    with pytest.raises(ValidationError):
+        MarketplaceComputeWindow.model_validate(window)
+
+
+@pytest.mark.parametrize("limit", [0, 21])
+@pytest.mark.parametrize("metric", ["recent_reports", "report_search"])
+def test_marketplace_compute_report_limit_is_bounded(metric, limit):
+    query = {"metric": metric, "limit": limit}
+    if metric == "report_search":
+        query["query"] = "BTC"
+
+    with pytest.raises(ValidationError):
+        MarketplaceComputeQuery.model_validate(query)
+
+
+def test_marketplace_compute_time_range_requires_from_before_to():
+    with pytest.raises(ValidationError, match="time_range.from must be earlier"):
+        MarketplaceComputeTimeRange.model_validate(
+            {"from": "2026-07-17T12:00:00Z", "to": "2026-07-17T11:00:00Z"}
+        )
+
+
+async def test_marketplace_ai_compute_rejects_invalid_queries_before_http_request():
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={})
+
+    client = MarketplaceAIClient(
+        "https://market.example",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.compute_agent_metrics(
+        ADDRESS,
+        [{"metric": "volume_sum"}],
+        viewer_context=VIEWER,
+    )
+
+    assert calls == 0
+    assert result["status"] == "invalid_request"
+    assert result["reason"] == "marketplace_queries_invalid"
+    assert "volume_sum requires a valid window or time_range" in result["message"]
 
 
 async def test_marketplace_ai_client_redacts_viewer_identity_from_success_and_errors():

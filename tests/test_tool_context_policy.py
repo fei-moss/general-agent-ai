@@ -257,6 +257,8 @@ async def test_agent_injects_compute_turn_policy_instruction():
     serialized = repr(seen_messages)
     assert "marketplace_agent_compute before answering" in serialized
     assert "volume_sum" in serialized
+    assert "must not expose internal tool planning, validation, or correction" in serialized
+    assert "answer only with the user-facing result" in serialized
 
 
 async def test_agent_disables_parallel_tool_calls_by_default():

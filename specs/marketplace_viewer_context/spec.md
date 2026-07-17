@@ -38,6 +38,23 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Wallet-scoped context or compute requests return a structured `unavailable`
   result and never fall back to body/query wallet fields. Static Agent answers
   remain free to avoid tool calls.
+- `SPEC-MARKETPLACE-VIEWER-CONTEXT-001-R6`: the model-visible
+  `marketplace_agent_compute` argument is a strict typed query list. Its JSON
+  Schema enumerates every supported metric and explicitly describes `id`,
+  `window`, `time_range`, `limit`, `query`, and `include_raw`; window units are
+  limited to `hour` and `day`, and window values are positive integers. Agent,
+  wallet, and user identity fields are forbidden tool arguments.
+- `SPEC-MARKETPLACE-VIEWER-CONTEXT-001-R7`: local validation requires a valid
+  window or absolute time range for `volume_sum` and `share_price_change`, a
+  non-empty query for `report_search`, and a `1..20` limit when supplied for
+  report metrics. The tool description includes examples for 24-hour volume,
+  user status, and their combined single-call form.
+- `SPEC-MARKETPLACE-VIEWER-CONTEXT-001-R8`: one successful compute request keeps
+  the existing one-call budget. A correctable Marketplace `invalid_request` or
+  `invalid_window` result may unlock exactly one correction request; all other
+  failures and every success close the compute budget. Final user output states
+  results only and does not expose tool planning, validation, parameter guessing,
+  or correction narration.
 
 ### Invariants
 
@@ -55,6 +72,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   sanitized; no missing value is replaced with an invented number.
 - No trade, signature, wallet write, asset operation, service token, frontend
   JWT forwarding, schema migration, or ownership change is introduced.
+- `MarketplaceAIClient` continues to send trusted Marketplace identity headers
+  without `Authorization`; `MARKETPLACE_AI_SERVICE_TOKEN` is not reintroduced.
 - The Marketplace fix chain must expose the two existing AI paths on a private
   address and accept the five trusted headers under network-policy isolation.
   Cross-service/live acceptance remains blocked until that upstream change is
@@ -85,8 +104,39 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 5. Run focused tests, full pytest, boundary/spec checks, review, and
    `scripts/verify_release.sh`; record evidence below. Run live page smoke only
    after the Marketplace fix chain is deployed.
+6. Record the missing-schema RED test, then add strict Pydantic compute query,
+   window, and time-range models plus local cross-field validation.
+7. Replace the model-visible dictionary list, expand the tool description, and
+   preserve server-only Agent/viewer context and trusted-header transport.
+8. Preserve the successful one-call budget while allowing one correction only
+   after a correctable Marketplace request/window failure; hide the tool after
+   success or the correction attempt.
+9. Verify first-call 24-hour volume, combined status/volume, no internal-process
+   final narration, focused/full gates, clean release, DockerHost redeploy, and
+   a real chat run using one context call and one compute call.
 
 ## Closeout Evidence
+
+### 2026-07-17 Compute Schema Restoration
+
+- Workflow: `HARNESS-FOCUSED-CHANGE` against `origin/Deploy` because this restores
+  the already-approved Marketplace viewer/compute contract without changing the
+  Marketplace route, identity transport, or public Chat API.
+- RED: the focused schema test failed on the original implementation with
+  `KeyError: '$defs'`; the emitted `queries.items` was only an unconstrained
+  object with `additionalProperties=true`.
+- Focused verification: 51 schema/client/tool-policy tests passed; the wider
+  Marketplace identity, routing, orchestration, and chat closure set passed 171
+  tests before the final narrow retry classification assertion was added.
+- Full pytest: passed with the existing single skip.
+- Owner approval: this task explicitly authorizes the runtime and test changes;
+  boundary verification uses
+  `AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:marketplace-compute-schema-2026-07-17`.
+- Change verification: `VERIFY_COMPARE_REF=origin/Deploy make verify-change`
+  passed all change-scope, AI-boundary, spec-registry, and legacy-contract gates.
+- Clean release verification: `VERIFY_COMPARE_REF=origin/Deploy make
+  verify-release` passed the project release gate; the final amended candidate is
+  reverified before merge and push.
 
 - Focused tests: 139 identity, client, tool, routing, realtime/batch, owner,
   idempotency, stream, and tool-permission tests passed.
