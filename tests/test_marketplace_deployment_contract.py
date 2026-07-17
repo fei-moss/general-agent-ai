@@ -20,6 +20,26 @@ def test_runtime_and_dockerhost_have_no_chat_identity_mode_switch():
     assert "marketplace_identity_mode" not in config
 
 
+def test_marketplace_ai_base_url_fails_closed_without_private_override(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.delenv("MARKETPLACE_AI_BASE_URL", raising=False)
+    settings = Settings(_env_file=None)
+    env_example = _read("dockerhost/env.example")
+    compose = _read("dockerhost/compose.yaml")
+    runbook = _read("docs/PRODUCTION_READINESS_RUNBOOK.md")
+    public_dev_url = "app-df-moss-site-agent-marketplace-dev.dkhost.vixmk-yo.org"
+
+    assert settings.marketplace_ai_base_url == ""
+    assert public_dev_url not in env_example
+    assert public_dev_url not in compose
+    assert "MARKETPLACE_AI_BASE_URL: ${MARKETPLACE_AI_BASE_URL:-}" in compose
+    assert "MARKETPLACE_AI_BASE_URL=" in env_example
+    assert "8081" in env_example
+    assert "MARKETPLACE_AI_BASE_URL" in runbook
+    assert "8081" in runbook
+
+
 def test_api_docs_define_one_mandatory_marketplace_identity_contract():
     for path in ("docs/API.md", "docs/INTEGRATION_GUIDE.md"):
         document = _read(path)

@@ -66,8 +66,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Agent-context behavior. Wallet-scoped data and compute fail closed.
 - Existing routing, owner, idempotency, provider admission, streaming/replay,
   and tool-permission contracts remain unchanged.
-- `MARKETPLACE_AI_BASE_URL` selects the private Marketplace address; no new
-  credential setting is added.
+- `MARKETPLACE_AI_BASE_URL` selects the private Marketplace address and defaults
+  to empty so missing private-network configuration fails closed; public URL
+  fallbacks are forbidden and no new credential setting is added.
 - Rollback is a code revert; no data rollback is needed.
 
 ## Implementation Plan
@@ -95,9 +96,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   nested tool-argument override gaps, with no unresolved high-impact finding.
 - Change verification: `VERIFY_COMPARE_REF=HEAD scripts/verify_change.sh`
   passed; evidence is under `.artifacts/change/`.
-- Release command: `VERIFY_COMPARE_REF=HEAD^ scripts/verify_release.sh` passed
-  on clean implementation commit `fd679be`.
+- Release command: `VERIFY_COMPARE_REF=fd679be^ scripts/verify_release.sh`
+  passed on the clean final feature candidate.
 - Evidence path: `.artifacts/change/` and `.artifacts/release/`.
-- Residual risk: Marketplace fix worktree currently has no implementation beyond
-  the deploy baseline, so cross-service HTTP 200 and production page acceptance
+- Residual risk: the Marketplace fix branch is committed through `f653c50` and
+  its clean release evidence reports `release_ready=true`, but it is not yet
+  merged, pushed, deployed, or connected to Chat through the production private
+  network. Cross-service HTTP 200 and production page acceptance therefore
   cannot yet be claimed.

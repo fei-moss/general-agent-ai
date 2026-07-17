@@ -26,9 +26,8 @@ approval_required:
   - app/bus/
   - app/tasks/
   - app/db/
-  - app/core/models.py
-  - app/core/schemas.py
-  - app/core/events.py
+  - app/core/
+  - dockerhost/
   - requirements.txt
   - docker-compose.yml
 

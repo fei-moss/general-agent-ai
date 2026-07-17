@@ -27,6 +27,9 @@
   this is an accepted development exception and plain headers on that URL are not authentication proof.
 - The approved design does not add a second signed token, HMAC, mTLS, or encryption layer;
   不引入服务凭证。Production trust is enforced by network reachability.
+- Set `MARKETPLACE_AI_BASE_URL` to the confirmed private Marketplace AI listener
+  (`http://<private-marketplace-host>:8081`). The default is empty and fails closed;
+  the public Marketplace URL must not be used for Chat-to-Marketplace tool calls.
 - Release evidence must include both a Marketplace-to-Chat 正向 smoke and an
   外部负向可达性 smoke proving the Chat endpoint cannot be reached outside the private path.
 
@@ -40,6 +43,8 @@ source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
 source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
 
 export LLM_PROVIDER=zai
+# Replace this placeholder with the confirmed private-network DNS name.
+export MARKETPLACE_AI_BASE_URL=http://marketplace-private-hostname:8081
 export ZAI_MODEL=glm-5.2
 export ZAI_THINKING_TYPE=disabled
 export ZAI_REASONING_EFFORT=low

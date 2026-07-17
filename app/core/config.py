@@ -113,9 +113,7 @@ class Settings(BaseSettings):
     reaper_max_attempts: int = 3
     worker_pool: str = "prefork"
     worker_concurrency: int = 2
-    marketplace_ai_base_url: str = (
-        "https://app-df-moss-site-agent-marketplace-dev.dkhost.vixmk-yo.org"
-    )
+    marketplace_ai_base_url: str = ""
     marketplace_ai_timeout_s: float = 8.0
 
     # --- RAG / Embedding ---
