@@ -49,6 +49,7 @@ def enqueue_run(payload: dict) -> None:
             user_id=payload.get("user_id"),
             metadata=payload.get("metadata") or {},
             run_context=payload.get("run_context") or {},
+            marketplace_viewer_context=payload.get("marketplace_viewer_context"),
         )
     except Exception as exc:
         log_with_fields(

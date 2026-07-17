@@ -59,6 +59,7 @@ from app.runtime.chat_behavior import (
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
+from app.runtime.marketplace_ai import MarketplaceViewerContext
 from app.runtime.provider_limits import (
     ProviderLimitDecision,
     ProviderLimitRequest,
@@ -164,6 +165,7 @@ async def run_orchestration(
     user_id: str | None = None,
     metadata: dict[str, Any] | None = None,
     run_context: dict[str, Any] | None = None,
+    marketplace_viewer_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """tasks 层集成入口(薄适配)。
 
@@ -176,6 +178,15 @@ async def run_orchestration(
 
     deps = build_deps()
     orchestrator = AgentOrchestrator(deps)
+    viewer_context = MarketplaceViewerContext.from_payload(
+        marketplace_viewer_context
+    )
+    if viewer_context is not None and not viewer_context.matches_execution(
+        agent_run_id=agent_run_id,
+        conversation_id=conversation_id,
+        trace_id=trace_id,
+    ):
+        viewer_context = None
     answer = await orchestrator.run(
         agent_run_id=agent_run_id,
         conversation_id=conversation_id,
@@ -185,6 +196,7 @@ async def run_orchestration(
         user_id=user_id,
         metadata=metadata,
         run_context=run_context,
+        marketplace_viewer_context=viewer_context,
     )
     return {"content": answer, "intent": None}
 
@@ -219,6 +231,7 @@ class AgentOrchestrator:
         user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         run_context: dict[str, Any] | None = None,
+        marketplace_viewer_context: MarketplaceViewerContext | None = None,
     ) -> str:
         """执行一次完整运行,返回最终 assistant 文本。"""
         set_trace_id(trace_id)
@@ -263,6 +276,7 @@ class AgentOrchestrator:
                 metadata or {},
                 effective_run_context,
                 target_language,
+                marketplace_viewer_context,
             )
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
@@ -281,6 +295,7 @@ class AgentOrchestrator:
         metadata: dict[str, Any],
         run_context: dict[str, Any],
         target_language: str,
+        marketplace_viewer_context: MarketplaceViewerContext | None,
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
@@ -309,6 +324,7 @@ class AgentOrchestrator:
             metadata,
             run_context,
             target_language,
+            marketplace_viewer_context,
         )
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
@@ -341,6 +357,7 @@ class AgentOrchestrator:
         metadata: dict[str, Any],
         run_context: dict[str, Any],
         target_language: str,
+        marketplace_viewer_context: MarketplaceViewerContext | None,
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
@@ -369,6 +386,7 @@ class AgentOrchestrator:
             language_instruction=build_language_instruction(target_language),
             run_context=run_context,
             marketplace_ai=self._deps.marketplace_ai,
+            marketplace_viewer_context=marketplace_viewer_context,
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)

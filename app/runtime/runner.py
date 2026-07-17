@@ -13,6 +13,7 @@ from app.core.enums import RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.metrics import Metrics
 from app.runtime.locks import RunLease
+from app.runtime.marketplace_ai import MarketplaceViewerContext
 
 
 @dataclass
@@ -26,6 +27,7 @@ class RealtimeRunRequest:
     accepted_at: float
     route_type: str = "realtime"
     run_context: dict[str, Any] = field(default_factory=dict)
+    marketplace_viewer_context: MarketplaceViewerContext | None = None
 
 
 @dataclass
@@ -142,6 +144,7 @@ class RealtimeRunner:
                     user_id=request.user_id,
                     metadata=request.metadata,
                     run_context=request.run_context,
+                    marketplace_viewer_context=request.marketplace_viewer_context,
                 ),
                 timeout=self._max_runtime_s,
             )

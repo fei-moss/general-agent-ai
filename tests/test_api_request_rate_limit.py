@@ -118,7 +118,7 @@ async def test_api_rate_limiter_fail_open_is_metriced_by_route():
     ]
 
 
-async def test_rate_limit_middleware_passes_request_path_as_route_scope():
+async def test_rate_limit_middleware_passes_request_path_as_route_scope(caplog):
     from app.api.main import create_app
 
     class _RecordingLimiter:
@@ -153,6 +153,7 @@ async def test_rate_limit_middleware_passes_request_path_as_route_scope():
 
     assert response.status_code == 429
     assert limiter.calls == [(_MARKETPLACE_WALLET, _CHAT_ROUTE)]
+    assert _MARKETPLACE_WALLET not in caplog.text
 
 
 async def test_rate_limit_middleware_ignores_legacy_url_identity_on_chat_route():

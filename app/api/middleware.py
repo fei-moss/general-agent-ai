@@ -108,8 +108,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 logger,
                 logging.WARNING,
                 "请求被限流",
-                user_id=user_id,
                 limit=result.limit,
+                identity_source=getattr(request.state, "user_id_source", "unknown"),
             )
             return _rate_limit_response(result)
         response = await call_next(request)

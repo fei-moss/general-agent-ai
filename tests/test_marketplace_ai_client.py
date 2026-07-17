@@ -6,11 +6,19 @@ import httpx
 
 from app.runtime.marketplace_ai import (
     MarketplaceAIClient,
+    MarketplaceViewerContext,
     extract_current_agent_ref,
 )
 
 
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+VIEWER = MarketplaceViewerContext(
+    user_id="marketplace:user:7",
+    wallet="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    agent_run_id="run-trusted-1",
+    conversation_id="conv-trusted-1",
+    trace_id="trace-trusted-1",
+)
 
 
 def test_extract_current_agent_ref_ignores_context_chain_id_by_default():
@@ -55,6 +63,7 @@ async def test_marketplace_ai_context_builds_documented_get_request():
 
     result = await client.get_agent_context(
         ADDRESS,
+        viewer_context=VIEWER,
         chain_id=999,
         reports_limit=200,
         include_raw=True,
@@ -69,13 +78,21 @@ async def test_marketplace_ai_context_builds_documented_get_request():
     assert request.url.params["chain_id"] == "999"
     assert request.url.params["reports_limit"] == "20"
     assert request.url.params["include_raw"] == "true"
+    assert request.headers["X-Marketplace-User-ID"] == VIEWER.user_id
+    assert request.headers["X-Marketplace-Wallet"] == VIEWER.wallet
+    assert request.headers["X-Agent-Run-ID"] == VIEWER.agent_run_id
+    assert request.headers["X-Conversation-ID"] == VIEWER.conversation_id
+    assert request.headers["X-Trace-ID"] == VIEWER.trace_id
+    assert "Authorization" not in request.headers
 
 
 async def test_marketplace_ai_compute_builds_documented_post_request():
     seen_body: dict | None = None
+    seen_request: httpx.Request | None = None
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal seen_body
+        nonlocal seen_body, seen_request
+        seen_request = request
         seen_body = json.loads(request.content.decode())
         return httpx.Response(
             200,
@@ -111,6 +128,7 @@ async def test_marketplace_ai_compute_builds_documented_post_request():
                 "window": {"unit": "day", "value": 7},
             }
         ],
+        viewer_context=VIEWER,
     )
 
     assert result["ok"] is True
@@ -123,10 +141,75 @@ async def test_marketplace_ai_compute_builds_documented_post_request():
             }
         ]
     }
+    assert seen_request is not None
+    assert seen_request.headers["X-Marketplace-User-ID"] == VIEWER.user_id
+    assert seen_request.headers["X-Marketplace-Wallet"] == VIEWER.wallet
+    assert seen_request.headers["X-Agent-Run-ID"] == VIEWER.agent_run_id
+    assert seen_request.headers["X-Conversation-ID"] == VIEWER.conversation_id
+    assert seen_request.headers["X-Trace-ID"] == VIEWER.trace_id
+    assert "Authorization" not in seen_request.headers
     result_item = result["data"]["results"][0]
     assert result_item["available"] is False
     assert result_item["status"] == "unsupported"
     assert result_item["reason"] == "pnl_not_defined"
+
+
+async def test_marketplace_ai_compute_requires_trusted_viewer_without_request():
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={})
+
+    client = MarketplaceAIClient(
+        "https://market.example",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.compute_agent_metrics(
+        ADDRESS,
+        [{"metric": "volume_sum"}],
+    )
+
+    assert calls == 0
+    assert result["status"] == "unavailable"
+    assert result["reason"] == "marketplace_viewer_context_missing"
+
+
+async def test_marketplace_ai_client_redacts_viewer_identity_from_success_and_errors():
+    responses = iter(
+        [
+            httpx.Response(
+                200,
+                json={
+                    "wallet": VIEWER.wallet,
+                    "account": VIEWER.user_id,
+                    "wallet_address_masked": "0xabcd...abcd",
+                },
+            ),
+            httpx.Response(
+                400,
+                json={
+                    "error": f"bad viewer {VIEWER.wallet}",
+                    "message": f"bad account {VIEWER.user_id}",
+                },
+            ),
+        ]
+    )
+
+    client = MarketplaceAIClient(
+        "https://market.example",
+        transport=httpx.MockTransport(lambda _request: next(responses)),
+    )
+
+    success = await client.get_agent_context(ADDRESS, viewer_context=VIEWER)
+    failure = await client.get_agent_context(ADDRESS, viewer_context=VIEWER)
+    rendered = repr((success, failure))
+
+    assert VIEWER.wallet not in rendered
+    assert VIEWER.user_id not in rendered
+    assert "0xabcd...abcd" in rendered
 
 
 async def test_marketplace_ai_client_returns_sanitized_unavailable_for_missing_base_url():

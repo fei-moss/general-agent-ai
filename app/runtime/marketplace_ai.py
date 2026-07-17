@@ -11,6 +11,7 @@ import httpx
 from app.core.config import Settings
 
 _ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
+_MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
 _MAX_REPORTS_LIMIT = 20
 _MAX_QUERIES = 10
 
@@ -21,6 +22,83 @@ class MarketplaceAgentRef:
 
     address: str
     chain_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class MarketplaceViewerContext:
+    """Trusted, server-only identity used for Marketplace tool execution."""
+
+    user_id: str
+    wallet: str
+    agent_run_id: str
+    conversation_id: str
+    trace_id: str | None = None
+
+    def __post_init__(self) -> None:
+        user_id = str(self.user_id or "").strip()
+        wallet = str(self.wallet or "").strip().lower()
+        agent_run_id = str(self.agent_run_id or "").strip()
+        conversation_id = str(self.conversation_id or "").strip()
+        trace_id = str(self.trace_id or "").strip() or None
+        if (
+            _MARKETPLACE_USER_RE.fullmatch(user_id) is None
+            or _ADDRESS_RE.fullmatch(wallet) is None
+            or not agent_run_id
+            or not conversation_id
+        ):
+            raise ValueError("invalid Marketplace viewer context")
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "wallet", wallet)
+        object.__setattr__(self, "agent_run_id", agent_run_id)
+        object.__setattr__(self, "conversation_id", conversation_id)
+        object.__setattr__(self, "trace_id", trace_id)
+
+    def __repr__(self) -> str:
+        return (
+            "MarketplaceViewerContext("
+            "user_id='[masked:identity]', wallet='[masked:identity]', "
+            f"agent_run_id={self.agent_run_id!r}, "
+            f"conversation_id={self.conversation_id!r}, trace_id={self.trace_id!r})"
+        )
+
+    def to_payload(self) -> dict[str, str]:
+        payload = {
+            "user_id": self.user_id,
+            "wallet": self.wallet,
+            "agent_run_id": self.agent_run_id,
+            "conversation_id": self.conversation_id,
+        }
+        if self.trace_id is not None:
+            payload["trace_id"] = self.trace_id
+        return payload
+
+    def matches_execution(
+        self,
+        *,
+        agent_run_id: str,
+        conversation_id: str,
+        trace_id: str | None,
+    ) -> bool:
+        return (
+            self.agent_run_id == agent_run_id
+            and self.conversation_id == conversation_id
+            and (self.trace_id is None or self.trace_id == trace_id)
+        )
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> MarketplaceViewerContext | None:
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return cls(
+                user_id=payload.get("user_id"),
+                wallet=payload.get("wallet"),
+                agent_run_id=payload.get("agent_run_id"),
+                conversation_id=payload.get("conversation_id"),
+                trace_id=payload.get("trace_id"),
+            )
+        except (TypeError, ValueError):
+            return None
 
 
 class MarketplaceAIClient:
@@ -41,6 +119,7 @@ class MarketplaceAIClient:
         self,
         address: str,
         *,
+        viewer_context: MarketplaceViewerContext | None = None,
         chain_id: int | None = None,
         reports_limit: int = 5,
         include_raw: bool = False,
@@ -61,6 +140,7 @@ class MarketplaceAIClient:
             "GET",
             f"/api/v1/agents/{address}/ai-context",
             params=params,
+            viewer_context=viewer_context,
         )
 
     async def compute_agent_metrics(
@@ -68,9 +148,15 @@ class MarketplaceAIClient:
         address: str,
         queries: list[dict[str, Any]],
         *,
+        viewer_context: MarketplaceViewerContext | None = None,
         chain_id: int | None = None,
     ) -> dict[str, Any]:
         """Call POST /api/v1/agents/{address}/ai-compute."""
+        if viewer_context is None:
+            return marketplace_unavailable(
+                "marketplace_viewer_context_missing",
+                "Trusted Marketplace viewer context is required for compute.",
+            )
         if not self._base_url:
             return marketplace_unavailable(
                 "marketplace_not_configured",
@@ -89,6 +175,7 @@ class MarketplaceAIClient:
             f"/api/v1/agents/{address}/ai-compute",
             params=params,
             json_body={"queries": normalized_queries},
+            viewer_context=viewer_context,
         )
 
     async def _request(
@@ -98,6 +185,7 @@ class MarketplaceAIClient:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        viewer_context: MarketplaceViewerContext | None = None,
     ) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(
@@ -105,12 +193,15 @@ class MarketplaceAIClient:
                 timeout=self._timeout_s,
                 transport=self._transport,
             ) as client:
+                headers = {"Accept": "application/json"}
+                if viewer_context is not None:
+                    headers.update(_viewer_headers(viewer_context))
                 response = await client.request(
                     method,
                     path,
                     params=params,
                     json=json_body,
-                    headers={"Accept": "application/json"},
+                    headers=headers,
                 )
             try:
                 payload = response.json()
@@ -119,6 +210,7 @@ class MarketplaceAIClient:
                     "marketplace_invalid_json",
                     "Marketplace returned a non-JSON response.",
                 )
+            payload = _redact_viewer_identity(payload, viewer_context)
             if response.status_code >= 400:
                 return {
                     "ok": False,
@@ -150,6 +242,47 @@ def build_marketplace_ai_client(settings: Settings) -> MarketplaceAIClient:
     return MarketplaceAIClient(
         getattr(settings, "marketplace_ai_base_url", ""),
         timeout_s=float(getattr(settings, "marketplace_ai_timeout_s", 8.0)),
+    )
+
+
+def _viewer_headers(context: MarketplaceViewerContext) -> dict[str, str]:
+    headers = {
+        "X-Marketplace-User-ID": context.user_id,
+        "X-Marketplace-Wallet": context.wallet,
+        "X-Agent-Run-ID": context.agent_run_id,
+        "X-Conversation-ID": context.conversation_id,
+    }
+    if context.trace_id is not None:
+        headers["X-Trace-ID"] = context.trace_id
+    return headers
+
+
+def _redact_viewer_identity(
+    value: Any,
+    context: MarketplaceViewerContext | None,
+) -> Any:
+    if context is None:
+        return value
+    if isinstance(value, dict):
+        return {
+            _redact_viewer_identity(key, context): _redact_viewer_identity(item, context)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_viewer_identity(item, context) for item in value]
+    if not isinstance(value, str):
+        return value
+    redacted = re.sub(
+        re.escape(context.wallet),
+        "[masked:identity]",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(
+        re.escape(context.user_id),
+        "[masked:identity]",
+        redacted,
+        flags=re.IGNORECASE,
     )
 
 

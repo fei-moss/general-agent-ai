@@ -35,6 +35,7 @@ from app.core.ids import _new_id, new_conversation_id, new_run_id, new_trace_id
 from app.core.logging import get_logger, log_with_fields
 from app.core.schemas import ChatAccepted, ChatRequest
 from app.runtime.locks import ConversationLock
+from app.runtime.marketplace_ai import MarketplaceViewerContext
 from app.runtime.provider_limits import (
     ProviderLimitRequest,
     estimate_structured_input_tokens,
@@ -102,6 +103,12 @@ async def create_chat(
             return replay
 
     conversation_id = await _resolve_conversation_id(body, repos, user)
+    marketplace_viewer_context = _build_marketplace_viewer_context(
+        request,
+        agent_run_id=run_id,
+        conversation_id=conversation_id,
+        trace_id=trace_id,
+    )
     route_type = await _apply_provider_preflight(
         body,
         request,
@@ -177,7 +184,13 @@ async def create_chat(
                 "conversation_anchor": _anchor_payload(body),
             },
         )
-        payload = _build_payload(run_id, conversation.id, trace_id, body)
+        payload = _build_payload(
+            run_id,
+            conversation.id,
+            trace_id,
+            body,
+            marketplace_viewer_context=marketplace_viewer_context,
+        )
         payload["user_id"] = user
         payload["route_type"] = route_type
         if route_type == "batch":
@@ -416,10 +429,15 @@ def _validate_async_only(stream: bool) -> None:
 
 
 def _build_payload(
-    run_id: str, conversation_id: str, trace_id: str, body: ChatRequest
+    run_id: str,
+    conversation_id: str,
+    trace_id: str,
+    body: ChatRequest,
+    *,
+    marketplace_viewer_context: MarketplaceViewerContext | None = None,
 ) -> dict[str, Any]:
     """组装投递给 Celery 的任务载荷。"""
-    return {
+    payload = {
         "agent_run_id": run_id,
         "conversation_id": conversation_id,
         "trace_id": trace_id,
@@ -428,6 +446,34 @@ def _build_payload(
         "run_context": body.run_context,
         "conversation_anchor": _anchor_payload(body),
     }
+    if marketplace_viewer_context is not None:
+        payload["marketplace_viewer_context"] = marketplace_viewer_context.to_payload()
+    return payload
+
+
+def _build_marketplace_viewer_context(
+    request: Request,
+    *,
+    agent_run_id: str,
+    conversation_id: str,
+    trace_id: str | None,
+) -> MarketplaceViewerContext | None:
+    """Build tool identity only from middleware-validated Marketplace state."""
+    identity = getattr(request.state, "marketplace_identity", None)
+    if (
+        not isinstance(identity, ResolvedIdentity)
+        or identity.source != "marketplace"
+        or identity.marketplace_user_id is None
+        or identity.marketplace_wallet is None
+    ):
+        return None
+    return MarketplaceViewerContext(
+        user_id=identity.marketplace_user_id,
+        wallet=identity.marketplace_wallet,
+        agent_run_id=agent_run_id,
+        conversation_id=conversation_id,
+        trace_id=trace_id,
+    )
 
 
 def _dispatch(payload: dict[str, Any]) -> None:
@@ -468,6 +514,9 @@ def _dispatch_realtime(
         run_context=payload.get("run_context") or {},
         accepted_at=now_seconds(),
         route_type=str(payload.get("route_type") or "realtime"),
+        marketplace_viewer_context=MarketplaceViewerContext.from_payload(
+            payload.get("marketplace_viewer_context")
+        ),
     )
     task = asyncio.create_task(
         runner.run_chat(

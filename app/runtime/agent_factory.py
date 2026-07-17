@@ -47,6 +47,7 @@ from app.runtime.chat_behavior import (
     get_behavior_profile,
 )
 from app.runtime.marketplace_ai import (
+    MarketplaceViewerContext,
     current_agent_missing_result,
     extract_current_agent_ref,
     marketplace_unavailable,
@@ -112,6 +113,7 @@ class AgentDeps:
     language_instruction: str = ""
     run_context: dict[str, Any] | None = None
     marketplace_ai: Any | None = None
+    marketplace_viewer_context: MarketplaceViewerContext | None = None
     tool_call_counts: dict[str, int] = field(default_factory=dict)
 
 
@@ -273,6 +275,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             return exhausted
         return await client.get_agent_context(
             ref.address,
+            viewer_context=ctx.deps.marketplace_viewer_context,
             chain_id=ref.chain_id,
             reports_limit=reports_limit,
             include_raw=include_raw,
@@ -305,6 +308,11 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 "Marketplace compute requires at least one metric query.",
                 status="invalid_request",
             )
+        if ctx.deps.marketplace_viewer_context is None:
+            return marketplace_unavailable(
+                "marketplace_viewer_context_missing",
+                "Trusted Marketplace viewer context is required for compute.",
+            )
         exhausted = _claim_tool_budget(
             ctx,
             TOOL_MARKETPLACE_AGENT_COMPUTE,
@@ -315,6 +323,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         return await client.compute_agent_metrics(
             ref.address,
             normalized_queries,
+            viewer_context=ctx.deps.marketplace_viewer_context,
             chain_id=ref.chain_id,
         )
 

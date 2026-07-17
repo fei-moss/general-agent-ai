@@ -17,9 +17,17 @@ from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     build_agent,
 )
+from app.runtime.marketplace_ai import MarketplaceViewerContext
 
 
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+VIEWER = MarketplaceViewerContext(
+    user_id="marketplace:user:7",
+    wallet="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    agent_run_id="run-tool-1",
+    conversation_id="conv-tool-1",
+    trace_id="trace-tool-1",
+)
 
 
 async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():
@@ -34,6 +42,7 @@ async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_defaul
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
         run_context={
             "marketplace_agent": {
                 "address": ADDRESS,
@@ -50,6 +59,7 @@ async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_defaul
             "chain_id": None,
             "reports_limit": 1,
             "include_raw": False,
+            "viewer_context": VIEWER,
         }
     ]
     assert "BTC Trend Agent" in repr(result)
@@ -75,6 +85,7 @@ async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chai
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
         run_context={"agent": {"contract_address": ADDRESS, "chain_id": 999}},
     )
 
@@ -91,6 +102,7 @@ async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chai
                     "window": {"unit": "day", "value": 1},
                 }
             ],
+            "viewer_context": VIEWER,
         }
     ]
     assert "volume_sum" in repr(result)
@@ -111,6 +123,77 @@ async def test_agent_marketplace_tool_requires_current_agent_context():
 
     assert marketplace.context_calls == []
     assert "CURRENT_AGENT_ADDRESS_MISSING" in repr(result)
+
+
+async def test_agent_marketplace_compute_requires_trusted_viewer_context():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(
+        _tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_COMPUTE,
+            {"queries": [{"metric": "volume_sum"}]},
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("过去一天的 volume_sum", deps=deps)
+
+    assert marketplace.compute_calls == []
+    assert "marketplace_viewer_context_missing" in repr(result)
+
+
+def test_marketplace_tool_schemas_do_not_accept_agent_address_or_wallet():
+    agent = build_agent(_tool_calling_model(TOOL_MARKETPLACE_AGENT_CONTEXT, {}))
+    schemas = {
+        tool.name: tool.function_schema.json_schema
+        for tool in agent._function_toolset.tools.values()
+        if tool.name in {TOOL_MARKETPLACE_AGENT_CONTEXT, TOOL_MARKETPLACE_AGENT_COMPUTE}
+    }
+
+    rendered = repr(schemas).lower()
+    assert "wallet" not in rendered
+    assert "agent_address" not in rendered
+    assert "contract_address" not in rendered
+
+
+async def test_compute_query_cannot_override_server_agent_or_viewer_identity():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(
+        _tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_COMPUTE,
+            {
+                "queries": [
+                    {
+                        "metric": "volume_sum",
+                        "wallet": "0x1111111111111111111111111111111111111111",
+                        "agent_address": "0x2222222222222222222222222222222222222222",
+                    }
+                ]
+            },
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    await agent.run("计算 volume_sum", deps=deps)
+
+    assert marketplace.compute_calls == [
+        {
+            "address": ADDRESS,
+            "chain_id": None,
+            "queries": [{"metric": "volume_sum"}],
+            "viewer_context": VIEWER,
+        }
+    ]
 
 
 async def test_agent_marketplace_tool_permission_denial_blocks_client_call():
@@ -145,6 +228,7 @@ async def test_agent_marketplace_context_tool_budget_limits_external_calls():
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
         run_context={"agent": {"contract_address": ADDRESS}},
     )
 
@@ -172,6 +256,7 @@ async def test_agent_marketplace_compute_tool_budget_limits_external_calls():
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
         run_context={"agent": {"contract_address": ADDRESS}},
     )
 
@@ -211,6 +296,7 @@ async def test_agent_marketplace_compute_merges_same_response_duplicate_tool_cal
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
         marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
         run_context={"agent": {"contract_address": ADDRESS}},
     )
 
@@ -243,6 +329,7 @@ class _FakeMarketplaceAI:
         chain_id: int | None = None,
         reports_limit: int = 5,
         include_raw: bool = False,
+        viewer_context: MarketplaceViewerContext | None = None,
     ) -> dict[str, Any]:
         self.context_calls.append(
             {
@@ -250,6 +337,7 @@ class _FakeMarketplaceAI:
                 "chain_id": chain_id,
                 "reports_limit": reports_limit,
                 "include_raw": include_raw,
+                "viewer_context": viewer_context,
             }
         )
         return {
@@ -268,9 +356,15 @@ class _FakeMarketplaceAI:
         queries: list[dict[str, Any]],
         *,
         chain_id: int | None = None,
+        viewer_context: MarketplaceViewerContext | None = None,
     ) -> dict[str, Any]:
         self.compute_calls.append(
-            {"address": address, "chain_id": chain_id, "queries": queries}
+            {
+                "address": address,
+                "chain_id": chain_id,
+                "queries": queries,
+                "viewer_context": viewer_context,
+            }
         )
         return {
             "ok": True,

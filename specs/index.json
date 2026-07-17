@@ -1,4 +1,6 @@
 {
   "version": 1,
-  "specs": []
+  "specs": [
+    "specs/marketplace_viewer_context/spec.md"
+  ]
 }
