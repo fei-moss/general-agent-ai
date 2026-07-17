@@ -95,8 +95,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   nested tool-argument override gaps, with no unresolved high-impact finding.
 - Change verification: `VERIFY_COMPARE_REF=HEAD scripts/verify_change.sh`
   passed; evidence is under `.artifacts/change/`.
-- Release command: pending clean-candidate commit.
-- Evidence path: `.artifacts/change/` (release evidence pending).
+- Release command: `VERIFY_COMPARE_REF=HEAD^ scripts/verify_release.sh` passed
+  on clean implementation commit `fd679be`.
+- Evidence path: `.artifacts/change/` and `.artifacts/release/`.
 - Residual risk: Marketplace fix worktree currently has no implementation beyond
   the deploy baseline, so cross-service HTTP 200 and production page acceptance
   cannot yet be claimed.
