@@ -20,6 +20,23 @@ def test_runtime_and_dockerhost_have_no_chat_identity_mode_switch():
     assert "marketplace_identity_mode" not in config
 
 
+def test_provider_output_budget_is_repository_owned_across_redeploys(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.delenv("PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS", raising=False)
+    settings = Settings(_env_file=None)
+    compose = _read("dockerhost/compose.yaml")
+    env_example = _read("dockerhost/env.example")
+
+    assert settings.provider_default_max_output_tokens == 4096
+    assert compose.count(
+        "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: "
+        "${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-4096}"
+    ) == 3
+    assert "${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-1024}" not in compose
+    assert "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=4096" in env_example
+
+
 def test_marketplace_ai_base_url_fails_closed_without_private_override(monkeypatch):
     from app.core.config import Settings
 

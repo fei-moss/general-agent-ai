@@ -15,9 +15,10 @@ PydanticAI agentic loop(由 LLM 自主决定检索 / 调用工具 / 收尾)-> �
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import (
@@ -80,6 +81,7 @@ _HISTORY_LIMIT = 20
 _CHANNEL_PREFIX = "run:"
 # 顶层兜底文案
 _FATAL_ANSWER = "抱歉,处理过程中发生了内部错误,请稍后重试。"
+_OUTPUT_TRUNCATED_ANSWER = "回答达到模型输出上限，未能完整生成，请重试或缩小问题范围。"
 # 计划快照中记录的工具清单(供回放/观测)
 _TOOL_NAMES = (
     TOOL_SEARCH_KNOWLEDGE,
@@ -89,6 +91,16 @@ _TOOL_NAMES = (
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
 )
+
+
+@dataclass(frozen=True)
+class _AgentOutput:
+    answer: str
+    finish_reason: str | None
+
+
+class _OutputTruncatedError(RuntimeError):
+    pass
 
 
 class _EventEmitter:
@@ -289,6 +301,8 @@ class AgentOrchestrator:
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
             raise
+        except _OutputTruncatedError:
+            return await self._handle_output_truncated(agent_run_id, emitter)
         except Exception as exc:  # 顶层兜底,保证状态收敛为 FAILED
             return await self._handle_fatal(agent_run_id, emitter, exc)
 
@@ -307,21 +321,22 @@ class AgentOrchestrator:
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
+        plan = self._plan_snapshot(
+            route_type,
+            metadata,
+            self._deps.settings,
+            target_language=target_language,
+            run_context=run_context,
+        )
         await self._safe_run_repo(
             "mark_running_with_plan",
             agent_run_id,
             None,
-            self._plan_snapshot(
-                route_type,
-                metadata,
-                self._deps.settings,
-                target_language=target_language,
-                run_context=run_context,
-            ),
+            plan,
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
 
-        answer = await self._run_agent(
+        output = await self._run_agent(
             agent_run_id,
             conversation_id,
             user_message,
@@ -334,6 +349,12 @@ class AgentOrchestrator:
             target_language,
             marketplace_viewer_context,
         )
+        if output.finish_reason is not None:
+            plan = {**plan, "finish_reason": output.finish_reason}
+            await self._safe_run_repo("set_plan", agent_run_id, plan)
+        if output.finish_reason == "length":
+            raise _OutputTruncatedError("OUTPUT_TRUNCATED")
+        answer = output.answer
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
         completed = await self._try_run_repo(
@@ -366,7 +387,7 @@ class AgentOrchestrator:
         run_context: dict[str, Any],
         target_language: str,
         marketplace_viewer_context: MarketplaceViewerContext | None,
-    ) -> str:
+    ) -> _AgentOutput:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
         LLM 在 loop 中自主决定是否检索 / 调用工具;失败时降级为兜底文案,
@@ -440,7 +461,10 @@ class AgentOrchestrator:
                     target_language,
                 )
             answer = "".join(emitted_chunks)
-            return answer if answer.strip() else self._empty_answer(user_message)
+            return _AgentOutput(
+                answer=answer if answer.strip() else self._empty_answer(user_message),
+                finish_reason=_extract_finish_reason(run),
+            )
         except ProviderRateLimitError:
             raise
         except Exception as exc:
@@ -456,7 +480,10 @@ class AgentOrchestrator:
                 ) from exc
             await self._emit_error(emitter, "agent", exc)
             answer = "".join(emitted_chunks)
-            return answer if answer.strip() else self._empty_answer(user_message)
+            return _AgentOutput(
+                answer=answer if answer.strip() else self._empty_answer(user_message),
+                finish_reason=None,
+            )
 
     async def _acquire_provider_quota(
         self,
@@ -907,6 +934,28 @@ class AgentOrchestrator:
         )
         return _FATAL_ANSWER
 
+    async def _handle_output_truncated(
+        self, agent_run_id: str, emitter: _EventEmitter
+    ) -> str:
+        data = {
+            "stage": "model_output",
+            "error": "OUTPUT_TRUNCATED",
+            "finish_reason": "length",
+        }
+        log_with_fields(
+            logger,
+            logging.WARNING,
+            "model output truncated",
+            agent_run_id=agent_run_id,
+            finish_reason="length",
+        )
+        await self._safe_run_repo("mark_failed", agent_run_id, "OUTPUT_TRUNCATED")
+        await emitter.emit(EventType.ERROR, data)
+        await emitter.emit(
+            EventType.RUN_COMPLETED, {"status": RunStatus.FAILED.value}
+        )
+        return _OUTPUT_TRUNCATED_ANSWER
+
     async def _handle_provider_rate_limit(
         self,
         agent_run_id: str,
@@ -1011,6 +1060,26 @@ def _extract_usage(run: Any) -> dict[str, int | None]:
         if input_tokens is not None or output_tokens is not None:
             return {"input_tokens": input_tokens, "output_tokens": output_tokens}
     return {"input_tokens": None, "output_tokens": None}
+
+
+def _extract_finish_reason(run: Any) -> str | None:
+    result = getattr(run, "result", None)
+    if result is None:
+        return None
+    messages_method = getattr(result, "new_messages", None)
+    if not callable(messages_method):
+        messages_method = getattr(result, "all_messages", None)
+    if not callable(messages_method):
+        return None
+    try:
+        messages = messages_method()
+    except (AttributeError, TypeError):
+        return None
+    for message in reversed(messages):
+        if isinstance(message, ModelResponse):
+            reason = getattr(message, "finish_reason", None)
+            return str(reason) if reason is not None else None
+    return None
 
 
 def _knowledge_base_id(settings: Any, metadata: dict[str, Any] | None) -> str | None:

@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     provider_key_pool_strategy: str = "least_wait_round_robin"
     provider_default_rpm: int = 100000
     provider_default_tpm: int = 1000000
-    provider_default_max_output_tokens: int = 1024
+    provider_default_max_output_tokens: int = 4096
     provider_realtime_preflight_timeout_ms: int = 100
     provider_realtime_gate_wait_budget_ms: int = 1000
     provider_realtime_degrade_to_batch: bool = True

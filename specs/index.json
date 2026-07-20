@@ -1,6 +1,7 @@
 {
   "version": 1,
   "specs": [
+    "specs/chat_output_completion/spec.md",
     "specs/hyperliquid_golden_answers/spec.md",
     "specs/marketplace_viewer_context/spec.md"
   ]
