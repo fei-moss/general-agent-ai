@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-CHAT-OUTPUT-COMPLETION-001
 module: chat_output_completion
-status: approved
+status: implemented
 workflow_class: HARNESS-SPEC-FIRST-FEATURE
 ---
 
@@ -43,6 +43,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - Full tests: `/Users/chris/AiProject/general-agent-ai/.venv/bin/python -m pytest -q` passed with one existing skip.
 - Review or approval: `2026-07-20-owner-request-chat-reliability-fix`
 - Change gate: `AI_BOUNDARY_APPROVED=1 AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:chat-reliability-fix-2026-07-20 VERIFY_ACTIVE_SPEC_ID=SPEC-CHAT-OUTPUT-COMPLETION-001 VERIFY_COMPARE_REF=origin/codex/zai-glm52-dockerhost make verify-change VENV=/Users/chris/AiProject/general-agent-ai/.venv` passed.
-- Release command: pending clean-commit verification.
-- Runtime evidence: pending DockerHost redeploy.
+- Implementation commit: `16a26e6130000cc7ca7dcd6995216f1baa11a103`.
+- Release command: clean `make verify-release` passed with compare ref `origin/codex/zai-glm52-dockerhost`, active spec `SPEC-CHAT-OUTPUT-COMPLETION-001`, and canonical owner approval evidence; artifacts were written under `.artifacts/release/`.
+- Runtime evidence: DockerHost branch space `chris-general-agent-ai-chat-prod` deployed `16a26e6`; `/healthz` and `/readyz` passed, runtime configuration reported 4096 output tokens with V2 KB and Marketplace configuration preserved, worker was ready, and reaper cycles were healthy. Run `run_0db959a715154c05812750858fad4135` finished `stop/SUCCEEDED` with one assistant message. Run `run_34bb707e03b446cdb5b3eaf828c39868` ran for 103 seconds, emitted 17,273 token characters, finished `length/OUTPUT_TRUNCATED`, persisted `FAILED`, and wrote no assistant success message.
 - Residual risk: Marketplace's separate 30-second SSE proxy deadline remains until the Marketplace-side prompt is implemented and deployed.
