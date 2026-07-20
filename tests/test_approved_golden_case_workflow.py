@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -338,7 +339,7 @@ def test_cli_round_trip_builds_reviewable_optimization_report(tmp_path):
 
     subprocess.run(
         [
-            ".venv/bin/python",
+            sys.executable,
             "-m",
             "tests.chat_eval.approved_case_workflow",
             "ingest",
@@ -357,7 +358,7 @@ def test_cli_round_trip_builds_reviewable_optimization_report(tmp_path):
     )
     subprocess.run(
         [
-            ".venv/bin/python",
+            sys.executable,
             "-m",
             "tests.chat_eval.approved_case_workflow",
             "report",
