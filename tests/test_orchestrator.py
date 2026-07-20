@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -193,6 +194,18 @@ def _make_tool_then_answer_model(
             yield answer[i : i + 6]
 
     return FunctionModel(stream_function=stream_fn)
+
+
+class _FinishReasonFunctionModel(FunctionModel):
+    def __init__(self, *, finish_reason: str, stream_function: Any) -> None:
+        super().__init__(stream_function=stream_function)
+        self._test_finish_reason = finish_reason
+
+    @asynccontextmanager
+    async def request_stream(self, *args: Any, **kwargs: Any):
+        async with super().request_stream(*args, **kwargs) as response:
+            response.finish_reason = self._test_finish_reason
+            yield response
 
 
 def _legacy_tools_profile() -> ChatBehaviorProfile:
@@ -384,6 +397,106 @@ async def test_knowledge_qa_run_emits_full_event_sequence_and_persists(deps):
     assert "set_plan" not in methods
     assert "mark_succeeded" not in methods
     assert "mark_failed" not in methods
+
+
+async def test_length_finish_reason_fails_without_persisting_partial_answer(deps):
+    runtime, bus, message_repo, run_repo = deps
+
+    async def truncated_stream(_messages, _info):
+        yield "## Risk Summary\n\n| Risk | Level |\n| Price Decline |"
+
+    orchestrator = AgentOrchestrator(
+        runtime,
+        agent=build_agent(
+            _FinishReasonFunctionModel(
+                finish_reason="length",
+                stream_function=truncated_stream,
+            )
+        ),
+    )
+    agent_run_id = "run-output-truncated"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-output-truncated",
+        trace_id="trace-output-truncated",
+        user_message="Give me the complete risk table",
+    )
+    events = await collector
+
+    assert "输出上限" in answer
+    assert message_repo.added == []
+    methods = [name for name, _ in run_repo.calls]
+    assert "mark_failed" in methods
+    assert "mark_succeeded_with_answer" not in methods
+    assert "mark_succeeded" not in methods
+
+    plan_updates = [
+        args[1]
+        for name, args in run_repo.calls
+        if name == "set_plan"
+    ]
+    assert plan_updates[-1]["finish_reason"] == "length"
+
+    errors = [event for event in events if event.type is EventType.ERROR]
+    assert errors[-1].data == {
+        "stage": "model_output",
+        "error": "OUTPUT_TRUNCATED",
+        "finish_reason": "length",
+    }
+    assert events[-1].type is EventType.RUN_COMPLETED
+    assert events[-1].data == {"status": RunStatus.FAILED.value}
+
+
+async def test_stop_finish_reason_preserves_success_and_records_plan(deps):
+    runtime, bus, message_repo, run_repo = deps
+
+    async def complete_stream(_messages, _info):
+        yield "Complete answer."
+
+    orchestrator = AgentOrchestrator(
+        runtime,
+        agent=build_agent(
+            _FinishReasonFunctionModel(
+                finish_reason="stop",
+                stream_function=complete_stream,
+            )
+        ),
+    )
+    agent_run_id = "run-output-complete"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-output-complete",
+        trace_id="trace-output-complete",
+        user_message="Give me a concise answer",
+    )
+    events = await collector
+
+    assert answer == "Complete answer."
+    assert message_repo.added[0]["content"] == answer
+    methods = [name for name, _ in run_repo.calls]
+    assert "mark_succeeded_with_answer" in methods
+    assert "mark_failed" not in methods
+    plan_updates = [
+        args[1]
+        for name, args in run_repo.calls
+        if name == "set_plan"
+    ]
+    assert plan_updates[-1]["finish_reason"] == "stop"
+    assert EventType.ERROR not in [event.type for event in events]
+    assert events[-1].data == {
+        "status": RunStatus.SUCCEEDED.value,
+        "content": answer,
+    }
 
 
 async def test_retrieval_started_event_falls_back_to_user_message_for_empty_query(deps):
