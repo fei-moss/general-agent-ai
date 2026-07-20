@@ -451,6 +451,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
     parser.add_argument(
+        "--case-file",
+        type=Path,
+        default=None,
+        help="Replay an explicit normalized Golden Case JSONL file.",
+    )
+    parser.add_argument(
         "--marketplace-user-id",
         default=os.environ.get("CHAT_EVAL_MARKETPLACE_USER_ID"),
     )
@@ -483,7 +489,7 @@ def main() -> int:
             "CHAT_EVAL_MARKETPLACE_WALLET or pass both CLI options"
         )
     cases = select_cases(
-        load_cases(),
+        load_cases(args.case_file) if args.case_file else load_cases(),
         case_ids=set(args.case_id) if args.case_id else None,
         tags=set(args.tag) if args.tag else None,
         exclude_tags=set(args.exclude_tag) if args.exclude_tag else None,

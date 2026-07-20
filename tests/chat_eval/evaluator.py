@@ -75,7 +75,11 @@ class ChatBehaviorCase:
         return str(self.raw.get("target_language") or "unknown")
 
 
-def load_cases(path: Path = CASE_FILE) -> list[ChatBehaviorCase]:
+def load_cases(
+    path: Path = CASE_FILE,
+    *,
+    min_cases: int | None = None,
+) -> list[ChatBehaviorCase]:
     """Load and validate chat behavior golden cases."""
     rows: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as handle:
@@ -90,7 +94,10 @@ def load_cases(path: Path = CASE_FILE) -> list[ChatBehaviorCase]:
             if not isinstance(row, dict):
                 raise AssertionError(f"{path}:{line_no}: case must be an object")
             rows.append(row)
-    errors = validate_cases(rows)
+    effective_minimum = (
+        min_cases if min_cases is not None else (10 if path == CASE_FILE else 1)
+    )
+    errors = validate_cases(rows, min_cases=effective_minimum)
     if errors:
         joined = "\n".join(errors)
         raise AssertionError(f"invalid chat behavior golden cases:\n{joined}")
@@ -117,7 +124,11 @@ def load_answer_rubric(path: Path = ANSWER_RUBRIC_FILE) -> dict[str, Any]:
     return rubric
 
 
-def validate_cases(rows: list[dict[str, Any]]) -> list[str]:
+def validate_cases(
+    rows: list[dict[str, Any]],
+    *,
+    min_cases: int = 10,
+) -> list[str]:
     """Return validation errors for raw case dictionaries."""
     errors: list[str] = []
     ids: set[str] = set()
@@ -143,7 +154,11 @@ def validate_cases(rows: list[dict[str, Any]]) -> list[str]:
             _validate_string_list(row, "safe_response_contains", errors, case_id)
         if row.get("expected_input_action") == "allow":
             _validate_string_list(row, "answer_traits", errors, case_id)
-            _validate_string_list(row, "forbidden_claims", errors, case_id)
+            if not (
+                row.get("schema_version") == "approved-golden-case-v1"
+                and row.get("forbidden_claims") == []
+            ):
+                _validate_string_list(row, "forbidden_claims", errors, case_id)
         if "expected_output_action" in row:
             _validate_enum(
                 row, "expected_output_action", _ALLOWED_ACTIONS, errors, case_id
@@ -171,8 +186,8 @@ def validate_cases(rows: list[dict[str, Any]]) -> list[str]:
         _validate_string_list(row, "tags", errors, case_id)
         _validate_secret_hygiene(row, errors, case_id)
         _validate_wallet_hygiene(row, errors, case_id)
-    if len(rows) < 10:
-        errors.append("fixture must contain at least 10 cases")
+    if len(rows) < min_cases:
+        errors.append(f"fixture must contain at least {min_cases} cases")
     return errors
 
 
