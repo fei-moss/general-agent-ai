@@ -39,7 +39,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   A settlement-required boolean does not authorize explaining undisclosed
   position-closing or settlement mechanics. The lock belongs to the returned
   redemption policy and must not be described as starting merely because a
-  share was Minted.
+  share was Minted; when the approved mechanism says the wait follows a Redeem
+  request, the answer must not move that wait before the request.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R6`: fee answers enumerate the fee names
   and rates exposed for the current Agent. Mint/Redeem fees, Management Fee,
   and Profit Share remain distinct categories; absent fields are reported as
