@@ -41,11 +41,25 @@ _FEE_TYPE_TERMS = {
 }
 _UNSUPPORTED_FEE_MECHANICS = [
     "annualized",
+    "annually",
+    "per annum",
     "per year",
     "年化",
     "按年",
     "deducted from your holdings",
     "从持仓中扣除",
+    "no other fee types are currently configured",
+    "only fee currently configured",
+    "no profit share is configured",
+    "未设置 profit share",
+    "未设置收益分成",
+    "不会对盈利额外抽成",
+]
+_UNSUPPORTED_SETTLEMENT_MECHANICS = [
+    "settles positions",
+    "close out your portion",
+    "close positions as needed",
+    "平仓结算",
 ]
 _REAL_SECRET_PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.I),
@@ -178,7 +192,8 @@ def _redemption_target_fact(value: Any) -> dict[str, Any]:
             if settlement_required
             else ["no settlement wait", "无需等待结算"]
         )
-        forbidden = (
+        forbidden = list(_UNSUPPORTED_SETTLEMENT_MECHANICS)
+        forbidden.extend(
             ["no lock-up", "no lockup", "没有锁定期", "无锁定期"]
             if seconds > 0
             else []
