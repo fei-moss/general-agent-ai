@@ -59,8 +59,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   the post-tool answer only.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R10`: after typed current-Agent dynamic
   configuration is returned, unsupported fee cadence, collection, unreturned
-  fee status, settlement mechanics, or claim-ordering assertions trigger one
-  bounded internal output correction. Invalid text and retry instructions are
+  fee status, settlement mechanics, or claim-ordering assertions trigger at
+  most two bounded internal output corrections. Invalid text and retry instructions are
   not emitted as the user-facing answer. Current-Agent final text is buffered
   until output validation accepts it; other turns retain incremental streaming.
   A post-retrieval planning sentence promising another search is not a completed

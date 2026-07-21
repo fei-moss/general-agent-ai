@@ -212,10 +212,11 @@ async def test_dynamic_claim_validator_is_inactive_without_typed_context_result(
 async def test_current_agent_output_retries_incomplete_search_and_mint_lock_claims():
     marketplace = _FakeMarketplaceAI()
     retry_feedback: list[str] = []
+    retry_attempts = 0
     calls = 0
 
     def function(messages, _info):
-        nonlocal calls
+        nonlocal calls, retry_attempts
         calls += 1
         if calls == 1:
             return ModelResponse(
@@ -232,6 +233,18 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
             for part in message.parts:
                 if isinstance(part, RetryPromptPart):
                     retry_feedback.append(str(part.content))
+                    retry_attempts += 1
+                    if retry_attempts == 1:
+                        return ModelResponse(
+                            parts=[
+                                TextPart(
+                                    content=(
+                                        "You receive a proportional share in your wallet "
+                                        "and the executor uses it for the strategy."
+                                    )
+                                )
+                            ]
+                        )
                     return ModelResponse(
                         parts=[
                             TextPart(
@@ -271,7 +284,8 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
 
     result = await agent.run("What happens when I mint a share?", deps=deps)
 
-    assert calls == 3
+    assert calls == 4
+    assert retry_attempts == 2
     assert "after minting there is a lock" in retry_feedback[0]
     assert "mint 后需经过" in retry_feedback[0]
     assert "the search didn't return" in retry_feedback[0]
