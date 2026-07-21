@@ -109,7 +109,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
    Hyperliquid Agent id, lock duration, fee rate, or Golden question string.
 5. Add a typed-context-scoped output validator with one correction attempt for
   unsupported dynamic claims that persisted after prompt instruction, including
-  invented insurance or loss-absorbing mechanisms.
+  invented insurance, loss-absorbing, stop-loss, or loss-period fee mechanics.
 6. Run focused tests, full change verification, release verification, and record
    closeout evidence below.
 
