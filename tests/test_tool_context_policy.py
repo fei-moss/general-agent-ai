@@ -286,8 +286,10 @@ async def test_agent_injects_current_agent_fact_precedence_instruction():
     assert "lock_period_seconds" in serialized
     assert "rate_bps" in serialized
     assert "preserve the returned fee_type" in serialized
-    assert "Do not infer that a fee is annualized" in serialized
+    assert "fee tool provides no cadence or collection mechanics" in serialized
+    assert "per annum" in serialized
     assert "unreturned fee type is zero or not configured" in serialized
+    assert "settlement_required is only a boolean" in serialized
 
 
 async def test_agent_injects_compute_turn_policy_instruction():

@@ -451,14 +451,17 @@ def test_fee_truth_rejects_unreturned_collection_mechanics():
 
     report = build_optimization_report(
         cases,
-        _live_report("Management Fee is 1% annualized and deducted from your holdings."),
+        _live_report(
+            "Management Fee is 1% per annum. "
+            "No other fee types are currently configured."
+        ),
         target_truth=truth,
     )
 
     assert report["case_results"][0]["hard_pass"] is False
     assert report["case_results"][0]["forbidden_hits"] == [
-        "annualized",
-        "deducted from your holdings",
+        "per annum",
+        "no other fee types are currently configured",
     ]
 
 
@@ -476,6 +479,8 @@ def test_build_target_truth_uses_typed_marketplace_dynamic_config():
     assert ["claim", "领取", "申领"] in redemption["required_fact_groups"]
     assert ["settlement", "结算"] in redemption["required_fact_groups"]
     assert "no lock-up" in redemption["forbidden_claims"]
+    assert "settles positions" in redemption["forbidden_claims"]
+    assert "close out your portion" in redemption["forbidden_claims"]
 
     fees = truth["dynamic_facts"]["current_agent_fee_schedule"]
     assert ["management fee", "management_fee", "管理费"] in fees[
@@ -487,8 +492,12 @@ def test_build_target_truth_uses_typed_marketplace_dynamic_config():
     assert "1.0%" in rate_terms
     assert "1 percent" in rate_terms
     assert "annualized" in fees["forbidden_claims"]
+    assert "per annum" in fees["forbidden_claims"]
     assert "年化" in fees["forbidden_claims"]
     assert "从持仓中扣除" in fees["forbidden_claims"]
+    assert "no other fee types are currently configured" in fees[
+        "forbidden_claims"
+    ]
     assert all("mint fee" not in group for group in fees["required_fact_groups"])
 
 
@@ -544,7 +553,12 @@ def test_build_target_truth_preserves_explicit_zero_and_unavailable_states():
     assert ["0 seconds", "0 秒", "no lock-up", "没有锁定期"] in zero_redemption[
         "required_fact_groups"
     ]
-    assert zero_redemption["forbidden_claims"] == []
+    assert zero_redemption["forbidden_claims"] == [
+        "settles positions",
+        "close out your portion",
+        "close positions as needed",
+        "平仓结算",
+    ]
     zero_rate_terms = zero["dynamic_facts"]["current_agent_fee_schedule"][
         "required_fact_groups"
     ][1]

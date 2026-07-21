@@ -29,6 +29,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R5`: redemption answers state the current
   lock period and request/claim flow when configured. They state no lock or no
   window only when the current configuration explicitly supports that claim.
+  A settlement-required boolean does not authorize explaining undisclosed
+  position-closing or settlement mechanics.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R6`: fee answers enumerate the fee names
   and rates exposed for the current Agent. Mint/Redeem fees, Management Fee,
   and Profit Share remain distinct categories; absent fields are reported as
