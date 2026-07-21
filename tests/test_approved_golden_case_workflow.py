@@ -357,6 +357,29 @@ def test_report_does_not_flag_explicitly_negated_forbidden_claim():
     assert asserted["case_results"][0]["forbidden_hits"] == ["guaranteed return"]
 
 
+def test_report_treats_explicit_zero_position_and_holder_states_as_missing_data():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                required_fact_groups=[
+                    ["side", "no data"],
+                    ["notional", "no data"],
+                    ["concentration", "no data"],
+                ]
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    for answer in (
+        "There are no current positions or live activities.",
+        "目前没有任何持有者，因此不存在 Top Holder。",
+    ):
+        report = build_optimization_report(cases, _live_report(answer))
+        assert report["case_results"][0]["hard_pass"] is True
+
+
 def test_report_skips_cases_outside_the_target_agent_type():
     cases = normalize_approved_cases(
         [_source_case(applicable_agent_types=["hyperliquid"])],

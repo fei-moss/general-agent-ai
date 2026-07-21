@@ -145,6 +145,23 @@ _UNSUPPORTED_SETTLEMENT_CLAIMS = (
     "先结算再领取",
     "领取前必须结算",
 )
+_UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS = (
+    "after minting there is a lock",
+    "after minting, there is a lock",
+    "minting starts the lock",
+    "mint 后存在一个",
+    "mint 后进入锁定期",
+    "mint 后有锁定期",
+)
+_INCOMPLETE_TOOL_NARRATION_CLAIMS = (
+    "the search didn't return",
+    "the search did not return",
+    "let me search",
+    "i'll search",
+    "i will search",
+    "让我再检索",
+    "我再搜索",
+)
 
 
 @dataclass
@@ -500,6 +517,9 @@ def _unsupported_dynamic_claims(
     violations: list[str] = [
         claim for claim in _UNSUPPORTED_RISK_CLAIMS if claim in normalized
     ]
+    violations.extend(
+        claim for claim in _INCOMPLETE_TOOL_NARRATION_CLAIMS if claim in normalized
+    )
     fee_schedule = payload.get("fee_schedule")
     if _typed_section_available(fee_schedule):
         violations.extend(
@@ -509,6 +529,11 @@ def _unsupported_dynamic_claims(
     if _typed_section_available(redemption_policy):
         violations.extend(
             claim for claim in _UNSUPPORTED_SETTLEMENT_CLAIMS if claim in normalized
+        )
+        violations.extend(
+            claim
+            for claim in _UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS
+            if claim in normalized
         )
     return violations
 

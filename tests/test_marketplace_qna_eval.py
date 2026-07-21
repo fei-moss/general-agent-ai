@@ -34,6 +34,21 @@ def test_marketplace_qna_sources_have_expected_shape():
     assert {len(source.questions) for source in bundle.sources if source.order == 4} == {16}
 
 
+def test_marketplace_qna_v3_contains_approved_ask_this_agent_mechanisms():
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
+
+    sources = {source.id: source.text for source in build_fixture_bundle().sources}
+
+    assert "signal lag, missed fills, or a follower execution gap" in sources[
+        "marketplace_qna_en_04"
+    ]
+    assert "creator does not cover holder losses or guarantee returns" in sources[
+        "marketplace_qna_en_04"
+    ]
+    assert "当前 Agent 配置" in sources["marketplace_qna_zh_cn_04"]
+    assert "Top Holders" in sources["marketplace_qna_zh_cn_05"]
+
+
 def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_paraphrases():
     from tests.rag_eval.marketplace_qna_fixture_builder import (
         build_fixture_bundle,
@@ -156,7 +171,7 @@ def test_marketplace_qna_v2_expected_chunk_count_matches_production_chunking():
         len(chunk_text(row["text"], chunk_size=400, overlap=80)) for row in corpus
     )
 
-    assert chunk_count == 143
+    assert chunk_count == 152
     assert acceptance["ingestion"]["expected_chunks"] == chunk_count
 
 
@@ -200,10 +215,10 @@ def test_marketplace_qna_v2_seed_is_explicitly_versioned():
         )
     )
 
-    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-07-16-v2"
-    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v2"
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-07-21-v3"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v3"
     assert manifest["source_set"] == CORPUS_VERSION
-    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V2"
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V3"
     assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
     assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
 
@@ -230,7 +245,7 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.mime_type == "text/markdown"
         assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-16-v2"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-21-v3"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():

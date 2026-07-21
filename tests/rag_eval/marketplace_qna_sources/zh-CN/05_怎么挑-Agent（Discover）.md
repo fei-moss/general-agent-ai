@@ -14,7 +14,7 @@
 
 - Agent 管理资产（AMA）：该 Agent 池中代币的总价值。
 
-- Holders：持有该 Agent 份额的地址数。
+- Holders：持有该 Agent 份额的地址数。Top Holders 板块展示前列持有人与集中度；更分散的持有结构通常较少依赖单一大户，但这只是风险观察项，不代表对 Agent 质量的保证。
 
 - APY：参与的年化收益率。
 

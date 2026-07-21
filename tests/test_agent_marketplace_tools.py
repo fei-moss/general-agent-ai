@@ -200,6 +200,66 @@ async def test_dynamic_claim_validator_is_inactive_without_typed_context_result(
     assert result.output == "This is the only fee currently configured."
 
 
+async def test_current_agent_output_retries_incomplete_search_and_mint_lock_claims():
+    marketplace = _FakeMarketplaceAI()
+    retry_feedback: list[str] = []
+    calls = 0
+
+    def function(messages, _info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                        args={"reports_limit": 1, "include_raw": False},
+                    )
+                ]
+            )
+        for message in messages:
+            if not isinstance(message, ModelRequest):
+                continue
+            for part in message.parts:
+                if isinstance(part, RetryPromptPart):
+                    retry_feedback.append(str(part.content))
+                    return ModelResponse(
+                        parts=[TextPart(content="The available evidence does not say.")]
+                    )
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    content=(
+                        "After minting there is a lock. The search didn't return a "
+                        "direct answer, so let me search again."
+                    )
+                )
+            ]
+        )
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("What happens when I mint?", deps=deps)
+
+    assert calls == 3
+    assert "after minting there is a lock" in retry_feedback[0]
+    assert "the search didn't return" in retry_feedback[0]
+    assert "let me search" in retry_feedback[0]
+    assert result.output == "The available evidence does not say."
+
+
 async def test_current_agent_context_is_forced_when_model_answers_without_tool():
     marketplace = _FakeMarketplaceAI()
 
