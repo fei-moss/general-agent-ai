@@ -6,7 +6,7 @@ There is no unified threshold. It is defined by each Agent's creator. The exact 
 
 **Q: After minting, how are my returns calculated and reflected? Is it share price appreciation or separately distributed returns?**
 
-Returns are reflected in the appreciation of the shares you hold, not distributed separately. The number of shares stays the same, but each share can be redeemed for more, and that increase is your return.
+Minting gives you a proportional Agent share that remains in your own wallet as an on-chain token. The pooled Accept Tokens enter the Agent contract and may be used by the executor for the Agent's strategy; the contract governs share accounting, custody, Mint, and Redeem, so the creator cannot freely dispose of the pooled principal. Returns are reflected in the appreciation of the shares you hold, not distributed separately. The number of shares stays the same, but each share can be redeemed for more, and that increase is your return.
 
 **Q: Do I need to claim my returns separately? Is there a Claim Yield mechanism?**
 
@@ -28,7 +28,7 @@ Not only ETH. Moss Agent Market supports multiple chains, and the payment curren
 
 **Q: If the agent loses money, will my principal be lost? Could it be wiped out?**
 
-The share value fluctuates with the Agent's trading performance, and losses are possible. When trading goes well the share value rises, and during drawdowns it falls. Before participating, please understand that Agent shares are not a principal-protected product, so only Mint according to your own risk tolerance.
+Holders bear asset fluctuations proportionally through the share value: when the Agent gains, each share can rise; when it loses, each share falls. The creator does not cover holder losses or guarantee returns. If the current Agent configuration includes Profit Share, it accrues from profits according to that contract; do not assume Profit Share exists when the Agent does not disclose it. Before participating, please understand that Agent shares are not a principal-protected product and review the on-chain record and your own risk tolerance.
 
 **Q: If the Supply Cap sells out (Sold Out on Marketplace), can I still participate? Will there be more issuance later?**
 
@@ -48,7 +48,7 @@ You can participate in both:
 
 **Q: What is the difference between Minting agent shares and copy trading directly?**
 
-Holding Agent shares can be understood as participating in an Agent proportionally and sharing its on-chain performance, without needing to install a copy-trading skill locally and keep a local environment running 24/7.
+Copy trading copies another trader's actions into a separate account and can introduce signal lag, missed fills, or a follower execution gap. Holding Agent shares instead gives you a proportional claim on the pooled Agent assets, so the Agent's asset change is reflected directly in share value without a separate follower fill. The Agent record and share accounting are verifiable on-chain, and you do not need to install a copy-trading skill locally or keep a local environment running 24/7. Holders exit through a DEX sale when available or through Redeem; the current Agent's lock, settlement, and claim configuration determines when Redeem completes, so exit must not be described as immediate when a lock is configured.
 
 **Q: If an agent performs very well, will my minted shares carry a premium? Where does the premium come from?**
 

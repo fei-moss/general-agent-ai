@@ -61,6 +61,8 @@
 
 这里的数值只是目标 Agent 当次配置快照，不写入 Prompt，也不回填覆盖产品负责人原始答案。目标 Agent 改变或配置改变时，重新生成快照。不要根据页面标签手写费用类型；例如页面可能显示 `Mint fee`，但 Marketplace 类型化合同返回 `management_fee` 时，评测和 Chat 都必须使用后者。
 
+如果产品答案中的静态句子与当前 Agent 动态配置冲突，标准化阶段要保留原始 `ideal_answer` 作为审批证据，但从静态 `required_fact_groups` 中移除冲突项，并用对应 `dynamic_fact_rules` 验收当前真值。例如，产品样例写“随时退出”而目标 Agent 有赎回锁定时，回答和硬验收都必须以当前锁定配置为准。
+
 从 Marketplace `ai-context` 原始 JSON 自动生成脱敏真值：
 
 ```bash
@@ -145,3 +147,5 @@
 关键事实缺失、禁止内容、请求失败属于硬 blocker。LLM 语义评审当前是观察项；低风险 `gap` 进入优化清单，高风险或关键案例的 `gap` 同时进入完成 blocker。
 
 报告只建议归因到 Prompt/回答组织、RAG/检索、工具/数据、Guardrail/策略、运行时或产品行为。涉及 Prompt 核心语义、运行时、工具/API 和安全边界时，先确认修改清单，再实施和重新回放。
+
+当已确认 Golden Case 补充的是稳定平台机制，而现有知识库没有覆盖时，应把事实合并到规范的 Marketplace QnA 来源，生成新的版本化 corpus 和知识库，验收后切换 `RAG_DEFAULT_KNOWLEDGE_BASE_ID`；旧知识库保留用于回滚。不要把新事实追加到旧知识库，也不要把动态 Agent 数值写进固定知识文档。

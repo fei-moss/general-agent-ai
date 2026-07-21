@@ -8,17 +8,17 @@
   },
   "knowledge_base": {
     "description": "Reviewed bilingual Marketplace product QnA corpus.",
-    "name": "Moss Agent Marketplace QnA V2",
+    "name": "Moss Agent Marketplace QnA V3",
     "source_root_uri": "urn:moss:marketplace-qna:",
     "visibility": "internal"
   },
-  "manifest_id": "marketplace-qna-rag-seed-v2",
+  "manifest_id": "marketplace-qna-rag-seed-v3",
   "source_files": [
     {
       "path": "tests/rag_eval/marketplace_qna_corpus.jsonl",
       "role": "corpus",
       "row_count": 18,
-      "sha256": "2290af28a84d9bb6b7d4c3c929c706459092f3aaa5f71d47e1c97841af9e86b3"
+      "sha256": "2fbad5a102bed78620bb7b80f81f9843399aa21299e99e3b35e11693587a8e4d"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_queries.jsonl",
@@ -30,7 +30,7 @@
       "path": "tests/rag_eval/marketplace_qna_golden_query_review.jsonl",
       "role": "review_evidence",
       "row_count": 114,
-      "sha256": "059be1737740b703863a7af63719a953cd7d8b0fc33e0e048d3c55c00748631c"
+      "sha256": "a2de5808491769b6399f65d458da93a97a6e8c32fe5f627a14dcf2ad4ea9571d"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_chat_cases.jsonl",
@@ -48,9 +48,9 @@
       "path": "tests/rag_eval/marketplace_qna_acceptance_evidence_contract.json",
       "role": "acceptance_contract",
       "row_count": null,
-      "sha256": "8e5cf72aa0e0bdde55dfe7d4d94580b9b2eddf459c8f76ae60d7eb1ef7125e34"
+      "sha256": "83d5dd1ab6d2d93cee44176a961f3481ef48cb3ec781aba6e7c64152a5fd1c34"
     }
   ],
-  "source_set": "marketplace-qna-bilingual-2026-07-16-v2",
+  "source_set": "marketplace-qna-bilingual-2026-07-21-v3",
   "spec_id": "SPEC-RAG-EVAL-002"
 }

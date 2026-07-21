@@ -37,7 +37,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   lock period and request/claim flow when configured. They state no lock or no
   window only when the current configuration explicitly supports that claim.
   A settlement-required boolean does not authorize explaining undisclosed
-  position-closing or settlement mechanics.
+  position-closing or settlement mechanics. The lock belongs to the returned
+  redemption policy and must not be described as starting merely because a
+  share was Minted.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R6`: fee answers enumerate the fee names
   and rates exposed for the current Agent. Mint/Redeem fees, Management Fee,
   and Profit Share remain distinct categories; absent fields are reported as
@@ -59,6 +61,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   bounded internal output correction. Invalid text and retry instructions are
   not emitted as the user-facing answer. Current-Agent final text is buffered
   until output validation accepts it; other turns retain incremental streaming.
+  A post-retrieval planning sentence promising another search is not a completed
+  answer and triggers the same bounded correction.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R11`: approved platform-mechanism question
   families use current Agent context first and then fixed knowledge retrieval.
   The runtime enforces both calls when the model tries to answer early, while
@@ -69,7 +73,10 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - The supplied approved batch is scoped to Hyperliquid Agents and remains
   incremental; it is not interpreted as complete Marketplace business coverage.
 - The evaluator does not silently rewrite product-owner source answers. Dynamic
-  target truth is additive evidence with explicit rule identifiers.
+  target truth uses explicit rule identifiers. When an approved static phrase
+  conflicts with current dynamic configuration, the original ideal answer is
+  retained as approval evidence while the conflicting hard group is replaced
+  by the applicable dynamic rule.
 - Target truth and reports reject real secrets and real-looking wallet or Agent
   addresses. No production credentials or private identity are persisted.
 - Marketplace tools remain read-only, server-bound, and budgeted. No trading,
@@ -85,6 +92,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - The target-truth CLI derives that sanitized evaluator input from Marketplace
   `ai-context`; it does not preserve Agent addresses or viewer context.
 - Rollback is a code revert; no schema or data migration is required.
+- Stable approved platform mechanisms missing from the canonical QnA corpus are
+  released through a new versioned knowledge base and a blue-green default-KB
+  switch; dynamic Agent values are never copied into that fixed corpus.
 
 ## Implementation Plan
 

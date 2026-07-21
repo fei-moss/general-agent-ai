@@ -11,7 +11,7 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-16-v2"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-21-v3"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",

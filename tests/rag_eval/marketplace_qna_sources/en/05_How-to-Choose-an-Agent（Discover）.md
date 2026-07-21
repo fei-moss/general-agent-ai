@@ -14,7 +14,7 @@ We recommend focusing on two sets of data:
 
 - Agent-Managed Assets (AMA): Total value of tokens pooled in this Agent.
 
-- Holders: The number of addresses holding the Agent's shares.
+- Holders: The number of addresses holding the Agent's shares. The Top Holders section shows the largest holders and concentration. A more distributed holder base is generally less dependent on one dominant wallet, but this is a risk signal rather than a guarantee of quality.
 
 - APY: The annualized return rate of the participation.
 
