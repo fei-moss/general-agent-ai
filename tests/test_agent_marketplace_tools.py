@@ -138,6 +138,7 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
                         "mechanism or loss-absorbing party and no generic stop-loss "
                         "mechanism. It seems to be a test agent. The fee schedule "
                         "includes only this fee. 管理费不会因亏损而豁免，领取前需要进行结算。"
+                        "锁定等待 → 结算 → Claim。"
                     )
                 )
             ]
@@ -177,6 +178,7 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
     assert "fee schedule includes only" in retry_feedback[0]
     assert "不会因亏损而豁免" in retry_feedback[0]
     assert "领取前需要进行结算" in retry_feedback[0]
+    assert "锁定等待 → 结算" in retry_feedback[0]
     assert result.output == (
         "Management Fee: 1%. The source does not return fee cadence, "
         "collection mechanics, or other fee types."

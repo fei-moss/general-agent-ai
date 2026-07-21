@@ -155,6 +155,9 @@ _UNSUPPORTED_SETTLEMENT_CLAIMS = (
     "先结算再领取",
     "领取前必须结算",
     "领取前需要进行结算",
+    "锁定等待 → 结算",
+    "锁定期 → 结算",
+    "lock → settlement",
 )
 _UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS = (
     "after minting there is a lock",
@@ -344,6 +347,8 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             + ". Keep the exact returned lock, claim, settlement-required, fee-type, "
             "and rate values. For cadence, collection mechanics, settlement mechanics, "
             "or unreturned fee types, say the source did not return that information. "
+            "List settlement_required only as a boolean and do not order settlement "
+            "before or after claim. "
             "Return only the corrected user-facing answer and do not mention validation "
             "or retries."
         )

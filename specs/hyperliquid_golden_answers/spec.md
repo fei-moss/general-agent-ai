@@ -37,7 +37,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   lock period and request/claim flow when configured. They state no lock or no
   window only when the current configuration explicitly supports that claim.
   A settlement-required boolean does not authorize explaining undisclosed
-  position-closing or settlement mechanics. The lock belongs to the returned
+  position-closing, settlement mechanics, or settlement/claim ordering. The lock belongs to the returned
   redemption policy and must not be described as starting merely because a
   share was Minted; when the approved mechanism says the wait follows a Redeem
   request, the answer must not move that wait before the request.
