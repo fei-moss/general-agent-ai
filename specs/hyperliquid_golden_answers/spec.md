@@ -33,7 +33,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   and rates exposed for the current Agent. Mint/Redeem fees, Management Fee,
   and Profit Share remain distinct categories; absent fields are reported as
   unavailable rather than inferred. `rate_bps` is converted arithmetically and
-  the typed `fee_type` is not renamed from UI wording.
+  the typed `fee_type` is not renamed from UI wording. Fee cadence, collection
+  mechanics, and the status of unreturned fee types are not inferred.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R7`: first-person wording in an Agent
   question refers to the current page Agent. Viewer wallet activities or shares
   must not be substituted for Agent trades, positions, identity, or strategy.
