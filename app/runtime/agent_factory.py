@@ -173,6 +173,21 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         if not isinstance(turn_policy, dict):
             return ""
         if turn_policy.get("intent") != "identity_introduction":
+            if turn_policy.get("intent") == "current_agent_question":
+                return (
+                    "This turn asks about the current Agent. You must call"
+                    " marketplace_agent_context before answering. Treat the returned"
+                    " current Agent configuration as the source of truth for identity,"
+                    " type, chain, creator, disclosed strategy, positions, activities,"
+                    " redemption lock and claim flow, and fee names and rates. Static"
+                    " platform knowledge may explain mechanics but must not override"
+                    " current-Agent values. Use lock_period_seconds as the exact duration;"
+                    " convert rate_bps to percent by dividing by 100 and preserve the"
+                    " returned fee_type instead of renaming it from UI wording. Never"
+                    " substitute viewer wallet activity or"
+                    " viewer shares for Agent trades or positions. If a field is absent,"
+                    " say it is unavailable and do not invent a generic strategy or value."
+                )
             if turn_policy.get("intent") != "marketplace_compute_metric":
                 return ""
             return (
@@ -383,11 +398,15 @@ def _build_runtime_hooks() -> Hooks[AgentDeps]:
 
 
 def _dedupe_marketplace_tool_calls(response: ModelResponse) -> ModelResponse:
-    """Collapse duplicate Marketplace tool calls emitted in a single model response."""
+    """Remove tool preambles and collapse duplicate Marketplace calls."""
+    has_tool_call = any(isinstance(part, ToolCallPart) for part in response.parts)
     parts: list[Any] = []
     changed = False
     marketplace_indexes: dict[str, int] = {}
     for part in response.parts:
+        if has_tool_call and isinstance(part, TextPart):
+            changed = True
+            continue
         if not (
             isinstance(part, ToolCallPart)
             and part.tool_name in _MARKETPLACE_BUDGETED_TOOLS
@@ -449,6 +468,14 @@ def _prepare_tools_for_turn(
     ):
         return [
             tool for tool in tool_defs if tool.name == TOOL_MARKETPLACE_AGENT_COMPUTE
+        ]
+    if (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("tool_use") == "marketplace_context_first"
+        and int(ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0)) == 0
+    ):
+        return [
+            tool for tool in tool_defs if tool.name == TOOL_MARKETPLACE_AGENT_CONTEXT
         ]
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
         return [tool for tool in tool_defs if tool.name in _ASK_THIS_AGENT_TOOLS]

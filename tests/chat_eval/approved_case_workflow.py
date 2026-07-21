@@ -29,6 +29,16 @@ ATTRIBUTIONS = {
     "runtime_or_transport",
     "product_behavior",
 }
+DYNAMIC_FACT_RULES = {
+    "current_agent_redemption_policy",
+    "current_agent_fee_schedule",
+}
+_FEE_TYPE_TERMS = {
+    "mint_fee": ["mint fee", "mint_fee", "铸造费"],
+    "redeem_fee": ["redeem fee", "redeem_fee", "赎回费"],
+    "management_fee": ["management fee", "management_fee", "管理费"],
+    "profit_share": ["profit share", "profit_share", "收益分成"],
+}
 _REAL_SECRET_PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.I),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
@@ -103,11 +113,173 @@ def write_jsonl(rows: Iterable[dict[str, Any]], path: Path) -> None:
     path.write_text(payload + ("\n" if payload else ""), encoding="utf-8")
 
 
+def build_target_truth_from_marketplace_context(
+    marketplace_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build sanitized evaluator truth from the typed Marketplace AI context."""
+    if not isinstance(marketplace_context, dict):
+        raise ValueError("Marketplace context must be an object")
+    payload = marketplace_context
+    if isinstance(marketplace_context.get("data"), dict):
+        payload = marketplace_context["data"]
+    agent = payload.get("agent")
+    if not isinstance(agent, dict):
+        raise ValueError("Marketplace context agent is required")
+    agent_type = str(agent.get("agent_type") or "").strip().casefold()
+    if not agent_type:
+        raise ValueError("Marketplace context agent.agent_type is required")
+    return {
+        "agent_type": agent_type,
+        "dynamic_facts": {
+            "current_agent_redemption_policy": _redemption_target_fact(
+                payload.get("redemption_policy")
+            ),
+            "current_agent_fee_schedule": _fee_target_fact(
+                payload.get("fee_schedule")
+            ),
+        },
+    }
+
+
+def _redemption_target_fact(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("Marketplace context redemption_policy is required")
+    available = value.get("available")
+    status = str(value.get("status") or "").strip().casefold()
+    if available is True and status == "ok":
+        seconds = _bounded_integer(
+            value.get("lock_period_seconds"),
+            field="redemption_policy.lock_period_seconds",
+        )
+        claim_required = _required_boolean(
+            value.get("claim_required"),
+            field="redemption_policy.claim_required",
+        )
+        settlement_required = _required_boolean(
+            value.get("settlement_required"),
+            field="redemption_policy.settlement_required",
+        )
+        groups = [_lock_period_terms(seconds)]
+        groups.append(
+            ["claim", "领取", "申领"]
+            if claim_required
+            else ["no separate claim", "无需另行领取", "无需申领"]
+        )
+        groups.append(
+            ["settlement", "结算"]
+            if settlement_required
+            else ["no settlement wait", "无需等待结算"]
+        )
+        forbidden = (
+            ["no lock-up", "no lockup", "没有锁定期", "无锁定期"]
+            if seconds > 0
+            else []
+        )
+        return {
+            "required_fact_groups": groups,
+            "forbidden_claims": forbidden,
+        }
+    if available is False and status in {"unsupported", "unavailable"}:
+        terms = (
+            ["unsupported", "不支持", "未提供"]
+            if status == "unsupported"
+            else ["unavailable", "暂不可用", "无法获取"]
+        )
+        return {"required_fact_groups": [terms], "forbidden_claims": []}
+    raise ValueError("Marketplace redemption_policy has inconsistent availability/status")
+
+
+def _fee_target_fact(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("Marketplace context fee_schedule is required")
+    available = value.get("available")
+    status = str(value.get("status") or "").strip().casefold()
+    if available is True and status == "ok":
+        raw_fees = value.get("fees")
+        if not isinstance(raw_fees, list) or not raw_fees:
+            raise ValueError("Marketplace fee_schedule.fees must be non-empty when available")
+        groups: list[list[str]] = []
+        seen_types: set[str] = set()
+        for index, fee in enumerate(raw_fees):
+            if not isinstance(fee, dict):
+                raise ValueError(f"Marketplace fee_schedule.fees[{index}] must be an object")
+            fee_type = str(fee.get("fee_type") or "").strip().casefold()
+            if fee_type not in _FEE_TYPE_TERMS:
+                raise ValueError(f"Marketplace fee_schedule has unsupported fee_type {fee_type!r}")
+            if fee_type in seen_types:
+                raise ValueError(f"Marketplace fee_schedule repeats fee_type {fee_type!r}")
+            seen_types.add(fee_type)
+            bps = _bounded_integer(
+                fee.get("rate_bps"),
+                field=f"fee_schedule.fees[{index}].rate_bps",
+                maximum=10000,
+            )
+            groups.append(list(_FEE_TYPE_TERMS[fee_type]))
+            groups.append(_rate_terms(bps))
+        return {"required_fact_groups": groups, "forbidden_claims": []}
+    if available is False and status in {"unsupported", "unavailable"}:
+        terms = (
+            ["unsupported", "不支持", "未提供"]
+            if status == "unsupported"
+            else ["unavailable", "暂不可用", "无法获取"]
+        )
+        return {"required_fact_groups": [terms], "forbidden_claims": []}
+    raise ValueError("Marketplace fee_schedule has inconsistent availability/status")
+
+
+def _lock_period_terms(seconds: int) -> list[str]:
+    if seconds == 0:
+        return ["0 seconds", "0 秒", "no lock-up", "没有锁定期"]
+    hours, remainder = divmod(seconds, 3600)
+    minutes, remaining_seconds = divmod(remainder, 60)
+    return [
+        f"{seconds} seconds",
+        f"{seconds:,} seconds",
+        f"{seconds} 秒",
+        f"{seconds:,} 秒",
+        f"{hours}h {minutes}m {remaining_seconds}s",
+        f"{hours} hours {minutes} minutes {remaining_seconds} seconds",
+        f"{hours} hours, {minutes} minutes, and {remaining_seconds} seconds",
+        f"{hours} 小时 {minutes} 分 {remaining_seconds} 秒",
+        f"{hours}小时{minutes}分{remaining_seconds}秒",
+        f"{hours}小时{minutes}分钟{remaining_seconds}秒",
+    ]
+
+
+def _rate_terms(bps: int) -> list[str]:
+    whole, fraction = divmod(bps, 100)
+    percent = f"{whole}.{fraction:02d}".rstrip("0").rstrip(".")
+    terms = [
+        f"{bps} bps",
+        f"{bps} basis points",
+        f"{percent}%",
+        f"{percent} percent",
+    ]
+    if fraction == 0:
+        terms.append(f"{whole}.0%")
+    return terms
+
+
+def _bounded_integer(value: Any, *, field: str, maximum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"Marketplace {field} must be a non-negative integer")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"Marketplace {field} must not exceed {maximum}")
+    return value
+
+
+def _required_boolean(value: Any, *, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"Marketplace {field} must be a boolean")
+    return value
+
+
 def build_optimization_report(
     cases: list[dict[str, Any]],
     baseline_report: dict[str, Any],
     *,
     semantic_reviews: Iterable[dict[str, Any]] | None = None,
+    target_truth: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Join live answers with hard checks and optional advisory semantic reviews."""
     for case in cases:
@@ -122,12 +294,44 @@ def build_optimization_report(
     if unknown_reviews:
         raise ValueError(f"semantic reviews contain unknown case ids: {unknown_reviews}")
 
+    target_truth = _validated_target_truth(target_truth)
+    target_agent_type = str((target_truth or {}).get("agent_type") or "").casefold()
+    dynamic_facts = dict((target_truth or {}).get("dynamic_facts") or {})
     results: list[dict[str, Any]] = []
     release_blockers: list[str] = []
     completion_blockers: list[str] = []
     review_packet: list[dict[str, Any]] = []
+    active_cases: list[dict[str, Any]] = []
+    not_applicable_count = 0
     for case in cases:
         case_id = str(case["id"])
+        applicable_types = {
+            str(value).casefold() for value in case.get("applicable_agent_types", [])
+        }
+        if applicable_types and target_agent_type and target_agent_type not in applicable_types:
+            not_applicable_count += 1
+            results.append(
+                {
+                    "case_id": case_id,
+                    "area": case["area"],
+                    "risk_level": str(case.get("risk_level") or "low"),
+                    "status": "not_applicable",
+                    "hard_pass": True,
+                    "transport_ok": None,
+                    "missing_fact_groups": [],
+                    "missing_dynamic_rules": [],
+                    "forbidden_hits": [],
+                    "semantic_verdict": "not_applicable",
+                    "semantic_reason": None,
+                    "semantic_gaps": [],
+                    "dimension_scores": {},
+                    "suggested_attribution": "none",
+                    "answer": "",
+                }
+            )
+            continue
+        active_cases.append(case)
+        target_agent_type_missing = bool(applicable_types and not target_agent_type)
         baseline = baseline_by_id.get(case_id)
         answer = str((baseline or {}).get("content") or "")
         transport_ok = bool(
@@ -136,14 +340,41 @@ def build_optimization_report(
             and answer.strip()
         )
         required_groups = _fact_groups(case)
+        dynamic_rules = [str(rule) for rule in case.get("dynamic_fact_rules", [])]
+        missing_dynamic_rules = [
+            rule for rule in dynamic_rules if rule not in dynamic_facts
+        ]
+        dynamic_forbidden: list[str] = []
+        for rule in dynamic_rules:
+            fact = dynamic_facts.get(rule)
+            if not isinstance(fact, dict):
+                continue
+            required_groups.extend(
+                _validated_fact_groups(
+                    fact.get("required_fact_groups"), index=f"target truth {rule}"
+                )
+            )
+            dynamic_forbidden.extend(
+                _string_list(
+                    fact.get("forbidden_claims", []),
+                    "forbidden_claims",
+                    f"target truth {rule}",
+                )
+            )
         missing_groups = (
             [group for group in required_groups if not _group_matches(group, answer)]
             if transport_ok
             else required_groups
         )
-        forbidden = _forbidden_claims(case)
+        forbidden = _forbidden_claims(case) + dynamic_forbidden
         forbidden_hits = [claim for claim in forbidden if _contains(answer, claim)]
-        hard_pass = transport_ok and not missing_groups and not forbidden_hits
+        hard_pass = (
+            transport_ok
+            and not missing_groups
+            and not missing_dynamic_rules
+            and not target_agent_type_missing
+            and not forbidden_hits
+        )
         review = review_by_id.get(case_id)
         semantic_verdict = str((review or {}).get("verdict") or "pending")
         attribution = _suggest_attribution(
@@ -153,9 +384,17 @@ def build_optimization_report(
             forbidden_hits=forbidden_hits,
             semantic_review=review,
         )
+        if missing_dynamic_rules:
+            attribution = "tool_or_data"
 
         if not transport_ok:
             release_blockers.append(f"{case_id}: live baseline missing or failed")
+        if target_agent_type_missing:
+            release_blockers.append(f"{case_id}: target agent type missing")
+        if missing_dynamic_rules:
+            release_blockers.append(
+                f"{case_id}: dynamic target truth missing for {missing_dynamic_rules}"
+            )
         elif missing_groups:
             release_blockers.append(f"{case_id}: required facts missing")
         if forbidden_hits:
@@ -182,6 +421,8 @@ def build_optimization_report(
             "hard_pass": hard_pass,
             "transport_ok": transport_ok,
             "missing_fact_groups": missing_groups,
+            "missing_dynamic_rules": missing_dynamic_rules,
+            "target_agent_type_missing": target_agent_type_missing,
             "forbidden_hits": forbidden_hits,
             "semantic_verdict": semantic_verdict,
             "semantic_reason": (review or {}).get("reason"),
@@ -192,13 +433,26 @@ def build_optimization_report(
         }
         results.append(case_result)
         if semantic_verdict == "pending" and hard_pass:
-            review_packet.append(_semantic_review_item(case, answer))
+            review_packet.append(
+                _semantic_review_item(
+                    case,
+                    answer,
+                    target_truth={
+                        rule: dynamic_facts[rule]
+                        for rule in dynamic_rules
+                        if rule in dynamic_facts
+                    },
+                )
+            )
 
-    hard_failure_count = sum(not item["hard_pass"] for item in results)
+    active_results = [item for item in results if item["status"] != "not_applicable"]
+    hard_failure_count = sum(not item["hard_pass"] for item in active_results)
     semantic_pending_count = sum(
-        item["semantic_verdict"] == "pending" for item in results
+        item["semantic_verdict"] == "pending" for item in active_results
     )
-    semantic_gap_count = sum(item["semantic_verdict"] == "gap" for item in results)
+    semantic_gap_count = sum(
+        item["semantic_verdict"] == "gap" for item in active_results
+    )
     if release_blockers:
         status = "blocked"
     elif semantic_gap_count:
@@ -212,16 +466,17 @@ def build_optimization_report(
         "schema_version": SCHEMA_VERSION,
         "status": status,
         "summary": {
-            "case_count": len(results),
+            "case_count": len(active_results),
+            "not_applicable_count": not_applicable_count,
             "hard_failure_count": hard_failure_count,
             "semantic_pending_count": semantic_pending_count,
             "semantic_gap_count": semantic_gap_count,
             "semantic_pass_or_accepted_count": sum(
                 item["semantic_verdict"] in {"pass", "accepted_variance"}
-                for item in results
+                for item in active_results
             ),
         },
-        "coverage": _coverage_summary(cases),
+        "coverage": _coverage_summary(active_cases),
         "release_blockers": release_blockers,
         "completion_blockers": completion_blockers,
         "case_results": results,
@@ -284,7 +539,17 @@ def _normalize_source_row(
             "source_version": source_version,
         },
     }
+    if "applicable_agent_types" in raw:
+        canonical["applicable_agent_types"] = sorted(
+            {
+                value.casefold()
+                for value in _string_list(
+                    raw["applicable_agent_types"], "applicable_agent_types", index
+                )
+            }
+        )
     for field in (
+        "dynamic_fact_rules",
         "expected_sources",
         "expected_fields",
         "expected_tool_events",
@@ -319,7 +584,50 @@ def _validate_approved_case(row: dict[str, Any]) -> None:
     if not str(row.get("ideal_answer") or "").strip():
         raise ValueError(f"{case_id}: ideal_answer is required")
     _validated_fact_groups(row.get("required_fact_groups"), index=case_id)
+    dynamic_rules = _string_list(
+        row.get("dynamic_fact_rules", []), "dynamic_fact_rules", case_id
+    )
+    unknown_rules = sorted(set(dynamic_rules) - DYNAMIC_FACT_RULES)
+    if unknown_rules:
+        raise ValueError(f"{case_id}: unsupported dynamic fact rules {unknown_rules}")
+    for agent_type in _string_list(
+        row.get("applicable_agent_types", []), "applicable_agent_types", case_id
+    ):
+        if agent_type != agent_type.casefold():
+            raise ValueError(f"{case_id}: applicable_agent_types must be lowercase")
     _reject_sensitive_values(row, index=case_id)
+
+
+def _validated_target_truth(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("target truth must be an object")
+    _reject_sensitive_values(value, index="target truth")
+    agent_type = str(value.get("agent_type") or "").strip().casefold()
+    if not agent_type:
+        raise ValueError("target truth agent_type is required")
+    raw_facts = value.get("dynamic_facts", {})
+    if not isinstance(raw_facts, dict):
+        raise ValueError("target truth dynamic_facts must be an object")
+    unknown_rules = sorted(set(raw_facts) - DYNAMIC_FACT_RULES)
+    if unknown_rules:
+        raise ValueError(f"target truth has unsupported dynamic facts {unknown_rules}")
+    facts: dict[str, Any] = {}
+    for rule, fact in raw_facts.items():
+        if not isinstance(fact, dict):
+            raise ValueError(f"target truth {rule} must be an object")
+        facts[rule] = {
+            "required_fact_groups": _validated_fact_groups(
+                fact.get("required_fact_groups"), index=f"target truth {rule}"
+            ),
+            "forbidden_claims": _string_list(
+                fact.get("forbidden_claims", []),
+                "forbidden_claims",
+                f"target truth {rule}",
+            ),
+        }
+    return {"agent_type": agent_type, "dynamic_facts": facts}
 
 
 def _validated_fact_groups(value: Any, *, index: Any) -> list[list[str]]:
@@ -386,7 +694,13 @@ def _semantic_review_map(
     return output
 
 
-def _semantic_review_item(case: dict[str, Any], answer: str) -> dict[str, Any]:
+def _semantic_review_item(
+    case: dict[str, Any],
+    answer: str,
+    *,
+    target_truth: dict[str, Any],
+) -> dict[str, Any]:
+    dynamic_rules = [str(rule) for rule in case.get("dynamic_fact_rules", [])]
     return {
         "case_id": case["id"],
         "judge_mode": "llm_judge_advisory",
@@ -395,9 +709,13 @@ def _semantic_review_item(case: dict[str, Any], answer: str) -> dict[str, Any]:
         "actual_answer": answer,
         "risk_level": case.get("risk_level", "low"),
         "quality_axes": case.get("quality_axes", []),
+        "dynamic_fact_rules": dynamic_rules,
+        "target_truth": target_truth,
         "instruction": (
             "Judge semantic equivalence, factual completeness, and boundary safety. "
-            "Do not require matching wording. Return one JSON object using the output schema."
+            "Do not require matching wording. For dynamic fact rules, the supplied "
+            "current-Agent target truth overrides the static ideal answer. Return one "
+            "JSON object using the output schema."
         ),
         "output_schema": {
             "case_id": case["id"],
@@ -452,7 +770,8 @@ def _contains(text: str, fragment: str) -> bool:
 
 
 def _normalize_text(value: str) -> str:
-    return " ".join(re.sub(r"[^\w]+", " ", str(value).casefold()).split())
+    normalized = str(value).casefold().replace("%", " percent ")
+    return " ".join(re.sub(r"[^\w]+", " ", normalized).split())
 
 
 def _suggest_attribution(
@@ -550,10 +869,22 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--source-version", required=True)
     ingest.add_argument("--existing", type=Path)
 
+    target_truth = subparsers.add_parser(
+        "target-truth",
+        help="derive sanitized dynamic truth from Marketplace ai-context JSON",
+    )
+    target_truth.add_argument("--context", type=Path, required=True)
+    target_truth.add_argument("--output", type=Path, required=True)
+
     report = subparsers.add_parser("report", help="build an optimization gap report")
     report.add_argument("--cases", type=Path, required=True)
     report.add_argument("--baseline", type=Path, required=True)
     report.add_argument("--semantic-reviews", type=Path)
+    report.add_argument(
+        "--target-truth",
+        type=Path,
+        help="Sanitized current-Agent truth used by dynamic fact rules.",
+    )
     report.add_argument("--output", type=Path, required=True)
     report.add_argument("--strict-hard", action="store_true")
     return parser
@@ -574,10 +905,27 @@ def main() -> int:
         print(f"approved golden cases: {len(rows)} -> {args.output}")
         return 0
 
+    if args.command == "target-truth":
+        context = json.loads(args.context.read_text(encoding="utf-8"))
+        output = build_target_truth_from_marketplace_context(context)
+        _write_json(output, args.output)
+        print(f"approved golden target truth -> {args.output}")
+        return 0
+
     cases = load_approved_cases(args.cases)
     baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
     reviews = _read_rows(args.semantic_reviews) if args.semantic_reviews else None
-    output = build_optimization_report(cases, baseline, semantic_reviews=reviews)
+    target_truth = (
+        json.loads(args.target_truth.read_text(encoding="utf-8"))
+        if args.target_truth
+        else None
+    )
+    output = build_optimization_report(
+        cases,
+        baseline,
+        semantic_reviews=reviews,
+        target_truth=target_truth,
+    )
     _write_json(output, args.output)
     print(f"approved golden case report {output['status']} -> {args.output}")
     if args.strict_hard and output["release_blockers"]:

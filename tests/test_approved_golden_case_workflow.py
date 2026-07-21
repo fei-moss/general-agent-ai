@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tests.chat_eval.approved_case_workflow import (
+    build_target_truth_from_marketplace_context,
     build_optimization_report,
     load_approved_cases,
     normalize_approved_cases,
@@ -52,6 +53,60 @@ def _live_report(answer: str, *, status: str = "completed") -> dict:
     }
 
 
+def _target_truth(**overrides):
+    truth = {
+        "agent_type": "hyperliquid",
+        "dynamic_facts": {
+            "current_agent_redemption_policy": {
+                "required_fact_groups": [
+                    ["2 hours 46 minutes", "2h 46m", "2 小时 46 分钟"],
+                    ["claim", "领取"],
+                ],
+                "forbidden_claims": ["no lock-up", "没有锁定期"],
+            },
+            "current_agent_fee_schedule": {
+                "required_fact_groups": [
+                    ["management fee", "management_fee", "管理费"],
+                    ["1%"],
+                ],
+                "forbidden_claims": [],
+            },
+        },
+    }
+    truth.update(overrides)
+    return truth
+
+
+def _marketplace_context(**overrides):
+    context = {
+        "agent": {"id": 26, "name": "Agent", "agent_type": "hyperliquid"},
+        "redemption_policy": {
+            "available": True,
+            "status": "ok",
+            "lock_period_seconds": 10000,
+            "claim_required": True,
+            "settlement_required": True,
+            "source": "onchain_contract_read",
+            "reason": None,
+        },
+        "fee_schedule": {
+            "available": True,
+            "status": "ok",
+            "fees": [
+                {
+                    "fee_type": "management_fee",
+                    "rate_bps": 100,
+                    "source": "onchain_contract_read",
+                }
+            ],
+            "source": "onchain_contract_read",
+            "reason": None,
+        },
+    }
+    context.update(overrides)
+    return context
+
+
 def test_normalize_preserves_approved_reference_and_is_evaluator_compatible(tmp_path):
     rows = normalize_approved_cases(
         [_source_case()],
@@ -72,6 +127,25 @@ def test_normalize_preserves_approved_reference_and_is_evaluator_compatible(tmp_
     write_jsonl(rows, output)
     loaded = load_cases(output)
     assert loaded[0].id == "marketplace_mint_meaning_zh"
+
+
+def test_normalize_preserves_agent_type_and_dynamic_fact_rules():
+    rows = normalize_approved_cases(
+        [
+            _source_case(
+                applicable_agent_types=["Hyperliquid"],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+                requires_rag=True,
+                requires_tool="marketplace_agent_context",
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ask-this-agent-presets-v1",
+    )
+
+    assert rows[0]["applicable_agent_types"] == ["hyperliquid"]
+    assert rows[0]["dynamic_fact_rules"] == ["current_agent_fee_schedule"]
+    assert rows[0]["requires_tool"] == "marketplace_agent_context"
 
 
 def test_normalize_requires_owner_approval_and_structured_hard_facts():
@@ -232,6 +306,256 @@ def test_report_blocks_missing_hard_fact_and_attributes_rag_gap():
     assert result["suggested_attribution"] == "rag_or_retrieval"
 
 
+def test_report_skips_cases_outside_the_target_agent_type():
+    cases = normalize_approved_cases(
+        [_source_case(applicable_agent_types=["hyperliquid"])],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(
+        cases,
+        {"status": "passed", "results": []},
+        target_truth=_target_truth(agent_type="ballot"),
+    )
+
+    assert report["status"] == "passed"
+    assert report["summary"]["case_count"] == 0
+    assert report["summary"]["not_applicable_count"] == 1
+    assert report["case_results"][0]["status"] == "not_applicable"
+
+
+def test_report_blocks_when_agent_type_scoping_has_no_target_type():
+    cases = normalize_approved_cases(
+        [_source_case(applicable_agent_types=["hyperliquid"])],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(cases, _live_report("Agent 份额价值会变化。"))
+
+    assert report["status"] == "blocked"
+    assert report["case_results"][0]["target_agent_type_missing"] is True
+    assert "target agent type missing" in report["release_blockers"][0]
+
+
+def test_report_requires_target_truth_for_dynamic_facts():
+    cases = normalize_approved_cases(
+        [_source_case(dynamic_fact_rules=["current_agent_redemption_policy"])],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(cases, _live_report("Redeem 后领取资产。"))
+
+    assert report["status"] == "blocked"
+    assert report["case_results"][0]["missing_dynamic_rules"] == [
+        "current_agent_redemption_policy"
+    ]
+    assert "dynamic target truth missing" in report["release_blockers"][0]
+
+
+def test_report_uses_current_agent_truth_instead_of_static_ideal_answer():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                id="marketplace_mint_meaning_zh",
+                required_fact_groups=[["赎回", "redeem"]],
+                dynamic_fact_rules=["current_agent_redemption_policy"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    passed = build_optimization_report(
+        cases,
+        _live_report("可以 redeem；锁定期是 2 小时 46 分钟，之后需要领取 claim。"),
+        target_truth=_target_truth(),
+    )
+    failed = build_optimization_report(
+        cases,
+        _live_report("可以随时 redeem，没有锁定期。"),
+        target_truth=_target_truth(),
+    )
+
+    assert passed["case_results"][0]["hard_pass"] is True
+    review_item = passed["semantic_review_packet"][0]
+    assert review_item["dynamic_fact_rules"] == [
+        "current_agent_redemption_policy"
+    ]
+    assert review_item["target_truth"]["current_agent_redemption_policy"]
+    assert "overrides the static ideal answer" in review_item["instruction"]
+    assert failed["case_results"][0]["hard_pass"] is False
+    assert failed["case_results"][0]["forbidden_hits"] == ["没有锁定期"]
+
+
+def test_report_checks_current_agent_fee_names_and_rates():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                required_fact_groups=[["fee", "费用"]],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(
+        cases,
+        _live_report("This Agent charges a 1% Management Fee."),
+        target_truth=_target_truth(),
+    )
+
+    assert report["case_results"][0]["hard_pass"] is True
+
+
+def test_percentage_fact_does_not_match_a_numbered_list_item():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                required_fact_groups=[["fee", "费用"]],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(
+        cases,
+        _live_report("1. Management Fee: the exact rate is unavailable."),
+        target_truth=_target_truth(),
+    )
+
+    assert report["case_results"][0]["hard_pass"] is False
+    assert ["management fee", "management_fee", "管理费"] not in report[
+        "case_results"
+    ][0]["missing_fact_groups"]
+    assert ["1%"] in report["case_results"][0]["missing_fact_groups"]
+
+
+def test_build_target_truth_uses_typed_marketplace_dynamic_config():
+    truth = build_target_truth_from_marketplace_context(_marketplace_context())
+
+    assert truth["agent_type"] == "hyperliquid"
+    redemption = truth["dynamic_facts"]["current_agent_redemption_policy"]
+    lock_terms = redemption["required_fact_groups"][0]
+    assert "10000 seconds" in lock_terms
+    assert "10,000 seconds" in lock_terms
+    assert "2h 46m 40s" in lock_terms
+    assert "2 hours, 46 minutes, and 40 seconds" in lock_terms
+    assert "2小时46分钟40秒" in lock_terms
+    assert ["claim", "领取", "申领"] in redemption["required_fact_groups"]
+    assert ["settlement", "结算"] in redemption["required_fact_groups"]
+    assert "no lock-up" in redemption["forbidden_claims"]
+
+    fees = truth["dynamic_facts"]["current_agent_fee_schedule"]
+    assert ["management fee", "management_fee", "管理费"] in fees[
+        "required_fact_groups"
+    ]
+    rate_terms = fees["required_fact_groups"][1]
+    assert "100 bps" in rate_terms
+    assert "1%" in rate_terms
+    assert "1.0%" in rate_terms
+    assert "1 percent" in rate_terms
+    assert all("mint fee" not in group for group in fees["required_fact_groups"])
+
+
+def test_build_target_truth_preserves_explicit_zero_and_unavailable_states():
+    zero = build_target_truth_from_marketplace_context(
+        _marketplace_context(
+            redemption_policy={
+                "available": True,
+                "status": "ok",
+                "lock_period_seconds": 0,
+                "claim_required": False,
+                "settlement_required": False,
+                "source": "onchain_contract_read",
+                "reason": None,
+            },
+            fee_schedule={
+                "available": True,
+                "status": "ok",
+                "fees": [
+                    {
+                        "fee_type": "management_fee",
+                        "rate_bps": 0,
+                        "source": "onchain_contract_read",
+                    }
+                ],
+                "source": "onchain_contract_read",
+                "reason": None,
+            },
+        )
+    )
+    unavailable = build_target_truth_from_marketplace_context(
+        _marketplace_context(
+            redemption_policy={
+                "available": False,
+                "status": "unavailable",
+                "lock_period_seconds": None,
+                "claim_required": None,
+                "settlement_required": None,
+                "source": None,
+                "reason": "authoritative_source_unavailable",
+            },
+            fee_schedule={
+                "available": False,
+                "status": "unsupported",
+                "fees": [],
+                "source": None,
+                "reason": "contract_interface_unsupported",
+            },
+        )
+    )
+
+    zero_redemption = zero["dynamic_facts"]["current_agent_redemption_policy"]
+    assert ["0 seconds", "0 秒", "no lock-up", "没有锁定期"] in zero_redemption[
+        "required_fact_groups"
+    ]
+    assert zero_redemption["forbidden_claims"] == []
+    zero_rate_terms = zero["dynamic_facts"]["current_agent_fee_schedule"][
+        "required_fact_groups"
+    ][1]
+    assert "0 bps" in zero_rate_terms
+    assert "0%" in zero_rate_terms
+    assert "0.0%" in zero_rate_terms
+    assert ["unavailable", "暂不可用", "无法获取"] in unavailable[
+        "dynamic_facts"
+    ]["current_agent_redemption_policy"]["required_fact_groups"]
+    assert ["unsupported", "不支持", "未提供"] in unavailable["dynamic_facts"][
+        "current_agent_fee_schedule"
+    ]["required_fact_groups"]
+
+
+def test_build_target_truth_rejects_malformed_marketplace_config():
+    with pytest.raises(ValueError, match="lock_period_seconds"):
+        build_target_truth_from_marketplace_context(
+            _marketplace_context(
+                redemption_policy={
+                    "available": True,
+                    "status": "ok",
+                    "lock_period_seconds": None,
+                    "claim_required": True,
+                    "settlement_required": True,
+                }
+            )
+        )
+
+    with pytest.raises(ValueError, match="unsupported fee_type"):
+        build_target_truth_from_marketplace_context(
+            _marketplace_context(
+                fee_schedule={
+                    "available": True,
+                    "status": "ok",
+                    "fees": [{"fee_type": "ui_mint_label", "rate_bps": 100}],
+                }
+            )
+        )
+
+
 def test_report_treats_semantic_judge_as_advisory_but_tracks_optimization():
     cases = normalize_approved_cases(
         [_source_case(risk_level="low")],
@@ -381,6 +705,35 @@ def test_cli_round_trip_builds_reviewable_optimization_report(tmp_path):
     assert payload["semantic_review_packet"][0]["judge_mode"] == (
         "llm_judge_advisory"
     )
+
+
+def test_cli_derives_sanitized_target_truth_from_marketplace_context(tmp_path):
+    context = tmp_path / "context.json"
+    output = tmp_path / "target-truth.json"
+    context.write_text(json.dumps(_marketplace_context()), encoding="utf-8")
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tests.chat_eval.approved_case_workflow",
+            "target-truth",
+            "--context",
+            str(context),
+            "--output",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    serialized = json.dumps(payload)
+    assert payload["agent_type"] == "hyperliquid"
+    assert "10000 seconds" in serialized
+    assert "management fee" in serialized
+    assert "Lock Period Test" not in serialized
 
 
 def test_runbook_keeps_intake_incremental_and_code_changes_controlled():

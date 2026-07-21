@@ -21,7 +21,7 @@ from tests.chat_eval.evaluator import ChatBehaviorCase, load_cases, load_coverag
 DEFAULT_OUTPUT = Path(".artifacts/release/chat_eval_live.json")
 _SECRET_PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.I),
-    re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 )

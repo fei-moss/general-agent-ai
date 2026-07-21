@@ -66,6 +66,32 @@ async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_defaul
     assert "BTC Trend Agent" in repr(result)
 
 
+async def test_agent_marketplace_context_tool_exposes_typed_dynamic_config():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(
+        _tool_calling_model(
+            TOOL_MARKETPLACE_AGENT_CONTEXT,
+            {"reports_limit": 1, "include_raw": False},
+        )
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={"agent": {"contract_address": ADDRESS}},
+    )
+
+    result = await agent.run("How do I exit and what fees apply?", deps=deps)
+
+    rendered = repr(result)
+    assert "lock_period_seconds" in rendered
+    assert "10000" in rendered
+    assert "claim_required" in rendered
+    assert "management_fee" in rendered
+    assert "rate_bps" in rendered
+
+
 async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chain_id():
     marketplace = _FakeMarketplaceAI()
     agent = build_agent(
@@ -522,6 +548,28 @@ class _FakeMarketplaceAI:
             "source": "marketplace_ai",
             "data": {
                 "agent": {"name": "BTC Trend Agent"},
+                "redemption_policy": {
+                    "available": True,
+                    "status": "ok",
+                    "lock_period_seconds": 10000,
+                    "claim_required": True,
+                    "settlement_required": True,
+                    "source": "onchain_contract_read",
+                    "reason": None,
+                },
+                "fee_schedule": {
+                    "available": True,
+                    "status": "ok",
+                    "fees": [
+                        {
+                            "fee_type": "management_fee",
+                            "rate_bps": 100,
+                            "source": "onchain_contract_read",
+                        }
+                    ],
+                    "source": "onchain_contract_read",
+                    "reason": None,
+                },
                 "metrics": {"volume_24h_usd": "0"},
                 "recent_reports": [],
             },

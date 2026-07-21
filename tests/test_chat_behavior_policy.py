@@ -22,7 +22,7 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     prompt = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
     assert DEFAULT_CHAT_BEHAVIOR_POLICY.version in prompt
-    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v3")
+    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v4")
     assert "Ask this Agent" in prompt
     assert "语言一致性" in prompt
     assert "SPEC-CHAT-LANGUAGE-CONSISTENCY-001" in prompt

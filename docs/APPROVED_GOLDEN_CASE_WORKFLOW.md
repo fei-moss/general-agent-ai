@@ -19,11 +19,57 @@
   "forbidden_claims": ["固定收益"],
   "requires_rag": true,
   "risk_level": "high",
+  "applicable_agent_types": ["hyperliquid"],
+  "dynamic_fact_rules": ["current_agent_redemption_policy"],
   "tags": ["mint", "marketplace"]
 }
 ```
 
 `ideal_answer` 完整保留，语义评审不要求逐字复现。`required_fact_groups` 只放必须命中的关键事实；每个内层数组是可接受表述的 OR 组。产品负责人确认通过 `--approved-by` 和 `--source-version` 固化到正式案例中。真实密钥和真实钱包地址会被拒绝。
+
+`applicable_agent_types` 是可选的小写 Agent 类型列表。运营文档只覆盖 Hyperliquid 时，案例应标记 `hyperliquid`；在其他类型 Agent 上运行会记录为 `not_applicable`，不会误报产品缺陷。没有该字段的旧案例保持原行为。
+
+`dynamic_fact_rules` 用于会随当前 Agent 配置变化的事实。目前支持：
+
+- `current_agent_redemption_policy`：锁定期以及 request / claim 流程。
+- `current_agent_fee_schedule`：当前可见费用名称与费率。
+
+包含动态规则或 Agent 类型约束的批次，报告阶段必须提供一个不含地址、钱包或凭据的当前 Agent 真值快照。例如：
+
+```json
+{
+  "agent_type": "hyperliquid",
+  "dynamic_facts": {
+    "current_agent_redemption_policy": {
+      "required_fact_groups": [
+        ["10000 seconds", "10000 秒", "2h 46m 40s", "2 小时 46 分 40 秒"],
+        ["claim", "领取"],
+        ["settlement", "结算"]
+      ],
+      "forbidden_claims": ["no lock-up", "没有锁定期"]
+    },
+    "current_agent_fee_schedule": {
+      "required_fact_groups": [
+        ["management fee", "management_fee", "管理费"],
+        ["100 bps", "100 basis points", "1%"]
+      ],
+      "forbidden_claims": []
+    }
+  }
+}
+```
+
+这里的数值只是目标 Agent 当次配置快照，不写入 Prompt，也不回填覆盖产品负责人原始答案。目标 Agent 改变或配置改变时，重新生成快照。不要根据页面标签手写费用类型；例如页面可能显示 `Mint fee`，但 Marketplace 类型化合同返回 `management_fee` 时，评测和 Chat 都必须使用后者。
+
+从 Marketplace `ai-context` 原始 JSON 自动生成脱敏真值：
+
+```bash
+.venv/bin/python -m tests.chat_eval.approved_case_workflow target-truth \
+  --context /path/to/current-agent-ai-context.json \
+  --output /path/to/current-agent-target-truth.json
+```
+
+生成器只保留 Agent Type、动态规则、机器值的可接受表达以及与当前配置冲突的禁止说法；Agent 地址、钱包、用户上下文、报告和其他原始响应字段不会进入输出。
 
 ## 标准执行
 
@@ -54,6 +100,7 @@
 .venv/bin/python -m tests.chat_eval.approved_case_workflow report \
   --cases /path/to/approved-cases.jsonl \
   --baseline /path/to/approved-golden-live.json \
+  --target-truth /path/to/current-agent-target-truth.json \
   --output /path/to/approved-golden-report.json \
   --strict-hard
 ```
@@ -62,7 +109,7 @@
 
 1. `ingest`：校验确认信息，标准化并增量合并正式 cases。
 2. `live_runner --case-file`：使用正式 cases 回放目标 API。
-3. `report`：检查关键事实和禁止内容，输出归因建议及待语义评审包。
+3. `report`：按目标 Agent 类型筛选案例，并结合静态事实与当前配置真值检查关键事实和禁止内容，输出归因建议及待语义评审包。
 
 产物路径由执行者显式指定。覆盖摘要只显示当前 `area`、风险等级和标签数量，不产生业务完整度 blocker。
 
@@ -89,6 +136,7 @@
 .venv/bin/python -m tests.chat_eval.approved_case_workflow report \
   --cases /path/to/approved-cases.jsonl \
   --baseline /path/to/approved-golden-live.json \
+  --target-truth /path/to/current-agent-target-truth.json \
   --semantic-reviews /path/to/semantic-reviews.jsonl \
   --output /path/to/approved-golden-report.json \
   --strict-hard

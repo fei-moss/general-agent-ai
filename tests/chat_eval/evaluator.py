@@ -29,13 +29,15 @@ _ALLOWED_ACTIONS = {action.value for action in GuardrailAction}
 _ALLOWED_CATEGORIES = {category.value for category in GuardrailCategory}
 _ALLOWED_RISK_LEVELS = {"low", "medium", "high", "critical"}
 _OPTIONAL_LIST_FIELDS = {
+    "applicable_agent_types",
+    "dynamic_fact_rules",
     "expected_sources",
     "expected_fields",
     "quality_axes",
     "expected_tool_events",
 }
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"sk-[A-Za-z0-9_-]{12,}"),
+    re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{12,}"),
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 )
