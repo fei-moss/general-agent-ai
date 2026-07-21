@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.capabilities import Hooks, PrepareTools
 from pydantic_ai.messages import (
     ModelMessage,
@@ -90,6 +90,44 @@ _ASK_THIS_AGENT_TOOLS = {
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
 }
+_UNSUPPORTED_FEE_CLAIMS = (
+    "annualized",
+    "annually",
+    "per annum",
+    "per year",
+    "yearly",
+    "deducted from your holdings",
+    "deducted from holdings",
+    "deducted from the vault",
+    "only fee currently configured",
+    "only fee configured",
+    "no other fee types are currently configured",
+    "no other fees are configured",
+    "no profit share is configured",
+    "年化",
+    "按年收取",
+    "从持仓中扣除",
+    "从您的持仓中扣除",
+    "唯一费用",
+    "唯一的费用",
+    "仅有的费用",
+    "未设置收益分成",
+    "没有收益分成",
+    "不会对盈利额外抽成",
+)
+_UNSUPPORTED_SETTLEMENT_CLAIMS = (
+    "settles positions",
+    "settle positions",
+    "closes positions",
+    "close positions",
+    "close out your portion",
+    "settlement must occur before you can claim",
+    "settlement is required before claim",
+    "平仓结算",
+    "结算会平仓",
+    "先结算再领取",
+    "领取前必须结算",
+)
 
 
 @dataclass
@@ -118,6 +156,7 @@ class AgentDeps:
     marketplace_viewer_context: MarketplaceViewerContext | None = None
     tool_call_counts: dict[str, int] = field(default_factory=dict)
     marketplace_compute_retry_allowed: bool = False
+    marketplace_context_result: dict[str, Any] | None = None
 
 
 def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
@@ -143,6 +182,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         deps_type=AgentDeps,
         output_type=str,
         model_settings={"parallel_tool_calls": False},
+        retries={"tools": 1, "output": 1},
         system_prompt=build_system_prompt(profile.policy),
         capabilities=[PrepareTools(prepare_tools_for_profile), runtime_hooks],
     )
@@ -213,6 +253,34 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             " support agent, market-news assistant, or investment adviser; do not"
             " list internal tools or tool categories as user-facing capabilities;"
             " use concise Markdown sections and bullets."
+        )
+
+    @agent.output_validator
+    def reject_unsupported_current_agent_claims(
+        ctx: RunContext[AgentDeps], output: str
+    ) -> str:
+        """Request one internal rewrite when typed config cannot support a claim."""
+        turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
+        if not (
+            isinstance(turn_policy, dict)
+            and turn_policy.get("intent") == "current_agent_question"
+        ):
+            return output
+        violations = _unsupported_dynamic_claims(
+            output,
+            ctx.deps.marketplace_context_result,
+        )
+        if not violations:
+            return output
+        raise ModelRetry(
+            "Revise the final answer and remove these claims because the typed "
+            "current-Agent context does not support them: "
+            + "; ".join(violations)
+            + ". Keep the exact returned lock, claim, settlement-required, fee-type, "
+            "and rate values. For cadence, collection mechanics, settlement mechanics, "
+            "or unreturned fee types, say the source did not return that information. "
+            "Return only the corrected user-facing answer and do not mention validation "
+            "or retries."
         )
 
     @agent.tool
@@ -305,13 +373,15 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
         if exhausted is not None:
             return exhausted
-        return await client.get_agent_context(
+        result = await client.get_agent_context(
             ref.address,
             viewer_context=ctx.deps.marketplace_viewer_context,
             chain_id=ref.chain_id,
             reports_limit=reports_limit,
             include_raw=include_raw,
         )
+        ctx.deps.marketplace_context_result = result
+        return result
 
     @agent.tool(retries=1)
     async def marketplace_agent_compute(
@@ -387,6 +457,39 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         return result
 
     return agent
+
+
+def _unsupported_dynamic_claims(
+    output: str,
+    context_result: dict[str, Any] | None,
+) -> list[str]:
+    """Find claims not authorized by available typed dynamic configuration."""
+    if not isinstance(context_result, dict):
+        return []
+    payload = context_result.get("data")
+    if not isinstance(payload, dict):
+        payload = context_result
+    normalized = " ".join(str(output or "").casefold().split())
+    violations: list[str] = []
+    fee_schedule = payload.get("fee_schedule")
+    if _typed_section_available(fee_schedule):
+        violations.extend(
+            claim for claim in _UNSUPPORTED_FEE_CLAIMS if claim in normalized
+        )
+    redemption_policy = payload.get("redemption_policy")
+    if _typed_section_available(redemption_policy):
+        violations.extend(
+            claim for claim in _UNSUPPORTED_SETTLEMENT_CLAIMS if claim in normalized
+        )
+    return violations
+
+
+def _typed_section_available(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("available") is True
+        and str(value.get("status") or "").strip().lower() == "ok"
+    )
 
 
 def _build_runtime_hooks() -> Hooks[AgentDeps]:

@@ -5,6 +5,7 @@ from typing import Any
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
@@ -90,6 +91,105 @@ async def test_agent_marketplace_context_tool_exposes_typed_dynamic_config():
     assert "claim_required" in rendered
     assert "management_fee" in rendered
     assert "rate_bps" in rendered
+
+
+async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
+    marketplace = _FakeMarketplaceAI()
+    retry_feedback: list[str] = []
+    calls = 0
+
+    def function(messages, _info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                        args={"reports_limit": 1, "include_raw": False},
+                    )
+                ]
+            )
+        for message in messages:
+            if not isinstance(message, ModelRequest):
+                continue
+            for part in message.parts:
+                if isinstance(part, RetryPromptPart):
+                    retry_feedback.append(str(part.content))
+                    return ModelResponse(
+                        parts=[
+                            TextPart(
+                                content=(
+                                    "Management Fee: 1%. The source does not return "
+                                    "fee cadence, collection mechanics, or other fee types."
+                                )
+                            )
+                        ]
+                    )
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    content=(
+                        "Management Fee: 1% per annum. This is the only fee "
+                        "currently configured. Settlement must occur before you "
+                        "can claim because it closes positions."
+                    )
+                )
+            ]
+        )
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("What fees do you charge?", deps=deps)
+
+    assert calls == 3
+    assert len(marketplace.context_calls) == 1
+    assert retry_feedback
+    assert "per annum" in retry_feedback[0]
+    assert "only fee currently configured" in retry_feedback[0]
+    assert "settlement must occur before you can claim" in retry_feedback[0]
+    assert "closes positions" in retry_feedback[0]
+    assert result.output == (
+        "Management Fee: 1%. The source does not return fee cadence, "
+        "collection mechanics, or other fee types."
+    )
+    assert "Validation feedback" not in result.output
+
+
+async def test_dynamic_claim_validator_is_inactive_without_typed_context_result():
+    calls = 0
+
+    def function(_messages, _info):
+        nonlocal calls
+        calls += 1
+        return ModelResponse(
+            parts=[TextPart(content="This is the only fee currently configured.")]
+        )
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={"turn_policy": {"intent": "identity_introduction"}},
+    )
+
+    result = await agent.run("Who are you?", deps=deps)
+
+    assert calls == 1
+    assert result.output == "This is the only fee currently configured."
 
 
 async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chain_id():
