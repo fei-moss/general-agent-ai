@@ -241,7 +241,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         deps_type=AgentDeps,
         output_type=str,
         model_settings={"parallel_tool_calls": False},
-        retries={"tools": 1, "output": 1},
+        retries={"tools": 1, "output": 2},
         system_prompt=build_system_prompt(profile.policy),
         capabilities=[PrepareTools(prepare_tools_for_profile), runtime_hooks],
     )
