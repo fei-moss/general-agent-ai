@@ -16,7 +16,9 @@ from app.runtime.agent_factory import (
     AgentDeps,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
+    _knowledge_query_for_context,
     _is_correctable_compute_failure,
+    _violation_feedback,
     _unsupported_dynamic_claims,
     build_agent,
 )
@@ -70,6 +72,23 @@ def test_ballot_output_guard_accepts_missing_data_and_contract_boundary():
     )
 
     assert _unsupported_dynamic_claims(output, context) == []
+
+
+def test_ballot_knowledge_query_is_qualified_by_typed_agent_context():
+    context = {"data": {"agent": {"agent_type": "ballot"}}}
+
+    assert _knowledge_query_for_context("How do rewards work?", context) == (
+        "Governance Ballot stable platform mechanism for the current Agent: "
+        "How do rewards work?"
+    )
+    assert _knowledge_query_for_context("How do fees work?", None) == (
+        "How do fees work?"
+    )
+
+
+def test_ballot_retry_feedback_names_the_required_missing_data_wording():
+    assert "not provided" in _violation_feedback("ballot_missing_value_as_absent")
+    assert "未提供" in _violation_feedback("ballot_missing_value_as_absent")
 
 
 async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():

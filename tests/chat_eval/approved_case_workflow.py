@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
+from app.runtime.marketplace_ai import BALLOT_DYNAMIC_CONTEXT_FIELDS
 from tests.chat_eval.evaluator import validate_cases
 
 
@@ -29,28 +30,7 @@ ATTRIBUTIONS = {
     "runtime_or_transport",
     "product_behavior",
 }
-BALLOT_DYNAMIC_FACT_RULES = {
-    "accrual_display_location",
-    "airdrop_token",
-    "concentration_note",
-    "early_redeem_rule",
-    "execution_rule",
-    "fixed_apy",
-    "gov_reward_detail",
-    "governance_rewards_rule",
-    "project_name",
-    "project_token",
-    "proposal_creation_rule",
-    "proposal_display_location",
-    "proposal_threshold",
-    "redeem_during_vote_rule",
-    "reward_source_summary",
-    "snapshot_timing_rule",
-    "vote_change_rule",
-    "vote_cost_note",
-    "voting_power_rule",
-    "yield_denomination",
-}
+BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
 DYNAMIC_FACT_RULES = BALLOT_DYNAMIC_FACT_RULES | {
     "current_agent_redemption_policy",
     "current_agent_fee_schedule",

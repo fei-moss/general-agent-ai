@@ -131,6 +131,12 @@ async def _execute(
     )
 
     intent = (result or {}).get("intent")
+    if (result or {}).get("status") == RunStatus.FAILED.value:
+        await run_store.mark_run_failed(
+            agent_run_id,
+            str((result or {}).get("error") or "ORCHESTRATION_FAILED"),
+        )
+        return result or {}
     await run_store.mark_run_succeeded(agent_run_id, intent=intent)
     return result or {}
 

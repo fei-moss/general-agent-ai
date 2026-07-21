@@ -12,6 +12,7 @@ from app.runtime.marketplace_ai import (
     MarketplaceComputeTimeRange,
     MarketplaceComputeWindow,
     MarketplaceViewerContext,
+    annotate_ballot_context_availability,
     extract_current_agent_ref,
 )
 
@@ -24,6 +25,45 @@ VIEWER = MarketplaceViewerContext(
     conversation_id="conv-trusted-1",
     trace_id="trace-trusted-1",
 )
+
+
+def test_ballot_context_annotation_types_available_and_missing_fields():
+    result = annotate_ballot_context_availability(
+        {
+            "ok": True,
+            "source": "marketplace_ai",
+            "data": {
+                "agent": {
+                    "agent_type": "ballot",
+                    "name": "Governance Fixture",
+                    "accept_token_symbol": "GOV",
+                }
+            },
+        }
+    )
+
+    fields = result["data"]["ballot_governance"]
+    assert fields["project_name"] == {
+        "availability": "available",
+        "value": "Governance Fixture",
+        "source": "agent.name",
+    }
+    assert fields["project_token"]["value"] == "GOV"
+    assert fields["fixed_apy"] == {
+        "availability": "not_provided",
+        "value": None,
+        "source": "marketplace_agent_context",
+    }
+    assert fields["vote_cost_note"]["availability"] == "not_provided"
+
+
+def test_ballot_context_annotation_leaves_other_agent_types_unchanged():
+    result = {
+        "ok": True,
+        "data": {"agent": {"agent_type": "hyperliquid"}},
+    }
+
+    assert annotate_ballot_context_availability(result) == result
 
 
 def test_extract_current_agent_ref_ignores_context_chain_id_by_default():

@@ -50,6 +50,7 @@ from app.runtime.chat_behavior import (
 from app.runtime.marketplace_ai import (
     MarketplaceComputeQueries,
     MarketplaceViewerContext,
+    annotate_ballot_context_availability,
     current_agent_missing_result,
     extract_current_agent_ref,
     marketplace_unavailable,
@@ -319,12 +320,16 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     " substitute viewer wallet activity or"
                     " viewer shares for Agent trades or positions. For a ballot Agent,"
                     " use retrieved Ballot knowledge for stable mechanisms and context"
-                    " only for dynamic facts. If a field is absent, say 'not provided' or"
+                    " only for dynamic facts. Cover every aspect asked; when several"
+                    " dynamic fields are requested, state availability for each. If a"
+                    " field is absent, say 'not provided' or"
                     " '未提供', never none, unconfigured, or a default. Do not apply a"
                     " trading-Agent exchangeRate yield model to ballot without typed"
                     " support. Non-custodial wallet signing does not prove that"
                     " contract-held principal cannot move under contract or executor"
-                    " permissions. Do not invent a generic strategy or value, and never answer"
+                    " permissions. Do not invent proposal steps, alternative vote"
+                    " models, future enablement, or project-wallet affiliation from an"
+                    " is_creator flag. Do not invent a generic strategy or value, and never answer"
                     " with the assistant's own holdings, strategy, or creator. For past"
                     " performance, add that it does not guarantee future results. Do not"
                     " urge the user to Mint or participate."
@@ -374,7 +379,11 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         raise ModelRetry(
             "Revise the final answer. Remove these claims because the typed "
             "current-Agent context does not support them: "
-            + ("; ".join(violations) if violations else "none")
+            + (
+                "; ".join(_violation_feedback(item) for item in violations)
+                if violations
+                else "none"
+            )
             + ". Include these approved platform-mechanism facts that were omitted: "
             + ("; ".join(missing_mechanism_facts) if missing_mechanism_facts else "none")
             + ". Keep the exact returned lock, claim, settlement-required, fee-type, "
@@ -405,6 +414,9 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         if exhausted is not None:
             return exhausted
         effective_query = str(query or "").strip() or _query_from_prompt(ctx.prompt)
+        effective_query = _knowledge_query_for_context(
+            effective_query, ctx.deps.marketplace_context_result
+        )
         return await ctx.deps.retriever.retrieve(
             effective_query, ctx.deps.retrieval_top_k
         )
@@ -489,6 +501,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             reports_limit=reports_limit,
             include_raw=include_raw,
         )
+        result = annotate_ballot_context_availability(result)
         ctx.deps.marketplace_context_result = result
         return result
 
@@ -627,6 +640,43 @@ def _unsupported_ballot_claims(output: str) -> list[str]:
     return violations
 
 
+def _violation_feedback(violation: str) -> str:
+    details = {
+        "ballot_missing_value_as_absent": (
+            "ballot missing value was stated as absent; replace no, none, or "
+            "unconfigured with the exact wording 'not provided' or '未提供'"
+        ),
+        "ballot_default_voting_rule": (
+            "a default Ballot voting rule was invented; say the exact current rule "
+            "is not provided"
+        ),
+        "ballot_exchange_rate_yield": (
+            "a trading-Agent exchangeRate yield mechanism was applied to Ballot"
+        ),
+        "ballot_contract_signature_overclaim": (
+            "wallet signature safety was incorrectly extended to contract-held principal"
+        ),
+    }
+    return details.get(violation, violation)
+
+
+def _knowledge_query_for_context(
+    query: str, context_result: dict[str, Any] | None
+) -> str:
+    """Qualify Ballot retrieval by typed Agent type, never by an Agent id."""
+    payload = context_result.get("data") if isinstance(context_result, dict) else None
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    if (
+        isinstance(agent, dict)
+        and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
+    ):
+        return (
+            "Governance Ballot stable platform mechanism for the current Agent: "
+            f"{query}"
+        )
+    return query
+
+
 def _missing_approved_mechanism_facts(prompt: str, output: str) -> list[str]:
     """Require core approved Mint mechanics without pinning Agent-specific values."""
     question = str(prompt or "").casefold()
@@ -722,7 +772,12 @@ def _force_required_tool_call(
             parts=[
                 ToolCallPart(
                     tool_name=TOOL_SEARCH_KNOWLEDGE,
-                    args={"query": _query_from_prompt(ctx.prompt)},
+                    args={
+                        "query": _knowledge_query_for_context(
+                            _query_from_prompt(ctx.prompt),
+                            ctx.deps.marketplace_context_result,
+                        )
+                    },
                 )
             ],
         )
