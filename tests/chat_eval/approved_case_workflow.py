@@ -849,7 +849,7 @@ _MISSING_FACT_PATTERNS = (
         re.I,
     ),
     re.compile(
-        r"\bno\b(?: current)?\s+(?:positions?|holdings?|holders?|shares?|trades?|"
+        r"\bno\s+(?:(?:current|open)\s+)?(?:positions?|holdings?|holders?|shares?|trades?|"
         r"reports?|activities|activity)\b",
         re.I,
     ),

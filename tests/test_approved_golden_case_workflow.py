@@ -374,6 +374,7 @@ def test_report_treats_explicit_zero_position_and_holder_states_as_missing_data(
 
     for answer in (
         "There are no current positions or live activities.",
+        "There are no open positions or holdings.",
         "目前没有任何持有者，因此不存在 Top Holder。",
     ):
         report = build_optimization_report(cases, _live_report(answer))

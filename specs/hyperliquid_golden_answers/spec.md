@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001
 module: hyperliquid_golden_answers
-status: draft
+status: implemented
 workflow_class: HARNESS-SPEC-FIRST-FEATURE
 ---
 
@@ -23,8 +23,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   required fact groups and forbidden claims using the same deterministic
   matching contract as static hard facts. Approved missing-data alternatives
   recognize equivalent explicit wording such as not disclosed, not returned,
-  unavailable, 未披露, 未返回, and no-current-data states. An explicitly negated
-  affirmative forbidden claim is not treated as an assertion, while forbidden
+  unavailable, 未披露, 未返回, and no-current-data states. An explicit zero-state
+  phrase such as no current/open positions is also accepted. An explicitly
+  negated affirmative forbidden claim is not treated as an assertion, while forbidden
   claims that themselves describe a negative state retain exact-match behavior.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R4`: for a current-Agent detail-page turn,
   the answer chain obtains current Agent context before using fixed platform
@@ -114,7 +115,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
    truth input contract.
 4. Implement the minimal orchestration and prompt changes without hardcoding a
    Hyperliquid Agent id, lock duration, fee rate, or Golden question string.
-5. Add a typed-context-scoped output validator with one correction attempt for
+5. Add a typed-context-scoped output validator with at most two correction attempts for
   unsupported dynamic claims that persisted after prompt instruction, including
   invented insurance, loss-absorbing, stop-loss, or loss-period fee mechanics.
 6. Run focused tests, full change verification, release verification, and record
@@ -122,4 +123,22 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 
 ## Closeout Evidence
 
-Pending implementation and verification.
+- The product-owner-approved Hyperliquid batch normalized to 36 bilingual cases
+  across strategy/performance, Marketplace mechanism, portfolio/holders, and
+  trust/safety coverage. The batch remains incremental rather than exhaustive.
+- Live acceptance against Hyperliquid Agent 26 passed 36/36 deterministic hard
+  checks and 36/36 semantic reviews, with zero release blockers, completion
+  blockers, pending reviews, or identified semantic gaps. The final evidence is
+  a 35-case unchanged full run plus the Q08 English targeted rerun after the
+  only intervening runtime change raised the bounded output-correction ceiling.
+- Stable approved Marketplace mechanisms were imported into a blue-green QnA
+  V3 knowledge base: 18/18 documents ingested successfully, targeted retrieval
+  returned the new Mint, copy-trading, loss-bearing, and holder-concentration
+  material, and the prior V2 knowledge base remains available for rollback.
+- The Marketplace current-Agent context endpoint was supplied by the upstream
+  service and validated in the live flow. Dynamic Agent facts remained in typed
+  context and were not copied into the fixed knowledge corpus.
+- Runtime commit `18892530add5304ca777f3bf6c5fe562a76bd6b8` passed the project
+  release gate, was deployed on DockerHost with QnA V3 selected, and returned
+  healthy and ready probes. The remaining zero-position evaluator correction is
+  behavior-neutral and is verified by the focused evaluator suite.
