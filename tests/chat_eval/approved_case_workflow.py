@@ -60,7 +60,7 @@ _BALLOT_DYNAMIC_FIELD_TERMS = {
         "reward_source_summary", "reward source summary", "奖励来源摘要", "奖励来源"
     ],
     "snapshot_timing_rule": [
-        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照的具体时间规则", "快照时点"
+        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照的具体时间规则", "快照的具体时机规则", "快照时点"
     ],
     "vote_change_rule": ["vote_change_rule", "vote change rule", "投票修改规则"],
     "vote_cost_note": ["vote_cost_note", "vote cost note", "投票费用", "gas"],
