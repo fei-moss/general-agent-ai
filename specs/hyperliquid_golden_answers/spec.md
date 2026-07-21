@@ -50,7 +50,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   configuration is returned, unsupported fee cadence, collection, unreturned
   fee status, settlement mechanics, or claim-ordering assertions trigger one
   bounded internal output correction. Invalid text and retry instructions are
-  not emitted as the user-facing answer.
+  not emitted as the user-facing answer. Current-Agent final text is buffered
+  until output validation accepts it; other turns retain incremental streaming.
 
 ### Invariants
 

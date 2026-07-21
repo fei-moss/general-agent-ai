@@ -396,6 +396,7 @@ class AgentOrchestrator:
         message_history = _to_message_history(history)
         emitted_chunks: list[str] = []
         llm_started = False
+        defer_output_until_validated = _defer_output_until_validated(run_context)
         quota_decision = await self._acquire_provider_quota(
             agent_run_id,
             user_message,
@@ -420,6 +421,7 @@ class AgentOrchestrator:
                             llm_started,
                             emitted_chunks,
                             target_language,
+                            defer_output_until_validated,
                         )
                     elif Agent.is_call_tools_node(node):
                         await self._handle_tool_calls(
@@ -572,6 +574,7 @@ class AgentOrchestrator:
         llm_started: bool,
         emitted_chunks: list[str],
         target_language: str,
+        defer_output_until_validated: bool = False,
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
         aggregator = TokenAggregator()
@@ -587,6 +590,10 @@ class AgentOrchestrator:
                     final_found = True
                     break
             if final_found:
+                if defer_output_until_validated:
+                    async for _token in request_stream.stream_text(delta=True):
+                        pass
+                    return llm_started
                 async for token in request_stream.stream_text(delta=True):
                     if token:
                         safe_chunk = guardrail.push(token)
@@ -1065,6 +1072,15 @@ def _with_marketplace_context_turn_policy(run_context: dict[str, Any]) -> dict[s
     )
     context["turn_policy"] = turn_policy
     return context
+
+
+def _defer_output_until_validated(run_context: dict[str, Any]) -> bool:
+    """Buffer current-Agent final text so rejected drafts never reach SSE clients."""
+    turn_policy = run_context.get("turn_policy") or {}
+    return (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("intent") == "current_agent_question"
+    )
 
 
 def _plan_metadata(settings: Any, metadata: dict[str, Any]) -> dict[str, Any]:
