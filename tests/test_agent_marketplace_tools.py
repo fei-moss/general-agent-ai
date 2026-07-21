@@ -180,6 +180,7 @@ def test_ballot_fixed_apy_accrual_requires_basis_and_enforcement():
     assert "annualized rate/年化" in missing
     assert "rate set and disclosed at launch/费率在发起时设定并公开" in missing
     assert "contract enforcement/合约执行" in missing
+    assert "accrual display location availability/累积展示位置可用性" in missing
 
 
 def test_ballot_airdrop_claim_requires_complete_redemption_bundle():
@@ -212,6 +213,27 @@ def test_ballot_exit_answer_requires_complete_redemption_bundle():
 
     assert "principal returned at Redeem/赎回本金" in missing
     assert "fixed yield delivered at Redeem/赎回固定收益" in missing
+
+
+def test_ballot_vote_how_to_requires_cost_availability():
+    missing = _missing_approved_mechanism_facts(
+        "How do I vote? Can I change my vote?",
+        "Choose on the proposal page, sign, and check the vote change rule.",
+        agent_type="ballot",
+    )
+
+    assert "vote cost or gas availability/投票费用或 Gas 可用性" in missing
+
+
+def test_ballot_payout_token_answer_requires_redeem_and_display_availability():
+    missing = _missing_approved_mechanism_facts(
+        "What tokens are the yield and airdrops paid in?",
+        "Yield denomination and airdrop token are not provided.",
+        agent_type="ballot",
+    )
+
+    assert "claim at Redeem/在 Redeem 时领取" in missing
+    assert "accrual display location availability/累积展示位置可用性" in missing
 
 
 async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():

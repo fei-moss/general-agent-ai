@@ -704,9 +704,11 @@ def _violation_feedback(violation: str) -> str:
             "wallet signature safety was incorrectly extended to contract-held principal"
         ),
         "ballot_redeem_vote_rule_invented": (
-            "the current Agent does not provide redeem_during_vote_rule; do not say "
-            "whether Redeeming preserves or invalidates a vote, and state that the "
-            "specific interaction is not provided"
+            "the current Agent does not provide redeem_during_vote_rule; delete every "
+            "sentence that says or implies Redeeming preserves, invalidates, changes, "
+            "or does not change a vote. Do not apply the general snapshot mechanism "
+            "to answer this Redeem interaction. State only that either outcome is "
+            "unknown because the specific interaction rule is not provided"
         ),
     }
     return details.get(violation, violation)
@@ -827,6 +829,7 @@ def _missing_approved_mechanism_facts(
             ("annualized rate/年化", ("annualized", "per year", "年化")),
             ("rate set and disclosed at launch/费率在发起时设定并公开", ("set and disclosed at launch", "发起时设定并公开")),
             ("contract enforcement/合约执行", ("enforced by contract", "由合约执行", "合约执行")),
+            ("accrual display location availability/累积展示位置可用性", ("accrual display", "display location", "展示位置", "累积明细")),
         )
         return [label for label, terms in required if not has(*terms)]
 
@@ -840,14 +843,19 @@ def _missing_approved_mechanism_facts(
         or ("赎回" in question and "损失" in question)
     )
     if agent_type == "ballot" and (airdrop_claim_question or exit_rewards_question):
+        missing: list[str] = []
+        if not (
+            has("hold", "holding", "持有") and has("accrue", "accumulate", "累积")
+        ):
+            missing.append("airdrop accrues while held/空投在持有期间累积")
         required = (
-            ("airdrop accrues while held/空投在持有期间累积", ("accrue while you hold", "accrue while shares are held", "持有期间持续累积", "持有份额期间累积")),
-            ("claim at Redeem/在 Redeem 时领取", ("claimed at redeem", "at redeem", "redeem 时", "赎回时")),
+            ("claim at Redeem/在 Redeem 时领取", ("redeem", "redemption", "赎回")),
             ("principal returned at Redeem/赎回本金", ("principal", "本金")),
             ("fixed yield delivered at Redeem/赎回固定收益", ("fixed yield", "fixed apy", "固定收益")),
             ("airdrops delivered at Redeem/赎回空投", ("airdrop", "空投")),
         )
-        return [label for label, terms in required if not has(*terms)]
+        missing.extend(label for label, terms in required if not has(*terms))
+        return missing
 
     reward_sustainability_question = bool(
         ("reward" in question or "收益" in question or "空投" in question)
@@ -858,6 +866,33 @@ def _missing_approved_mechanism_facts(
             ("reward source availability/奖励来源可用性", ("reward source", "收益来源", "奖励来源", "来源")),
             ("contract-governed reward rules/奖励规则由合约执行", ("contract", "合约")),
             ("sustainability cannot be confirmed without source data/缺少来源数据无法确认可持续性", ("sustainability", "sustainable", "可持续性", "持续")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    vote_how_to_question = bool(
+        ("vote" in question or "投票" in question)
+        and ("how" in question or "怎么" in question or "如何" in question)
+    )
+    if agent_type == "ballot" and vote_how_to_question:
+        required = (
+            ("proposal page/提案页面", ("proposal page", "提案页", "提案页面")),
+            ("wallet signature/钱包签名", ("sign", "signature", "签名")),
+            ("vote change rule availability/改票规则可用性", ("vote change", "change rule", "改票", "更改投票", "修改投票")),
+            ("vote cost or gas availability/投票费用或 Gas 可用性", ("vote cost", "gas", "投票费用", "投票成本")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    payout_token_question = bool(
+        ("yield" in question or "收益" in question)
+        and ("airdrop" in question or "空投" in question)
+        and ("token" in question or "代币" in question)
+    )
+    if agent_type == "ballot" and payout_token_question:
+        required = (
+            ("yield denomination availability/收益计价币种可用性", ("yield denomination", "收益计价", "收益代币", "收益发放代币")),
+            ("airdrop token availability/空投代币可用性", ("airdrop token", "空投代币", "空投发放代币")),
+            ("claim at Redeem/在 Redeem 时领取", ("redeem", "redemption", "赎回")),
+            ("accrual display location availability/累积展示位置可用性", ("accrual display", "display location", "展示位置", "累积明细")),
         )
         return [label for label, terms in required if not has(*terms)]
 

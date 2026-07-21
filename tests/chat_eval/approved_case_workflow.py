@@ -40,7 +40,9 @@ _BALLOT_DYNAMIC_FIELD_TERMS = {
     "early_redeem_rule": ["early_redeem_rule", "early redeem rule", "提前赎回规则"],
     "execution_rule": ["execution_rule", "execution rule", "执行规则", "执行机制"],
     "fixed_apy": ["fixed_apy", "fixed apy", "固定 apy", "固定收益率"],
-    "gov_reward_detail": ["gov_reward_detail", "gov reward detail", "治理奖励细节", "奖励详情"],
+    "gov_reward_detail": [
+        "gov_reward_detail", "gov reward detail", "governance reward detail", "治理奖励细节", "奖励详情"
+    ],
     "governance_rewards_rule": [
         "governance_rewards_rule", "governance rewards rule", "治理奖励规则"
     ],
@@ -58,7 +60,7 @@ _BALLOT_DYNAMIC_FIELD_TERMS = {
         "reward_source_summary", "reward source summary", "奖励来源摘要", "奖励来源"
     ],
     "snapshot_timing_rule": [
-        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照时点"
+        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照的具体时间规则", "快照时点"
     ],
     "vote_change_rule": ["vote_change_rule", "vote change rule", "投票修改规则"],
     "vote_cost_note": ["vote_cost_note", "vote cost note", "投票费用", "gas"],

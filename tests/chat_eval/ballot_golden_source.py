@@ -58,7 +58,7 @@ _RISKS = {
     18: "high",
 }
 _STABLE_FACT_TERMS = {
-    1: {"zh": [["治理 agent", "治理 Agent", "Governance（Ballot）", "Ballot（治理"], ["治理投票"], ["项目动态", "项目更新"]], "en": [["governance agent"], ["governance"], ["updates"]]},
+    1: {"zh": [["治理 agent", "治理 Agent", "Governance（Ballot）", "Governance Agent（Ballot", "Governance (Ballot)", "Ballot（治理"], ["治理投票"], ["项目动态", "项目更新"]], "en": [["governance agent"], ["governance"], ["updates"]]},
     2: {"zh": [["固定收益率", "固定 APY", "固定收益"], ["空投"], ["治理投票权", "治理投票"]], "en": [["fixed APY"], ["Airdrop"], ["Governance voting power", "governance voting"]]},
     3: {"zh": [["价格敞口"], ["治理参与", "治理入口"], ["链上可验证", "链上验证"]], "en": [["price exposure", "price risk"], ["governance"], ["verifiable onchain", "on-chain verifiable"]]},
     4: {"zh": [["份额规模", "份额数量"], ["持有时长", "持有期间"], ["年化"]], "en": [["share size", "share balance"], ["holding duration", "holding period"], ["annualized", "per year"]]},
@@ -66,7 +66,7 @@ _STABLE_FACT_TERMS = {
     6: {"zh": [["持有期间持续累积", "持有份额期间累积"], ["Redeem", "赎回"], ["本金"]], "en": [["accumulate while you hold", "accrue while you hold", "accrue while shares are held"], ["redeem"], ["Principal"]]},
     7: {"zh": [["提案"], ["持有者投票", "持有者", "份额门槛"]], "en": [["propose"], ["holders vote", "threshold holder", "shareholder"]]},
     8: {"zh": [["快照时点", "特定时间点", "特定区块或时间点"], ["份额"]], "en": [["snapshot"], ["shares", "share holdings"]]},
-    9: {"zh": [["持仓记录", "记录某一特定时间点上的份额持仓", "记录份额持仓"], ["资格与权重", "投票资格和权重"]], "en": [["record of holdings", "records each holder's share balance"], ["eligibility and weight", "voting eligibility and voting weight"]]},
+    9: {"zh": [["持仓记录", "记录某一特定时间点上的份额持仓", "记录份额持仓", "记录某个特定时间点上持有者的份额持仓"], ["资格与权重", "投票资格和权重"]], "en": [["record of holdings", "records each holder's share balance", "records share holdings"], ["eligibility and weight", "voting eligibility and voting weight"]]},
     10: {"zh": [["提案页", "提案页面", "Proposal（提案）页面"], ["签名提交", "钱包签名", "使用钱包签名"], ["上链可查", "可验证"]], "en": [["proposal page"], ["sign"], ["recorded onchain", "verifiable on-chain"]]},
     11: {"zh": [["治理"], ["奖励"]], "en": [["governance"], ["reward"]]},
     12: {"zh": [["执行机制", "执行方"]], "en": [["execution mechanism", "who executes", "executor"]]},
@@ -74,8 +74,8 @@ _STABLE_FACT_TERMS = {
     14: {"zh": [["智能合约托管", "合约托管", "智能合约持有"], ["本金"]], "en": [["smart contract", "contract itself", "Agent contract"], ["principal"]]},
     15: {"zh": [["快照"], ["Redeem", "赎回"]], "en": [["snapshot"], ["redeem"]]},
     16: {"zh": [["发起时设定"], ["合约执行", "由合约执行"]], "en": [["set and disclosed at launch"], ["enforced by contract"]]},
-    17: {"zh": [["固定收益"], ["空投"], ["Redeem", "赎回"]], "en": [["Fixed yield"], ["airdrops"], ["redemption", "Redeem"]]},
-    18: {"zh": [["Top holders", "Top 5 持有人", "持有人"], ["钱包占比", "占比", "%"], ["权力分布", "投票权重", "治理权重"]], "en": [["Top holders", "top holder", "holder"], ["stake", "% of supply", "share distribution"], ["power distribution", "voting weight", "voting influence"]]},
+    17: {"zh": [["固定收益"], ["空投"], ["Redeem", "赎回"]], "en": [["Fixed yield", "fixed APY"], ["airdrops"], ["redemption", "Redeem"]]},
+    18: {"zh": [["Top holders", "Top 5 持有人", "持有人"], ["钱包占比", "占比", "%"], ["权力分布", "投票权重", "治理权重"]], "en": [["Top holders", "top holder", "holder"], ["stake", "% of supply", "share distribution", "share holdings", "%"], ["power distribution", "voting weight", "voting influence"]]},
 }
 _FORBIDDEN = {
     5: {"zh": ["保证长期可持续"], "en": ["guarantee long-term sustainability"]},
