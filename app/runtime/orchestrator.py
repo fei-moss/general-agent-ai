@@ -60,7 +60,7 @@ from app.runtime.chat_behavior import (
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
-from app.runtime.marketplace_ai import MarketplaceViewerContext
+from app.runtime.marketplace_ai import MarketplaceViewerContext, extract_current_agent_ref
 from app.runtime.provider_limits import (
     ProviderLimitDecision,
     ProviderLimitRequest,
@@ -276,6 +276,10 @@ class AgentOrchestrator:
                 )
             elif is_marketplace_compute_request(user_message):
                 effective_run_context = _with_marketplace_compute_turn_policy(
+                    effective_run_context
+                )
+            elif extract_current_agent_ref(effective_run_context) is not None:
+                effective_run_context = _with_marketplace_context_turn_policy(
                     effective_run_context
                 )
             return await self._execute(
@@ -1110,6 +1114,22 @@ def _with_marketplace_compute_turn_policy(run_context: dict[str, Any]) -> dict[s
             "intent": "marketplace_compute_metric",
             "tool_use": "marketplace_compute_only",
             "reason": "dynamic marketplace metric requires ai-compute",
+        }
+    )
+    context["turn_policy"] = turn_policy
+    return context
+
+
+def _with_marketplace_context_turn_policy(run_context: dict[str, Any]) -> dict[str, Any]:
+    """Return a server-owned context copy that resolves current-Agent facts first."""
+    context = dict(run_context)
+    existing = context.get("turn_policy")
+    turn_policy = dict(existing) if isinstance(existing, dict) else {}
+    turn_policy.update(
+        {
+            "intent": "current_agent_question",
+            "tool_use": "marketplace_context_first",
+            "reason": "current Agent facts require current configuration context",
         }
     )
     context["turn_policy"] = turn_policy

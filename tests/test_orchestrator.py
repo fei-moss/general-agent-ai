@@ -270,7 +270,7 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
 
     assert plan["knowledge_base_id"] == "kb_internal"
     assert plan["metadata"] == {"mode": "realtime"}
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v3"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v4"
     assert plan["target_language"] == "zh-Hans"
 
 
@@ -579,7 +579,7 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v3"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v4"
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert plan["guardrail"]["category"] in {
@@ -679,7 +679,7 @@ async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v3"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v4"
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert "policy_version" not in plan["metadata"]
@@ -688,6 +688,33 @@ async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     assert "disable_language_guardrail" not in plan["metadata"]
     assert "disable_guardrails" not in plan["metadata"]
     assert "guardrail" not in plan["metadata"]
+
+
+async def test_current_agent_question_records_context_first_turn_policy(deps):
+    runtime, _bus, _message_repo, run_repo = deps
+    orchestrator = AgentOrchestrator(runtime, agent=build_agent(build_mock_model()))
+
+    await orchestrator.run(
+        agent_run_id="run-current-agent-policy-1",
+        conversation_id="conv-current-agent-policy",
+        trace_id="trace-current-agent-policy",
+        user_message="你的费用怎么收？",
+        run_context={
+            "agent": {
+                "contract_address": "0x1111111111111111111111111111111111111111"
+            }
+        },
+    )
+
+    plan_calls = [
+        args[2]
+        for name, args in run_repo.calls
+        if name == "mark_running_with_plan"
+    ]
+    assert plan_calls
+    turn_policy = plan_calls[0]["run_context"]["turn_policy"]
+    assert turn_policy["intent"] == "current_agent_question"
+    assert turn_policy["tool_use"] == "marketplace_context_first"
 
 
 async def test_guardrail_refusal_skips_provider_limiter_for_real_provider(deps):

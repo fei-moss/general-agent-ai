@@ -16,7 +16,7 @@ import re
 POLICY_SPEC_ID = "SPEC-CHAT-BEHAVIOR-POLICY-001"
 POSITIONING_SPEC_ID = "SPEC-AGENT-POSITIONING-POLICY-001"
 LANGUAGE_SPEC_ID = "SPEC-CHAT-LANGUAGE-CONSISTENCY-001"
-POLICY_VERSION = f"{POLICY_SPEC_ID}/v3"
+POLICY_VERSION = f"{POLICY_SPEC_ID}/v4"
 TARGET_LANGUAGE_ZH_HANS = "zh-Hans"
 TARGET_LANGUAGE_EN = "en"
 TARGET_LANGUAGE_UNKNOWN = "unknown"
@@ -107,15 +107,14 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "面向用户的产品能力。纯身份或能力范围问题不是数据查询,应直接回答,不要调用工具;"
         "只有用户明确询问当前 Agent 的具体字段、指标、报告或 Live Activities 时才使用"
         " Marketplace 工具。",
-        "只基于当前 Agent 的 Metadata、合约参数、链上历史数据、Top Holders、"
-        "Agent Live Activities 和固定平台机制知识回答,不要超出详情页已展示范围。",
-        "当前 Agent 的基础信息、概览指标、最近报告和动态计算指标优先来自 Marketplace 工具结果。",
-        "涉及 Agent Live Activities 时只能做转述 + 总结,不能在 ACTION、THINK、RESULT "
-        "记录之外添加自己的动机、原因或市场推断。",
-        "Marketplace 返回 unsupported、insufficient_data、not_found、unavailable、invalid_request "
-        "或 error 时,必须按状态说明不支持、数据不足、未找到或暂不可用,不要编造数字。",
-        "不知道、数据缺失、权限不足或证据不足时如实说明,例如说明暂时无法获取该数据,不要编造数字。",
-        "涉及事实性 Agent 或平台机制信息时优先使用 search_knowledge,检索不到时说明不确定性。",
+        "只基于当前 Agent 的 Metadata、合约参数、链上历史、Top Holders、Agent Live Activities 和固定机制回答。"
+        "For current Agent facts, the current Agent configuration and tool result override generic platform documentation or a static example answer.",
+        "第一人称的你、your 或当前 Agent 指详情页 Agent,不是助理或查看者。Never substitute viewer wallet shares,"
+        " Mint/Redeem history, or viewer wallet activity for the Agent's identity, positions, trades, or strategy.",
+        "退出或赎回按当前配置说明 redemption lock and claim flow;只有配置明确无锁定时才能说随时赎回。"
+        "费用必须列出当前 fee names and rates,并区分 Mint/Redeem Fee、Management Fee 和 Profit Share。",
+        "缺失、unsupported、insufficient_data、not_found、unavailable、invalid_request 或 error 均如实说明。"
+        "不要编造策略、数值或动机;Agent Live Activities 只能做转述 + 总结 ACTION、THINK、RESULT 记录。",
         "当固定平台机制 FAQ 明确未覆盖某个问题时,只说明 FAQ V1 未覆盖和需要 PM 或平台文档补充,"
         "不要再添加非官方的一般性解释、风控猜测或协议机制推断。",
         "当用户询问 proxy_payload 或 chain_id 传递规则时,按当前系统接口规则回答:"

@@ -233,6 +233,61 @@ async def test_compute_turn_policy_exposes_only_marketplace_compute_tool():
     assert seen_tool_names == [[TOOL_MARKETPLACE_AGENT_COMPUTE]]
 
 
+async def test_current_agent_turn_policy_requires_context_tool_first():
+    seen_tool_names: list[list[str]] = []
+
+    def function(_messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            }
+        },
+    )
+
+    await agent.run("What fees do you charge?", deps=deps)
+
+    assert seen_tool_names == [[TOOL_MARKETPLACE_AGENT_CONTEXT]]
+
+
+async def test_agent_injects_current_agent_fact_precedence_instruction():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            }
+        },
+    )
+
+    await agent.run("How do I exit?", deps=deps)
+
+    serialized = repr(seen_messages)
+    assert "marketplace_agent_context before answering" in serialized
+    assert "redemption lock and claim flow" in serialized
+    assert "fee names and rates" in serialized
+    assert "viewer wallet activity" in serialized
+    assert "lock_period_seconds" in serialized
+    assert "rate_bps" in serialized
+    assert "preserve the returned fee_type" in serialized
+
+
 async def test_agent_injects_compute_turn_policy_instruction():
     seen_messages: list[Any] = []
 
