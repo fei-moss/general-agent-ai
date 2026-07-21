@@ -247,7 +247,7 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
                 TextPart(
                     content=(
                         "After minting there is a lock. The search didn't return a "
-                        "direct answer, so let me search again."
+                        "direct answer, so let me search again. Mint 后需经过锁定期。"
                     )
                 )
             ]
@@ -271,6 +271,7 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
 
     assert calls == 3
     assert "after minting there is a lock" in retry_feedback[0]
+    assert "mint 后需经过" in retry_feedback[0]
     assert "the search didn't return" in retry_feedback[0]
     assert "let me search" in retry_feedback[0]
     assert "wallet" in retry_feedback[0]

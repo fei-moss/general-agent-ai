@@ -163,6 +163,8 @@ _UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS = (
     "mint 后存在一个",
     "mint 后进入锁定期",
     "mint 后有锁定期",
+    "mint 后需经过",
+    "等待锁定期过后可 redeem",
 )
 _INCOMPLETE_TOOL_NARRATION_CLAIMS = (
     "the search didn't return",
