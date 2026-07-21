@@ -23,6 +23,14 @@ _ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 _MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
 _MAX_REPORTS_LIMIT = 20
 _MAX_QUERIES = 10
+BALLOT_DYNAMIC_CONTEXT_FIELDS = (
+    "accrual_display_location", "airdrop_token", "concentration_note",
+    "early_redeem_rule", "execution_rule", "fixed_apy", "gov_reward_detail",
+    "governance_rewards_rule", "project_name", "project_token",
+    "proposal_creation_rule", "proposal_display_location", "proposal_threshold",
+    "redeem_during_vote_rule", "reward_source_summary", "snapshot_timing_rule",
+    "vote_change_rule", "vote_cost_note", "voting_power_rule", "yield_denomination",
+)
 
 MarketplaceComputeMetric = Literal[
     "share_price_change",
@@ -342,6 +350,32 @@ def build_marketplace_ai_client(settings: Settings) -> MarketplaceAIClient:
         getattr(settings, "marketplace_ai_base_url", ""),
         timeout_s=float(getattr(settings, "marketplace_ai_timeout_s", 8.0)),
     )
+
+
+def annotate_ballot_context_availability(result: dict[str, Any]) -> dict[str, Any]:
+    """Add typed Ballot availability without inventing missing values."""
+    payload = result.get("data") if isinstance(result, dict) else None
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    if not (
+        result.get("ok") is True
+        and isinstance(agent, dict)
+        and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
+    ):
+        return result
+    direct = {
+        "project_name": (agent.get("name"), "agent.name"),
+        "project_token": (agent.get("accept_token_symbol"), "agent.accept_token_symbol"),
+    }
+    typed: dict[str, dict[str, Any]] = {}
+    for field in BALLOT_DYNAMIC_CONTEXT_FIELDS:
+        value, source = direct.get(field, (None, "marketplace_agent_context"))
+        available = value is not None and bool(str(value).strip())
+        typed[field] = {
+            "availability": "available" if available else "not_provided",
+            "value": value if available else None,
+            "source": source,
+        }
+    return {**result, "data": {**payload, "ballot_governance": typed}}
 
 
 def _viewer_headers(context: MarketplaceViewerContext) -> dict[str, str]:

@@ -211,7 +211,18 @@ async def run_orchestration(
         run_context=run_context,
         marketplace_viewer_context=viewer_context,
     )
-    return {"content": answer, "intent": None}
+    if answer in {_FATAL_ANSWER, _OUTPUT_TRUNCATED_ANSWER}:
+        return {
+            "content": answer,
+            "intent": None,
+            "status": RunStatus.FAILED.value,
+            "error": "ORCHESTRATION_FAILED",
+        }
+    return {
+        "content": answer,
+        "intent": None,
+        "status": RunStatus.SUCCEEDED.value,
+    }
 
 
 class AgentOrchestrator:

@@ -50,6 +50,7 @@ from app.runtime.chat_behavior import (
 from app.runtime.marketplace_ai import (
     MarketplaceComputeQueries,
     MarketplaceViewerContext,
+    annotate_ballot_context_availability,
     current_agent_missing_result,
     extract_current_agent_ref,
     marketplace_unavailable,
@@ -187,6 +188,34 @@ _UNSUPPORTED_AGENT_NARRATIVE_CLAIMS = (
     "platform regularly generates agent reports",
     "平台会定期生成 agent 运行报告",
 )
+_BALLOT_ABSENCE_INFERENCE_PATTERNS = (
+    re.compile(
+        r"(?:does not have|doesn't have|has no|no)\s+(?:a\s+)?(?:fixed apy|"
+        r"governance rewards?|voting rewards?)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:fixed apy|governance rewards?|voting rewards?).{0,32}"
+        r"(?:does not exist|is not configured|are not configured)",
+        re.I,
+    ),
+    re.compile(r"(?:没有|未配置|不存在).{0,20}(?:固定收益|治理奖励|投票奖励)"),
+)
+_BALLOT_DEFAULT_VOTING_RULE = re.compile(
+    r"default.{0,24}(?:share[- ]weighted|voting).{0,16}(?:applies|model)|"
+    r"默认.{0,20}(?:按份额加权|一份一票)",
+    re.I,
+)
+_BALLOT_EXCHANGE_RATE_YIELD = re.compile(
+    r"(?:yield|returns?|earnings?|收益).{0,96}(?:exchange\s*rate|份额单价)|"
+    r"(?:exchange\s*rate|份额单价).{0,96}(?:yield|returns?|earnings?|收益)",
+    re.I,
+)
+_BALLOT_CONTRACT_SIGNATURE_OVERCLAIM = re.compile(
+    r"no one.{0,80}(?:transfer|freeze).{0,80}without your signature|"
+    r"没有任何人.{0,80}(?:转移|冻结).{0,80}(?:不签名|未签名|没有签名)",
+    re.I,
+)
 
 
 @dataclass
@@ -289,9 +318,25 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     " not returned. settlement_required is only a boolean: do not claim"
                     " settlement closes positions or explain how it works. Never"
                     " substitute viewer wallet activity or"
-                    " viewer shares for Agent trades or positions. If a field is absent,"
-                    " name the requested field and explicitly say 'not provided' or"
-                    " '未提供'; do not invent a generic strategy or value, and never answer"
+                    " viewer shares for Agent trades or positions. For a ballot Agent,"
+                    " use retrieved Ballot knowledge for stable mechanisms and context"
+                    " only for dynamic facts. Cover every aspect asked; when several"
+                    " dynamic fields are requested, state availability for each. If a"
+                    " field is absent, say 'not provided' or"
+                    " '未提供', never none, unconfigured, or a default. Do not apply a"
+                    " trading-Agent exchangeRate yield model to ballot without typed"
+                    " support. When redeem_during_vote_rule is not provided, do not"
+                    " infer from the snapshot mechanism whether Redeeming preserves or"
+                    " invalidates a vote; the only supported conclusion is that this"
+                    " interaction is unknown. A direct-token comparison must cover"
+                    " price exposure, fixed-APY accrual, airdrops, governance, project"
+                    " updates, and contract/onchain verification. A principal-safety"
+                    " answer must name the returned current project token."
+                    " Non-custodial wallet signing does not prove that"
+                    " contract-held principal cannot move under contract or executor"
+                    " permissions. Do not invent proposal steps, alternative vote"
+                    " models, future enablement, or project-wallet affiliation from an"
+                    " is_creator flag. Do not invent a generic strategy or value, and never answer"
                     " with the assistant's own holdings, strategy, or creator. For past"
                     " performance, add that it does not guarantee future results. Do not"
                     " urge the user to Mint or participate."
@@ -334,14 +379,25 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             ctx.deps.marketplace_context_result,
         )
         missing_mechanism_facts = _missing_approved_mechanism_facts(
-            _query_from_prompt(ctx.prompt), output
+            _query_from_prompt(ctx.prompt),
+            output,
+            agent_type=_agent_type(ctx.deps.marketplace_context_result),
         )
         if not violations and not missing_mechanism_facts:
             return output
+        if (
+            violations == ["ballot_redeem_vote_rule_invented"]
+            and not missing_mechanism_facts
+        ):
+            return _safe_ballot_redeem_vote_unknown(_query_from_prompt(ctx.prompt))
         raise ModelRetry(
             "Revise the final answer. Remove these claims because the typed "
             "current-Agent context does not support them: "
-            + ("; ".join(violations) if violations else "none")
+            + (
+                "; ".join(_violation_feedback(item) for item in violations)
+                if violations
+                else "none"
+            )
             + ". Include these approved platform-mechanism facts that were omitted: "
             + ("; ".join(missing_mechanism_facts) if missing_mechanism_facts else "none")
             + ". Keep the exact returned lock, claim, settlement-required, fee-type, "
@@ -372,6 +428,9 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         if exhausted is not None:
             return exhausted
         effective_query = str(query or "").strip() or _query_from_prompt(ctx.prompt)
+        effective_query = _knowledge_query_for_context(
+            effective_query, ctx.deps.marketplace_context_result
+        )
         return await ctx.deps.retriever.retrieve(
             effective_query, ctx.deps.retrieval_top_k
         )
@@ -456,6 +515,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             reports_limit=reports_limit,
             include_raw=include_raw,
         )
+        result = annotate_ballot_context_availability(result)
         ctx.deps.marketplace_context_result = result
         return result
 
@@ -555,6 +615,14 @@ def _unsupported_dynamic_claims(
     violations.extend(
         claim for claim in _INCOMPLETE_TOOL_NARRATION_CLAIMS if claim in normalized
     )
+    agent = payload.get("agent")
+    if (
+        isinstance(agent, dict)
+        and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
+    ):
+        violations.extend(
+            _unsupported_ballot_claims(output, payload.get("ballot_governance"))
+        )
     fee_schedule = payload.get("fee_schedule")
     if _typed_section_available(fee_schedule):
         violations.extend(
@@ -573,15 +641,284 @@ def _unsupported_dynamic_claims(
     return violations
 
 
-def _missing_approved_mechanism_facts(prompt: str, output: str) -> list[str]:
+def _unsupported_ballot_claims(
+    output: str, ballot_governance: Any = None
+) -> list[str]:
+    """Reject high-confidence Ballot inferences that typed context cannot support."""
+    text = str(output or "")
+    violations: list[str] = []
+    if any(pattern.search(text) for pattern in _BALLOT_ABSENCE_INFERENCE_PATTERNS):
+        violations.append("ballot_missing_value_as_absent")
+    if _BALLOT_DEFAULT_VOTING_RULE.search(text):
+        violations.append("ballot_default_voting_rule")
+    if _BALLOT_EXCHANGE_RATE_YIELD.search(text):
+        violations.append("ballot_exchange_rate_yield")
+    if _BALLOT_CONTRACT_SIGNATURE_OVERCLAIM.search(text):
+        violations.append("ballot_contract_signature_overclaim")
+    governance = ballot_governance if isinstance(ballot_governance, dict) else {}
+    redeem_vote_rule = governance.get("redeem_during_vote_rule")
+    if (
+        isinstance(redeem_vote_rule, dict)
+        and redeem_vote_rule.get("availability") == "not_provided"
+        and _asserts_redeem_does_not_affect_vote(text)
+    ):
+        violations.append("ballot_redeem_vote_rule_invented")
+    voting_power_rule = governance.get("voting_power_rule")
+    if (
+        isinstance(voting_power_rule, dict)
+        and voting_power_rule.get("availability") == "not_provided"
+        and _asserts_proportional_voting_rule(text)
+    ):
+        violations.append("ballot_proportional_voting_rule_invented")
+    return violations
+
+
+def _asserts_redeem_does_not_affect_vote(text: str) -> bool:
+    return bool(
+        re.search(
+            r"redeem(?:ing|ed)?\b.{0,80}(?:does not|doesn't|won't|will not)"
+            r".{0,40}(?:affect|invalidate|change).{0,32}\bvote",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"\bvote\b.{0,40}(?:remains? valid|is unaffected).{0,20}"
+            r"(?:after|by)\s+redeem",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"赎回.{0,48}(?:不会|不再).{0,32}(?:影响|应用|失效|撤销)"
+            r".{0,24}(?:票|投票)",
+            text,
+        )
+        or re.search(
+            r"(?:票|投票).{0,32}(?:仍然有效|不会因.{0,16}赎回.{0,16}失效|"
+            r"不受.{0,16}赎回.{0,16}影响)",
+            text,
+        )
+        or re.search(
+            r"redeem.{0,40}(?:不会|不影响|不再影响).{0,32}(?:票|投票|投票权重)",
+            text,
+            re.I,
+        )
+        or re.search(r"(?:票|投票).{0,16}(?:仍然算数|依然算数)", text)
+    )
+
+
+def _asserts_proportional_voting_rule(text: str) -> bool:
+    return bool(
+        re.search(
+            r"voting (?:power|rights?|weight) (?:(?:is|are) )?proportional to "
+            r"(?:your )?share(?:s| holdings)",
+            text,
+            re.I,
+        )
+        or re.search(r"(?:投票权|投票权重).{0,16}(?:与|按).{0,16}份额.{0,12}(?:成比例|对应)", text)
+    )
+
+
+def _violation_feedback(violation: str) -> str:
+    details = {
+        "ballot_missing_value_as_absent": (
+            "ballot missing value was stated as absent; replace no, none, or "
+            "unconfigured with the exact wording 'not provided' or '未提供'"
+        ),
+        "ballot_default_voting_rule": (
+            "a default Ballot voting rule was invented; say the exact current rule "
+            "is not provided"
+        ),
+        "ballot_exchange_rate_yield": (
+            "a trading-Agent exchangeRate yield mechanism was applied to Ballot"
+        ),
+        "ballot_contract_signature_overclaim": (
+            "wallet signature safety was incorrectly extended to contract-held principal"
+        ),
+        "ballot_redeem_vote_rule_invented": (
+            "the current Agent does not provide redeem_during_vote_rule; delete every "
+            "sentence that says or implies Redeeming preserves, invalidates, changes, "
+            "or does not change a vote. Do not apply the general snapshot mechanism "
+            "to answer this Redeem interaction. State only that either outcome is "
+            "unknown because the specific interaction rule is not provided"
+        ),
+        "ballot_proportional_voting_rule_invented": (
+            "the current Agent does not provide voting_power_rule; remove the claim "
+            "that voting power is proportional to shares and state that the exact "
+            "weighting rule is not provided"
+        ),
+    }
+    return details.get(violation, violation)
+
+
+def _safe_ballot_redeem_vote_unknown(prompt: str) -> str:
+    """Return a typed missing-rule fallback without inferring a vote outcome."""
+    if re.search(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", str(prompt or "")):
+        return (
+            "当前 Agent 的 `redeem_during_vote_rule`（投票期间赎回规则）未提供，"
+            "因此无法确认 Redeem 会保留还是使投票失效。治理快照会记录投票资格与"
+            "权重，但仅凭快照机制不能推断 Redeem 对已投票的影响；请以当前提案页"
+            "或后续返回的当前 Agent 配置为准。"
+        )
+    return (
+        "The current Agent's `redeem_during_vote_rule` is not provided, so I cannot "
+        "determine whether Redeeming preserves or invalidates a vote. A governance "
+        "snapshot records eligibility and weight, but the snapshot mechanism alone "
+        "does not determine the Redeem interaction; use the current proposal page or "
+        "a later current-Agent configuration if this rule is returned."
+    )
+
+
+def _knowledge_query_for_context(
+    query: str, context_result: dict[str, Any] | None
+) -> str:
+    """Qualify Ballot retrieval by typed Agent type, never by an Agent id."""
+    payload = context_result.get("data") if isinstance(context_result, dict) else None
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    if (
+        isinstance(agent, dict)
+        and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
+    ):
+        return (
+            "Governance Ballot stable platform mechanism for the current Agent: "
+            f"{query}"
+        )
+    return query
+
+
+def _agent_type(context_result: dict[str, Any] | None) -> str:
+    payload = context_result.get("data") if isinstance(context_result, dict) else None
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    return (
+        str(agent.get("agent_type") or "").strip().casefold()
+        if isinstance(agent, dict)
+        else ""
+    )
+
+
+def _missing_approved_mechanism_facts(
+    prompt: str, output: str, *, agent_type: str = ""
+) -> list[str]:
     """Require core approved Mint mechanics without pinning Agent-specific values."""
     question = str(prompt or "").casefold()
+    answer = str(output or "").casefold()
+
+    def has(*terms: str) -> bool:
+        return any(term.casefold() in answer for term in terms)
+
+    fixed_apy_change_question = bool(
+        ("fixed apy" in question or "固定收益率" in question)
+        and re.search(r"\b(?:change|changed|later|adjust)\b|以后.{0,8}(?:变|改)|会变|调整", question)
+    )
+    if agent_type == "ballot" and fixed_apy_change_question:
+        required_groups = (
+            (
+                "fixed APY is set and disclosed at launch/固定收益率在发起时设定并公开",
+                ("set and disclosed at launch", "set at launch", "发起时设定并公开"),
+            ),
+            (
+                "fixed APY is enforced by contract/固定收益率由合约执行",
+                ("enforced by contract", "contract-enforced", "由合约执行", "合约执行"),
+            ),
+            (
+                "fixed APY cannot be changed after the fact/固定收益率不能事后更改",
+                (
+                    "cannot be changed after the fact",
+                    "can't be changed after the fact",
+                    "cannot change after launch",
+                    "不能事后更改",
+                    "不可事后更改",
+                ),
+            ),
+        )
+        return [
+            label
+            for label, terms in required_groups
+            if not any(term.casefold() in answer for term in terms)
+        ]
+
+    fixed_apy_accrual_question = bool(
+        ("fixed apy" in question or "固定收益率" in question)
+        and ("accrue" in question or "累积" in question)
+    )
+    if agent_type == "ballot" and fixed_apy_accrual_question:
+        required = (
+            ("share size/份额规模", ("share size", "share balance", "份额规模", "份额数量")),
+            ("holding duration/持有时长", ("holding duration", "holding period", "持有时长", "持有期间")),
+            ("annualized rate/年化", ("annualized", "per year", "年化")),
+            ("rate set and disclosed at launch/费率在发起时设定并公开", ("set and disclosed at launch", "发起时设定并公开")),
+            ("contract enforcement/合约执行", ("enforced by contract", "由合约执行", "合约执行")),
+            ("accrual display location availability/累积展示位置可用性", ("accrual display", "display location", "展示位置", "累积明细")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    airdrop_claim_question = bool(
+        ("airdrop" in question or "空投" in question)
+        and ("claim" in question or "when" in question or "how" in question or "领" in question)
+    )
+    exit_rewards_question = bool(
+        ("exit" in question and "reward" in question)
+        or ("退出" in question and ("收益" in question or "奖励" in question))
+        or ("赎回" in question and "损失" in question)
+    )
+    if agent_type == "ballot" and (airdrop_claim_question or exit_rewards_question):
+        missing: list[str] = []
+        if not (
+            has("hold", "holding", "持有") and has("accrue", "accumulate", "累积")
+        ):
+            missing.append("airdrop accrues while held/空投在持有期间累积")
+        required = (
+            ("claim at Redeem/在 Redeem 时领取", ("redeem", "redemption", "赎回")),
+            ("principal returned at Redeem/赎回本金", ("principal", "本金")),
+            ("fixed yield delivered at Redeem/赎回固定收益", ("fixed yield", "fixed apy", "固定收益")),
+            ("airdrops delivered at Redeem/赎回空投", ("airdrop", "空投")),
+        )
+        missing.extend(label for label, terms in required if not has(*terms))
+        return missing
+
+    reward_sustainability_question = bool(
+        ("reward" in question or "收益" in question or "空投" in question)
+        and ("sustain" in question or "持续" in question)
+    )
+    if agent_type == "ballot" and reward_sustainability_question:
+        required = (
+            ("reward source availability/奖励来源可用性", ("reward source", "收益来源", "奖励来源", "来源")),
+            ("contract-governed reward rules/奖励规则由合约执行", ("contract", "合约")),
+            ("sustainability cannot be confirmed without source data/缺少来源数据无法确认可持续性", ("sustainability", "sustainable", "可持续性", "持续")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    vote_how_to_question = bool(
+        ("vote" in question or "投票" in question)
+        and ("how" in question or "怎么" in question or "如何" in question)
+    )
+    if agent_type == "ballot" and vote_how_to_question:
+        required = (
+            ("proposal page/提案页面", ("proposal page", "提案页", "提案页面")),
+            ("wallet signature/钱包签名", ("sign", "signature", "签名")),
+            ("vote change rule availability/改票规则可用性", ("vote change", "change rule", "改票", "更改投票", "修改投票")),
+            ("vote cost or gas availability/投票费用或 Gas 可用性", ("vote cost", "gas", "投票费用", "投票成本")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    payout_token_question = bool(
+        ("yield" in question or "收益" in question)
+        and ("airdrop" in question or "空投" in question)
+        and ("token" in question or "代币" in question)
+    )
+    if agent_type == "ballot" and payout_token_question:
+        required = (
+            ("yield denomination availability/收益计价币种可用性", ("yield denomination", "收益计价", "收益代币", "收益发放代币")),
+            ("airdrop token availability/空投代币可用性", ("airdrop token", "空投代币", "空投发放代币")),
+            ("claim at Redeem/在 Redeem 时领取", ("redeem", "redemption", "赎回")),
+            ("accrual display location availability/累积展示位置可用性", ("accrual display", "display location", "展示位置", "累积明细")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
     if not (
         ("mint" in question or "铸造" in question)
         and ("share" in question or "份额" in question)
     ):
         return []
-    answer = str(output or "").casefold()
     required_groups = (
         ("proportional", "按比例", "权益"),
         ("wallet", "钱包"),
@@ -668,7 +1005,12 @@ def _force_required_tool_call(
             parts=[
                 ToolCallPart(
                     tool_name=TOOL_SEARCH_KNOWLEDGE,
-                    args={"query": _query_from_prompt(ctx.prompt)},
+                    args={
+                        "query": _knowledge_query_for_context(
+                            _query_from_prompt(ctx.prompt),
+                            ctx.deps.marketplace_context_result,
+                        )
+                    },
                 )
             ],
         )

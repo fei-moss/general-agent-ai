@@ -33,8 +33,8 @@ help:
 	@echo "  make chat-eval-live 对 DockerHost/API 执行可选 live eval 回放"
 	@echo "  make verify-release 运行发布前 Harness 验证并写入 .artifacts/release"
 	@echo "  make marketplace-qna-preflight 校验输入、摄取证据和本地契约"
-	@echo "  make marketplace-qna-local 运行 Gemini preflight 和 114 条本地检索"
-	@echo "  make marketplace-qna-live 运行 114 条线上检索和 18 条聊天"
+	@echo "  make marketplace-qna-local 运行 Gemini preflight 和 150 条本地检索"
+	@echo "  make marketplace-qna-live 运行 150 条线上检索和 20 条聊天"
 	@echo "  make marketplace-qna-final 运行 release gate 和最终验收器"
 	@echo "  make marketplace-qna-acceptance 按顺序运行完整 Marketplace QnA 验收"
 

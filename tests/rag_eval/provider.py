@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -24,20 +26,107 @@ def call_api(prompt: str, options: dict[str, Any] | None = None, context: dict[s
     vars_ = context.get("vars") or {}
     query = str(vars_.get("query") or prompt or "").strip()
     top_k = int(vars_.get("top_k") or config.get("top_k") or 3)
-    corpus_path = _resolve_path(config.get("corpus_path") or DEFAULT_CORPUS_PATH)
     language = str(vars_.get("language") or "").strip()
     metadata_filters = {"language": language} if language else {}
-
-    output = asyncio.run(
-        _run_retrieval(
-            query=query,
-            top_k=top_k,
-            corpus_path=corpus_path,
-            config=config,
-            metadata_filters=metadata_filters,
+    remote_base_url = str(os.getenv("RAG_EVAL_BASE_URL") or "").strip()
+    if remote_base_url:
+        output = asyncio.run(
+            _run_remote_retrieval(
+                query=query,
+                top_k=top_k,
+                base_url=remote_base_url,
+                knowledge_base_id=str(
+                    os.getenv("RAG_EVAL_KNOWLEDGE_BASE_ID") or ""
+                ).strip(),
+                admin_id=_remote_admin_id(),
+                metadata_filters=metadata_filters,
+                timeout_s=float(_config_value(config, "timeout_s", "30")),
+            )
         )
-    )
+    else:
+        corpus_path = _resolve_path(config.get("corpus_path") or DEFAULT_CORPUS_PATH)
+        output = asyncio.run(
+            _run_retrieval(
+                query=query,
+                top_k=top_k,
+                corpus_path=corpus_path,
+                config=config,
+                metadata_filters=metadata_filters,
+            )
+        )
     return {"output": json.dumps(output, ensure_ascii=False)}
+
+
+async def _run_remote_retrieval(
+    *,
+    query: str,
+    top_k: int,
+    base_url: str,
+    knowledge_base_id: str,
+    admin_id: str,
+    metadata_filters: dict[str, str],
+    timeout_s: float,
+    transport: Any | None = None,
+) -> dict[str, Any]:
+    """Run Promptfoo retrieval through the deployed pgvector/Gemini path."""
+    if not knowledge_base_id:
+        raise ValueError("RAG_EVAL_KNOWLEDGE_BASE_ID is required for remote retrieval")
+    if not admin_id:
+        raise ValueError("RAG administrator identity is required for remote retrieval")
+    import httpx
+
+    async with httpx.AsyncClient(timeout=timeout_s, transport=transport) as client:
+        response = await client.post(
+            f"{base_url.rstrip('/')}/rag/query",
+            headers={"Authorization": f"Bearer {admin_id}"},
+            json={
+                "knowledge_base_id": knowledge_base_id,
+                "query": query,
+                "top_k": top_k,
+                "filters": metadata_filters or None,
+                "strict": True,
+            },
+        )
+    response.raise_for_status()
+    payload = response.json()
+    hits = []
+    for index, chunk in enumerate(payload.get("chunks") or []):
+        metadata = chunk.get("metadata") or {}
+        citation = chunk.get("citation") or {}
+        hits.append(
+            {
+                "rank": index + 1,
+                "doc_id": metadata.get("doc_id"),
+                "score": chunk.get("score"),
+                "source": citation.get("source_uri") or metadata.get("source"),
+                "preview": str(chunk.get("content") or "")[:240],
+            }
+        )
+    return {
+        "query": query,
+        "degraded": bool(payload.get("degraded")),
+        "reason": payload.get("reason"),
+        "top_k": top_k,
+        "hits": hits,
+    }
+
+
+@lru_cache(maxsize=1)
+def _remote_admin_id() -> str:
+    configured = str(os.getenv("RAG_EVAL_ADMIN_ID") or "").strip()
+    if configured:
+        return configured
+    service = str(
+        os.getenv("RAG_EVAL_ADMIN_KEYCHAIN_SERVICE")
+        or "general-agent-ai-rag-admin-id"
+    ).strip()
+    completed = subprocess.run(
+        ["security", "find-generic-password", "-s", service, "-w"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
 async def _run_retrieval(

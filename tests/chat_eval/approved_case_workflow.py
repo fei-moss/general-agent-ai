@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
+from app.runtime.marketplace_ai import BALLOT_DYNAMIC_CONTEXT_FIELDS
 from tests.chat_eval.evaluator import validate_cases
 
 
@@ -29,7 +30,50 @@ ATTRIBUTIONS = {
     "runtime_or_transport",
     "product_behavior",
 }
-DYNAMIC_FACT_RULES = {
+BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
+_BALLOT_DYNAMIC_FIELD_TERMS = {
+    "accrual_display_location": [
+        "accrual_display_location", "accrual display location", "累积展示位置", "展示位置", "累积明细"
+    ],
+    "airdrop_token": ["airdrop_token", "airdrop token", "空投代币"],
+    "concentration_note": [
+        "concentration_note", "concentration note", "vote concentration", "voting concentration", "集中度提示", "投票集中"
+    ],
+    "early_redeem_rule": ["early_redeem_rule", "early redeem rule", "提前赎回规则"],
+    "execution_rule": ["execution_rule", "execution rule", "执行规则", "执行机制"],
+    "fixed_apy": ["fixed_apy", "fixed apy", "固定 apy", "固定收益率"],
+    "gov_reward_detail": [
+        "gov_reward_detail", "gov reward detail", "governance reward detail", "治理奖励细节", "奖励详情"
+    ],
+    "governance_rewards_rule": [
+        "governance_rewards_rule", "governance rewards rule", "治理奖励规则"
+    ],
+    "proposal_creation_rule": [
+        "proposal_creation_rule", "proposal creation rule", "提案发起规则", "提案创建规则"
+    ],
+    "proposal_display_location": [
+        "proposal_display_location", "proposal display location", "提案展示位置", "提案页面"
+    ],
+    "proposal_threshold": ["proposal_threshold", "proposal threshold", "提案门槛"],
+    "redeem_during_vote_rule": [
+        "redeem_during_vote_rule", "redeem during vote rule", "投票期间赎回规则"
+    ],
+    "reward_source_summary": [
+        "reward_source_summary", "reward source summary", "奖励来源摘要", "奖励来源"
+    ],
+    "snapshot_timing_rule": [
+        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照的具体时间规则", "快照的具体时机规则", "快照时点"
+    ],
+    "vote_change_rule": ["vote_change_rule", "vote change rule", "投票修改规则"],
+    "vote_cost_note": ["vote_cost_note", "vote cost note", "投票费用", "gas"],
+    "voting_power_rule": [
+        "voting_power_rule", "voting power rule", "投票权计算规则", "投票权换算规则"
+    ],
+    "yield_denomination": [
+        "yield_denomination", "yield denomination", "收益计价币种", "收益代币"
+    ],
+}
+DYNAMIC_FACT_RULES = BALLOT_DYNAMIC_FACT_RULES | {
     "current_agent_redemption_policy",
     "current_agent_fee_schedule",
 }
@@ -150,17 +194,54 @@ def build_target_truth_from_marketplace_context(
     agent_type = str(agent.get("agent_type") or "").strip().casefold()
     if not agent_type:
         raise ValueError("Marketplace context agent.agent_type is required")
+    dynamic_facts = {
+        "current_agent_redemption_policy": _redemption_target_fact(
+            payload.get("redemption_policy")
+        ),
+        "current_agent_fee_schedule": _fee_target_fact(
+            payload.get("fee_schedule")
+        ),
+    }
+    dynamic_facts.update(_ballot_target_facts(payload, agent_type=agent_type))
     return {
         "agent_type": agent_type,
-        "dynamic_facts": {
-            "current_agent_redemption_policy": _redemption_target_fact(
-                payload.get("redemption_policy")
-            ),
-            "current_agent_fee_schedule": _fee_target_fact(
-                payload.get("fee_schedule")
-            ),
-        },
+        "dynamic_facts": dynamic_facts,
     }
+
+
+def _ballot_target_facts(
+    payload: dict[str, Any], *, agent_type: str
+) -> dict[str, dict[str, Any]]:
+    if agent_type != "ballot":
+        return {}
+    agent = payload["agent"]
+    facts: dict[str, dict[str, Any]] = {}
+    direct_values = {
+        "project_name": agent.get("name"),
+        "project_token": agent.get("accept_token_symbol"),
+    }
+    for rule in sorted(BALLOT_DYNAMIC_FACT_RULES):
+        value = direct_values.get(rule)
+        if value is not None and str(value).strip():
+            facts[rule] = {
+                "required_fact_groups": [[str(value).strip()]],
+                "forbidden_claims": [],
+                "availability": "available",
+                "source": f"agent.{('name' if rule == 'project_name' else 'accept_token_symbol')}",
+            }
+        else:
+            facts[rule] = {
+                "required_fact_groups": [
+                    _BALLOT_DYNAMIC_FIELD_TERMS.get(
+                        rule, [rule, rule.replace("_", " ")]
+                    ),
+                    ["not provided", "unavailable", "not returned", "未提供", "无法获取"]
+                ],
+                "forbidden_claims": [],
+                "availability": "not_provided",
+                "source": "marketplace_agent_context",
+            }
+    return facts
 
 
 def _redemption_target_fact(value: Any) -> dict[str, Any]:
@@ -345,6 +426,8 @@ def build_optimization_report(
                     "hard_pass": True,
                     "transport_ok": None,
                     "missing_fact_groups": [],
+                    "missing_static_fact_groups": [],
+                    "missing_dynamic_fact_groups": [],
                     "missing_dynamic_rules": [],
                     "forbidden_hits": [],
                     "semantic_verdict": "not_applicable",
@@ -365,7 +448,8 @@ def build_optimization_report(
             and baseline.get("status") == "completed"
             and answer.strip()
         )
-        required_groups = _fact_groups(case)
+        static_required_groups = _fact_groups(case)
+        dynamic_required_groups: list[list[str]] = []
         dynamic_rules = [str(rule) for rule in case.get("dynamic_fact_rules", [])]
         missing_dynamic_rules = [
             rule for rule in dynamic_rules if rule not in dynamic_facts
@@ -375,7 +459,7 @@ def build_optimization_report(
             fact = dynamic_facts.get(rule)
             if not isinstance(fact, dict):
                 continue
-            required_groups.extend(
+            dynamic_required_groups.extend(
                 _validated_fact_groups(
                     fact.get("required_fact_groups"), index=f"target truth {rule}"
                 )
@@ -387,11 +471,25 @@ def build_optimization_report(
                     f"target truth {rule}",
                 )
             )
-        missing_groups = (
-            [group for group in required_groups if not _group_matches(group, answer)]
+        missing_static_groups = (
+            [
+                group
+                for group in static_required_groups
+                if not _group_matches(group, answer)
+            ]
             if transport_ok
-            else required_groups
+            else static_required_groups
         )
+        missing_dynamic_groups = (
+            [
+                group
+                for group in dynamic_required_groups
+                if not _group_matches(group, answer)
+            ]
+            if transport_ok
+            else dynamic_required_groups
+        )
+        missing_groups = missing_static_groups + missing_dynamic_groups
         forbidden = _forbidden_claims(case) + dynamic_forbidden
         forbidden_hits = [
             claim for claim in forbidden if _contains_forbidden_claim(answer, claim)
@@ -408,7 +506,8 @@ def build_optimization_report(
         attribution = _suggest_attribution(
             case,
             transport_ok=transport_ok,
-            missing_groups=missing_groups,
+            missing_static_groups=missing_static_groups,
+            missing_dynamic_groups=missing_dynamic_groups,
             forbidden_hits=forbidden_hits,
             semantic_review=review,
         )
@@ -449,6 +548,8 @@ def build_optimization_report(
             "hard_pass": hard_pass,
             "transport_ok": transport_ok,
             "missing_fact_groups": missing_groups,
+            "missing_static_fact_groups": missing_static_groups,
+            "missing_dynamic_fact_groups": missing_dynamic_groups,
             "missing_dynamic_rules": missing_dynamic_rules,
             "target_agent_type_missing": target_agent_type_missing,
             "forbidden_hits": forbidden_hits,
@@ -567,6 +668,11 @@ def _normalize_source_row(
             "source_version": source_version,
         },
     }
+    if "source_question_id" in raw:
+        source_question_id = str(raw["source_question_id"] or "").strip()
+        if not source_question_id:
+            raise ValueError(f"source row {index}: source_question_id must be non-empty")
+        canonical["source_question_id"] = source_question_id
     if "applicable_agent_types" in raw:
         canonical["applicable_agent_types"] = sorted(
             {
@@ -577,6 +683,7 @@ def _normalize_source_row(
             }
         )
     for field in (
+        "dynamic_fact_variables",
         "dynamic_fact_rules",
         "expected_sources",
         "expected_fields",
@@ -612,6 +719,9 @@ def _validate_approved_case(row: dict[str, Any]) -> None:
     if not str(row.get("ideal_answer") or "").strip():
         raise ValueError(f"{case_id}: ideal_answer is required")
     _validated_fact_groups(row.get("required_fact_groups"), index=case_id)
+    _string_list(
+        row.get("dynamic_fact_variables", []), "dynamic_fact_variables", case_id
+    )
     dynamic_rules = _string_list(
         row.get("dynamic_fact_rules", []), "dynamic_fact_rules", case_id
     )
@@ -655,6 +765,12 @@ def _validated_target_truth(value: dict[str, Any] | None) -> dict[str, Any] | No
                 f"target truth {rule}",
             ),
         }
+        for field in ("availability", "source"):
+            if field in fact:
+                value_text = str(fact[field] or "").strip()
+                if not value_text:
+                    raise ValueError(f"target truth {rule}.{field} must be non-empty")
+                facts[rule][field] = value_text
     return {"agent_type": agent_type, "dynamic_facts": facts}
 
 
@@ -865,7 +981,8 @@ def _suggest_attribution(
     case: dict[str, Any],
     *,
     transport_ok: bool,
-    missing_groups: list[list[str]],
+    missing_static_groups: list[list[str]],
+    missing_dynamic_groups: list[list[str]],
     forbidden_hits: list[str],
     semantic_review: dict[str, Any] | None,
 ) -> str:
@@ -873,9 +990,11 @@ def _suggest_attribution(
         return "runtime_or_transport"
     if forbidden_hits:
         return "guardrail_or_policy"
-    if missing_groups:
+    if missing_dynamic_groups:
         if case.get("requires_tool") or case.get("expected_fields"):
             return "tool_or_data"
+        return "prompt_or_answer_composition"
+    if missing_static_groups:
         if case.get("requires_rag") or case.get("expected_sources"):
             return "rag_or_retrieval"
         return "prompt_or_answer_composition"

@@ -190,6 +190,12 @@ envctl branch-space deploy --name "$ENV_NAME"
 envctl branch-space status --name "$ENV_NAME"
 ```
 
+`branch-space deploy` 的 `.env.generated` 只包含本次显式传入的值。除了 provider
+key 等 secret，本次运行依赖的 `LLM_PROVIDER`、RAG/embedding 配置和
+`MARKETPLACE_AI_BASE_URL` 也必须先导出并通过 `--secret-env <KEY>` 传入；遗漏时
+Compose 会回落到默认值。发布后必须以 `/readyz` 的真实 provider 状态验收，不能
+只看容器 health。
+
 ## 6. 健康检查
 
 从 `envctl status` 中取 `api` 域名并设置 `BASE_URL`。

@@ -175,6 +175,51 @@ async def test_batch_worker_forwards_viewer_payload_to_orchestration(monkeypatch
     assert captured["marketplace_viewer_context"] == viewer_payload
 
 
+async def test_batch_worker_does_not_overwrite_failed_orchestration_status(monkeypatch):
+    from app.tasks import agent_tasks
+
+    calls: list[tuple[str, tuple]] = []
+
+    async def orchestrate(**_kwargs):
+        return {
+            "content": "safe fallback",
+            "intent": None,
+            "status": "FAILED",
+            "error": "ORCHESTRATION_FAILED",
+        }
+
+    async def record(name, *args, **_kwargs):
+        calls.append((name, args))
+
+    monkeypatch.setattr(agent_tasks, "_resolve_orchestrator", lambda: orchestrate)
+    monkeypatch.setattr(
+        agent_tasks.run_store,
+        "ensure_run",
+        lambda *args, **kwargs: record("ensure", *args, **kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tasks.run_store,
+        "mark_run_running",
+        lambda *args, **kwargs: record("running", *args, **kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tasks.run_store,
+        "mark_run_succeeded",
+        lambda *args, **kwargs: record("succeeded", *args, **kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tasks.run_store,
+        "mark_run_failed",
+        lambda *args, **kwargs: record("failed", *args, **kwargs),
+    )
+
+    result = await agent_tasks._execute("run-failed", "conv", "trace", "hello")
+
+    assert result["status"] == "FAILED"
+    assert any(name == "failed" for name, _args in calls)
+    assert all(name != "succeeded" for name, _args in calls)
+
+
 async def test_batch_orchestration_rehydrates_only_execution_bound_context(monkeypatch):
     from app.runtime import deps as deps_module
     from app.runtime import orchestrator as orchestrator_module

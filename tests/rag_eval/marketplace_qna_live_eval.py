@@ -245,7 +245,7 @@ def run_retrieval_eval(
     timeout_s: float = 30.0,
     workers: int = 4,
 ) -> dict[str, Any]:
-    """Run all 114 strict live retrieval cases."""
+    """Run the complete strict live retrieval fixture."""
     cases = _read_jsonl(EVAL_DIR / "marketplace_qna_golden_queries.jsonl")
     started = time.monotonic()
     results: list[dict[str, Any]] = []
@@ -271,7 +271,10 @@ def run_retrieval_eval(
     return {
         "schema_version": 1,
         "status": "passed"
-        if len(results) == 114 and passed == 114 and top1_rate >= 0.8 and degraded == 0
+        if results
+        and passed == len(results)
+        and top1_rate >= 0.8
+        and degraded == 0
         else "failed",
         "knowledge_base_id": knowledge_base_id,
         "counts": {
@@ -438,6 +441,7 @@ def _chat_case(
             "retrieval_finished": retrieval_finished,
             **evaluation,
             "passed": passed,
+            "answer": answer,
             "answer_preview": answer[:400],
             "latency_ms": round((time.monotonic() - started) * 1000, 2),
         }
@@ -459,7 +463,7 @@ def run_chat_eval(
     timeout_s: float = 90.0,
     case_ids: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Run 18 representative chats through the server-owned default KB."""
+    """Run all representative chats through the server-owned default KB."""
     cases = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
     if case_ids:
         cases = [case for case in cases if str(case["id"]) in case_ids]

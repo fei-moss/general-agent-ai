@@ -148,6 +148,74 @@ def test_normalize_preserves_agent_type_and_dynamic_fact_rules():
     assert rows[0]["requires_tool"] == "marketplace_agent_context"
 
 
+def test_normalize_preserves_source_identity_scope_and_dynamic_variables():
+    rows = normalize_approved_cases(
+        [
+            _source_case(
+                source_question_id="Q4",
+                area="ballot_yield_and_airdrop",
+                applicable_agent_types=["ballot"],
+                dynamic_fact_variables=[
+                    "fixed_apy",
+                    "accrual_display_location",
+                ],
+            )
+        ],
+        approved_by="marketplace-product-owner",
+        source_version="governance-presets-v1",
+    )
+
+    assert rows[0]["source_question_id"] == "Q4"
+    assert rows[0]["area"] == "ballot_yield_and_airdrop"
+    assert rows[0]["applicable_agent_types"] == ["ballot"]
+    assert rows[0]["dynamic_fact_variables"] == [
+        "fixed_apy",
+        "accrual_display_location",
+    ]
+
+
+def test_ballot_markdown_adapter_preserves_bilingual_source_and_flags_missing_answer(
+    tmp_path,
+):
+    from tests.chat_eval.ballot_golden_source import parse_ballot_golden_markdown
+
+    source = tmp_path / "governance.md"
+    source.write_text(
+        """# Governance presets
+
+### Q1：你是做什么的？/ What do you do?
+
+**CN**：我是 {project_name} 的治理 agent。
+
+**EN**: I'm the governance agent for {project_name}.
+
+### Q19：如果项目方不兑付怎么办？/ What if the project does not pay?
+
+这个看看产品如何回答？
+""",
+        encoding="utf-8",
+    )
+
+    parsed = parse_ballot_golden_markdown(source)
+
+    assert [row["id"] for row in parsed.rows] == [
+        "ballot_governance_q01_zh",
+        "ballot_governance_q01_en",
+    ]
+    assert parsed.rows[0]["question"] == "你是做什么的？"
+    assert parsed.rows[0]["ideal_answer"] == "我是 {project_name} 的治理 agent。"
+    assert parsed.rows[1]["question"] == "What do you do?"
+    assert parsed.rows[1]["ideal_answer"] == "I'm the governance agent for {project_name}."
+    assert parsed.rows[0]["applicable_agent_types"] == ["ballot"]
+    assert parsed.rows[0]["dynamic_fact_variables"] == ["project_name"]
+    assert parsed.rows[0]["dynamic_fact_rules"] == ["project_name"]
+    assert parsed.blockers == ["Q19: ideal answers missing"]
+
+    excluded = parse_ballot_golden_markdown(source, excluded_question_ids={19})
+    assert len(excluded.rows) == 2
+    assert excluded.blockers == []
+
+
 def test_normalize_requires_owner_approval_and_structured_hard_facts():
     with pytest.raises(ValueError, match="approved_by"):
         normalize_approved_cases(
@@ -303,6 +371,40 @@ def test_report_blocks_missing_hard_fact_and_attributes_rag_gap():
         ["链上份额", "Agent 份额"],
         ["份额价值", "份额价格"],
     ]
+    assert result["suggested_attribution"] == "rag_or_retrieval"
+
+
+def test_report_attributes_static_gap_to_rag_when_case_also_uses_dynamic_tool():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                requires_tool="marketplace_agent_context",
+                required_fact_groups=[["stable ballot mechanism"]],
+                dynamic_fact_rules=["project_name"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    target_truth = {
+        "agent_type": "hyperliquid",
+        "dynamic_facts": {
+            "project_name": {
+                "required_fact_groups": [["Current Agent Name"]],
+                "forbidden_claims": [],
+            }
+        },
+    }
+
+    report = build_optimization_report(
+        cases,
+        _live_report("Current Agent Name is available."),
+        target_truth=target_truth,
+    )
+
+    result = report["case_results"][0]
+    assert result["missing_static_fact_groups"] == [["stable ballot mechanism"]]
+    assert result["missing_dynamic_fact_groups"] == []
     assert result["suggested_attribution"] == "rag_or_retrieval"
 
 
@@ -574,6 +676,51 @@ def test_build_target_truth_uses_typed_marketplace_dynamic_config():
         "forbidden_claims"
     ]
     assert all("mint fee" not in group for group in fees["required_fact_groups"])
+
+
+def test_build_target_truth_marks_missing_ballot_variables_without_demo_values():
+    context = _marketplace_context(
+        agent={
+            "id": 7001,
+            "name": "Governance Fixture",
+            "agent_type": "ballot",
+            "accept_token_symbol": "GOV",
+        },
+        redemption_policy={
+            "available": False,
+            "status": "unsupported",
+            "reason": "agent_type_unsupported",
+        },
+        fee_schedule={
+            "available": False,
+            "status": "unsupported",
+            "fees": [],
+            "reason": "agent_type_unsupported",
+        },
+    )
+
+    truth = build_target_truth_from_marketplace_context(context)
+
+    assert truth["agent_type"] == "ballot"
+    assert truth["dynamic_facts"]["project_name"] == {
+        "required_fact_groups": [["Governance Fixture"]],
+        "forbidden_claims": [],
+        "availability": "available",
+        "source": "agent.name",
+    }
+    assert truth["dynamic_facts"]["project_token"]["required_fact_groups"] == [
+        ["GOV"]
+    ]
+    fixed_apy = truth["dynamic_facts"]["fixed_apy"]
+    assert fixed_apy["availability"] == "not_provided"
+    assert fixed_apy["source"] == "marketplace_agent_context"
+    assert fixed_apy["required_fact_groups"][0] == [
+        "fixed_apy",
+        "fixed apy",
+        "固定 apy",
+        "固定收益率",
+    ]
+    assert "not provided" in fixed_apy["required_fact_groups"][1]
 
 
 def test_build_target_truth_preserves_explicit_zero_and_unavailable_states():
