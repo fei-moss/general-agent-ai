@@ -23,8 +23,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   required fact groups and forbidden claims using the same deterministic
   matching contract as static hard facts. Approved missing-data alternatives
   recognize equivalent explicit wording such as not disclosed, not returned,
-  unavailable, 未披露, 未返回, and no-current-data states. An explicitly negated
-  affirmative forbidden claim is not treated as an assertion, while forbidden
+  unavailable, 未披露, 未返回, and no-current-data states. An explicit zero-state
+  phrase such as no current/open positions is also accepted. An explicitly
+  negated affirmative forbidden claim is not treated as an assertion, while forbidden
   claims that themselves describe a negative state retain exact-match behavior.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R4`: for a current-Agent detail-page turn,
   the answer chain obtains current Agent context before using fixed platform
