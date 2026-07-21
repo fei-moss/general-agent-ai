@@ -393,7 +393,9 @@ def build_optimization_report(
             else required_groups
         )
         forbidden = _forbidden_claims(case) + dynamic_forbidden
-        forbidden_hits = [claim for claim in forbidden if _contains(answer, claim)]
+        forbidden_hits = [
+            claim for claim in forbidden if _contains_forbidden_claim(answer, claim)
+        ]
         hard_pass = (
             transport_ok
             and not missing_groups
@@ -793,6 +795,38 @@ def _group_matches(group: list[str], answer: str) -> bool:
 
 def _contains(text: str, fragment: str) -> bool:
     return _normalize_text(fragment) in _normalize_text(text)
+
+
+def _contains_forbidden_claim(text: str, fragment: str) -> bool:
+    """Match forbidden claims without treating an explicit denial as an assertion."""
+    fragment_tokens = re.findall(r"\w+", str(fragment).casefold())
+    if not fragment_tokens:
+        return False
+    normalized_fragment = " ".join(fragment_tokens)
+    if re.match(
+        r"^(?:no|not|never|without|cannot|can t|does not|doesn t|do not|"
+        r"did not|is not|are not|will not|won t)\b",
+        normalized_fragment,
+    ) or normalized_fragment.startswith(("不", "无", "没", "未")):
+        return _contains(text, fragment)
+
+    pattern = re.compile(r"[^\w]+".join(map(re.escape, fragment_tokens)), re.I)
+    for match in pattern.finditer(str(text)):
+        clause_prefix = re.split(r"[.!?;。！？；\n]", str(text)[: match.start()])[-1]
+        nearby = clause_prefix[-96:]
+        english_words = re.findall(r"[a-z]+", nearby.casefold())[-10:]
+        english_prefix = " ".join(english_words)
+        negated_en = bool(
+            re.search(
+                r"\b(?:no|not|never|without|cannot|can t|does not|doesn t|"
+                r"do not|did not|is not|are not|will not|won t)\b",
+                english_prefix,
+            )
+        )
+        negated_zh = bool(re.search(r"(?:不|无|没有|不会|无法|并未)[^。！？；]{0,24}$", nearby))
+        if not (negated_en or negated_zh):
+            return True
+    return False
 
 
 def _normalize_text(value: str) -> str:

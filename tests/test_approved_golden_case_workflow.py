@@ -331,6 +331,32 @@ def test_report_treats_equivalent_missing_data_wording_as_fallback(
     assert report["case_results"][0]["hard_pass"] is True
 
 
+def test_report_does_not_flag_explicitly_negated_forbidden_claim():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                required_fact_groups=[["holders"]],
+                forbidden_claims=["guaranteed return"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    negated = build_optimization_report(
+        cases,
+        _live_report("Holders bear losses; the Agent does not offer guaranteed returns."),
+    )
+    asserted = build_optimization_report(
+        cases,
+        _live_report("Holders receive a guaranteed return."),
+    )
+
+    assert negated["case_results"][0]["hard_pass"] is True
+    assert negated["case_results"][0]["forbidden_hits"] == []
+    assert asserted["case_results"][0]["forbidden_hits"] == ["guaranteed return"]
+
+
 def test_report_skips_cases_outside_the_target_agent_type():
     cases = normalize_approved_cases(
         [_source_case(applicable_agent_types=["hyperliquid"])],

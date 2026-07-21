@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.runtime.chat_behavior import (
     DEFAULT_CHAT_BEHAVIOR_POLICY,
     GuardrailAction,
@@ -74,6 +76,20 @@ def test_input_guardrail_does_not_swallow_current_agent_description_question():
 
     assert decision.action is GuardrailAction.ALLOW
     assert decision.category is GuardrailCategory.ALLOWED
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "你跑的是什么策略？",
+        "What are you holding right now?",
+        "你的创建者是谁？",
+    ],
+)
+def test_identity_intent_does_not_swallow_current_agent_fact_questions(message: str):
+    from app.runtime.chat_behavior import is_identity_introduction_request
+
+    assert is_identity_introduction_request(message) is False
 
 
 def test_marketplace_compute_request_detects_volume_sum_metric():

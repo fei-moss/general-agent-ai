@@ -103,6 +103,8 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "based on assets under management",
     "based on aum",
     "regardless of profit or loss",
+    "unrelated to profit or loss",
+    "not waived for losses",
     "only fee currently configured",
     "only fee configured",
     "no other fee types are currently configured",
@@ -115,12 +117,20 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "基于管理的资产规模收取",
     "按管理资产规模收取",
     "不区分盈亏",
+    "与盈亏无关",
+    "不因亏损而免除",
     "唯一费用",
     "唯一的费用",
     "仅有的费用",
     "未设置收益分成",
     "没有收益分成",
     "不会对盈利额外抽成",
+)
+_UNSUPPORTED_RISK_CLAIMS = (
+    "no insurance mechanism",
+    "loss-absorbing party",
+    "没有保险机制",
+    "不存在保险机制",
 )
 _UNSUPPORTED_SETTLEMENT_CLAIMS = (
     "settles positions",
@@ -487,7 +497,9 @@ def _unsupported_dynamic_claims(
     if not isinstance(payload, dict):
         payload = context_result
     normalized = " ".join(str(output or "").casefold().split())
-    violations: list[str] = []
+    violations: list[str] = [
+        claim for claim in _UNSUPPORTED_RISK_CLAIMS if claim in normalized
+    ]
     fee_schedule = payload.get("fee_schedule")
     if _typed_section_available(fee_schedule):
         violations.extend(

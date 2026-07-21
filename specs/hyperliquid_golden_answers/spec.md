@@ -23,12 +23,16 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   required fact groups and forbidden claims using the same deterministic
   matching contract as static hard facts. Approved missing-data alternatives
   recognize equivalent explicit wording such as not disclosed, not returned,
-  unavailable, 未披露, 未返回, and no-current-data states.
+  unavailable, 未披露, 未返回, and no-current-data states. An explicitly negated
+  affirmative forbidden claim is not treated as an assertion, while forbidden
+  claims that themselves describe a negative state retain exact-match behavior.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R4`: for a current-Agent detail-page turn,
   the answer chain obtains current Agent context before using fixed platform
   knowledge. Tool data wins on Agent identity, type, chain, creator, strategy
   disclosure, positions, activities, redemption configuration, and fees. A
-  premature model answer is replaced by the required context call.
+  premature model answer is replaced by the required context call. Strategy,
+  holding, position, and creator questions are current-Agent fact questions and
+  must not be captured by assistant identity-introduction routing.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R5`: redemption answers state the current
   lock period and request/claim flow when configured. They state no lock or no
   window only when the current configuration explicitly supports that claim.
@@ -94,7 +98,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 4. Implement the minimal orchestration and prompt changes without hardcoding a
    Hyperliquid Agent id, lock duration, fee rate, or Golden question string.
 5. Add a typed-context-scoped output validator with one correction attempt for
-   unsupported dynamic claims that persisted after prompt instruction.
+  unsupported dynamic claims that persisted after prompt instruction, including
+  invented insurance or loss-absorbing mechanisms.
 6. Run focused tests, full change verification, release verification, and record
    closeout evidence below.
 
