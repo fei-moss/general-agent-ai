@@ -117,6 +117,29 @@ def test_ballot_output_guard_rejects_redeem_vote_answer_when_rule_is_missing():
     )
 
 
+def test_ballot_output_guard_rejects_proportional_vote_assertion_when_rule_is_missing():
+    context = {
+        "data": {
+            "agent": {"agent_type": "ballot"},
+            "ballot_governance": {
+                "voting_power_rule": {
+                    "availability": "not_provided",
+                    "value": None,
+                }
+            },
+        }
+    }
+
+    assert "ballot_proportional_voting_rule_invented" in _unsupported_dynamic_claims(
+        "Voting power is proportional to your shares.", context
+    )
+    assert "ballot_proportional_voting_rule_invented" not in _unsupported_dynamic_claims(
+        "If the rule is share-proportional, a large holder could have influence; "
+        "the current voting power rule is not provided.",
+        context,
+    )
+
+
 def test_ballot_output_guard_allows_snapshot_mechanism_without_redeem_claim():
     context = {
         "data": {

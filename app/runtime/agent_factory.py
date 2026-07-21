@@ -663,6 +663,13 @@ def _unsupported_ballot_claims(
         and _asserts_redeem_does_not_affect_vote(text)
     ):
         violations.append("ballot_redeem_vote_rule_invented")
+    voting_power_rule = governance.get("voting_power_rule")
+    if (
+        isinstance(voting_power_rule, dict)
+        and voting_power_rule.get("availability") == "not_provided"
+        and _asserts_proportional_voting_rule(text)
+    ):
+        violations.append("ballot_proportional_voting_rule_invented")
     return violations
 
 
@@ -699,6 +706,17 @@ def _asserts_redeem_does_not_affect_vote(text: str) -> bool:
     )
 
 
+def _asserts_proportional_voting_rule(text: str) -> bool:
+    return bool(
+        re.search(
+            r"voting (?:power|rights?|weight) (?:is|are) proportional to (?:your )?shares",
+            text,
+            re.I,
+        )
+        or re.search(r"(?:投票权|投票权重).{0,16}(?:与|按).{0,16}份额.{0,12}(?:成比例|对应)", text)
+    )
+
+
 def _violation_feedback(violation: str) -> str:
     details = {
         "ballot_missing_value_as_absent": (
@@ -721,6 +739,11 @@ def _violation_feedback(violation: str) -> str:
             "or does not change a vote. Do not apply the general snapshot mechanism "
             "to answer this Redeem interaction. State only that either outcome is "
             "unknown because the specific interaction rule is not provided"
+        ),
+        "ballot_proportional_voting_rule_invented": (
+            "the current Agent does not provide voting_power_rule; remove the claim "
+            "that voting power is proportional to shares and state that the exact "
+            "weighting rule is not provided"
         ),
     }
     return details.get(violation, violation)
