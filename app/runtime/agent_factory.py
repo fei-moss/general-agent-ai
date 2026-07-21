@@ -770,30 +770,6 @@ def _missing_approved_mechanism_facts(
         )
         return [label for label, terms in required if not has(*terms)]
 
-    direct_token_question = bool(
-        re.search(r"\bhold(?:ing)?\b.{0,24}\btoken\b.{0,24}\bdirectly\b", question)
-        or "直接拿着代币" in question
-        or "直接持有代币" in question
-    )
-    if agent_type == "ballot" and direct_token_question:
-        missing: list[str] = []
-        if not has("price exposure", "price risk", "价格敞口"):
-            missing.append("direct token holding gives price exposure/直接持币提供价格敞口")
-        if not has("fixed apy", "fixed yield", "固定收益率", "固定收益"):
-            missing.append("fixed APY accrual/固定收益率累积")
-        if not has("airdrop", "空投"):
-            missing.append("airdrop accrual/空投累积")
-        if not has("governance", "治理"):
-            missing.append("standardized governance entry/标准化治理入口")
-        if not has("project updates", "update pushes", "项目动态", "动态推送"):
-            missing.append("project update access/项目动态入口")
-        if not (
-            has("contract", "合约")
-            and has("verifiable onchain", "on-chain verifiable", "链上可验证")
-        ):
-            missing.append("contract execution and onchain verification/合约执行且链上可验证")
-        return missing
-
     fixed_apy_change_question = bool(
         ("fixed apy" in question or "固定收益率" in question)
         and re.search(r"\b(?:change|changed|later|adjust)\b|以后.{0,8}(?:变|改)|会变|调整", question)

@@ -155,19 +155,6 @@ def test_ballot_fixed_apy_change_answer_requires_complete_stable_mechanism():
     ) == []
 
 
-def test_ballot_direct_token_comparison_requires_every_stable_layer():
-    missing = _missing_approved_mechanism_facts(
-        "Why not just hold the token directly?",
-        "Agent shares add governance voting and airdrops.",
-        agent_type="ballot",
-    )
-
-    assert "direct token holding gives price exposure/直接持币提供价格敞口" in missing
-    assert "fixed APY accrual/固定收益率累积" in missing
-    assert "project update access/项目动态入口" in missing
-    assert "contract execution and onchain verification/合约执行且链上可验证" in missing
-
-
 def test_ballot_fixed_apy_accrual_requires_basis_and_enforcement():
     missing = _missing_approved_mechanism_facts(
         "How does the fixed APY accrue?",
