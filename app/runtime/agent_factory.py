@@ -119,6 +119,8 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "不区分盈亏",
     "与盈亏无关",
     "不因亏损而免除",
+    "亏损情况下同样",
+    "亏损时仍",
     "唯一费用",
     "唯一的费用",
     "仅有的费用",
@@ -131,6 +133,10 @@ _UNSUPPORTED_RISK_CLAIMS = (
     "loss-absorbing party",
     "没有保险机制",
     "不存在保险机制",
+    "no generic stop-loss mechanism",
+    "no built-in stop-loss mechanism",
+    "平台没有内置通用的止损",
+    "没有通用的止损机制",
 )
 _UNSUPPORTED_SETTLEMENT_CLAIMS = (
     "settles positions",
