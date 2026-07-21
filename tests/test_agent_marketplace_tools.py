@@ -136,7 +136,7 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
                         "on assets under management, is unrelated to profit or "
                         "loss, and is not waived for losses. There is no insurance "
                         "mechanism or loss-absorbing party and no generic stop-loss "
-                        "mechanism."
+                        "mechanism. 管理费不会因亏损而豁免。"
                     )
                 )
             ]
@@ -172,6 +172,7 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
     assert "no insurance mechanism" in retry_feedback[0]
     assert "loss-absorbing party" in retry_feedback[0]
     assert "no generic stop-loss mechanism" in retry_feedback[0]
+    assert "不会因亏损而豁免" in retry_feedback[0]
     assert result.output == (
         "Management Fee: 1%. The source does not return fee cadence, "
         "collection mechanics, or other fee types."
