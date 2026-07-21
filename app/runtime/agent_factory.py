@@ -372,7 +372,9 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             ctx.deps.marketplace_context_result,
         )
         missing_mechanism_facts = _missing_approved_mechanism_facts(
-            _query_from_prompt(ctx.prompt), output
+            _query_from_prompt(ctx.prompt),
+            output,
+            agent_type=_agent_type(ctx.deps.marketplace_context_result),
         )
         if not violations and not missing_mechanism_facts:
             return output
@@ -606,7 +608,9 @@ def _unsupported_dynamic_claims(
         isinstance(agent, dict)
         and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
     ):
-        violations.extend(_unsupported_ballot_claims(output))
+        violations.extend(
+            _unsupported_ballot_claims(output, payload.get("ballot_governance"))
+        )
     fee_schedule = payload.get("fee_schedule")
     if _typed_section_available(fee_schedule):
         violations.extend(
@@ -625,7 +629,9 @@ def _unsupported_dynamic_claims(
     return violations
 
 
-def _unsupported_ballot_claims(output: str) -> list[str]:
+def _unsupported_ballot_claims(
+    output: str, ballot_governance: Any = None
+) -> list[str]:
     """Reject high-confidence Ballot inferences that typed context cannot support."""
     text = str(output or "")
     violations: list[str] = []
@@ -637,7 +643,42 @@ def _unsupported_ballot_claims(output: str) -> list[str]:
         violations.append("ballot_exchange_rate_yield")
     if _BALLOT_CONTRACT_SIGNATURE_OVERCLAIM.search(text):
         violations.append("ballot_contract_signature_overclaim")
+    governance = ballot_governance if isinstance(ballot_governance, dict) else {}
+    redeem_vote_rule = governance.get("redeem_during_vote_rule")
+    if (
+        isinstance(redeem_vote_rule, dict)
+        and redeem_vote_rule.get("availability") == "not_provided"
+        and _asserts_redeem_does_not_affect_vote(text)
+    ):
+        violations.append("ballot_redeem_vote_rule_invented")
     return violations
+
+
+def _asserts_redeem_does_not_affect_vote(text: str) -> bool:
+    return bool(
+        re.search(
+            r"redeem(?:ing|ed)?\b.{0,80}(?:does not|doesn't|won't|will not)"
+            r".{0,40}(?:affect|invalidate|change).{0,32}\bvote",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"\bvote\b.{0,40}(?:remains? valid|is unaffected).{0,20}"
+            r"(?:after|by)\s+redeem",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"赎回.{0,48}(?:不会|不再).{0,32}(?:影响|应用|失效|撤销)"
+            r".{0,24}(?:票|投票)",
+            text,
+        )
+        or re.search(
+            r"(?:票|投票).{0,32}(?:仍然有效|不会因.{0,16}赎回.{0,16}失效|"
+            r"不受.{0,16}赎回.{0,16}影响)",
+            text,
+        )
+    )
 
 
 def _violation_feedback(violation: str) -> str:
@@ -655,6 +696,11 @@ def _violation_feedback(violation: str) -> str:
         ),
         "ballot_contract_signature_overclaim": (
             "wallet signature safety was incorrectly extended to contract-held principal"
+        ),
+        "ballot_redeem_vote_rule_invented": (
+            "the current Agent does not provide redeem_during_vote_rule; do not say "
+            "whether Redeeming preserves or invalidates a vote, and state that the "
+            "specific interaction is not provided"
         ),
     }
     return details.get(violation, violation)
@@ -677,15 +723,143 @@ def _knowledge_query_for_context(
     return query
 
 
-def _missing_approved_mechanism_facts(prompt: str, output: str) -> list[str]:
+def _agent_type(context_result: dict[str, Any] | None) -> str:
+    payload = context_result.get("data") if isinstance(context_result, dict) else None
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    return (
+        str(agent.get("agent_type") or "").strip().casefold()
+        if isinstance(agent, dict)
+        else ""
+    )
+
+
+def _missing_approved_mechanism_facts(
+    prompt: str, output: str, *, agent_type: str = ""
+) -> list[str]:
     """Require core approved Mint mechanics without pinning Agent-specific values."""
     question = str(prompt or "").casefold()
+    answer = str(output or "").casefold()
+
+    def has(*terms: str) -> bool:
+        return any(term.casefold() in answer for term in terms)
+
+    if agent_type == "ballot" and bool(
+        re.search(r"\bwhat do (?:i|you|this agent) do\b", question)
+        or "你是做什么" in question
+    ):
+        required = (
+            ("fixed APY availability/固定收益率可用性", ("fixed apy", "固定收益率")),
+            ("airdrop accrual and Redeem claim/空投累积并在 Redeem 领取", ("airdrop", "空投")),
+            ("governance voting/治理投票", ("governance voting", "治理投票")),
+            ("project updates/项目动态", ("project updates", "项目动态")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    direct_token_question = bool(
+        re.search(r"\bhold(?:ing)?\b.{0,24}\btoken\b.{0,24}\bdirectly\b", question)
+        or "直接拿着代币" in question
+        or "直接持有代币" in question
+    )
+    if agent_type == "ballot" and direct_token_question:
+        missing: list[str] = []
+        if not has("price exposure", "price risk", "价格敞口"):
+            missing.append("direct token holding gives price exposure/直接持币提供价格敞口")
+        if not has("fixed apy", "fixed yield", "固定收益率", "固定收益"):
+            missing.append("fixed APY accrual/固定收益率累积")
+        if not has("airdrop", "空投"):
+            missing.append("airdrop accrual/空投累积")
+        if not has("governance", "治理"):
+            missing.append("standardized governance entry/标准化治理入口")
+        if not has("project updates", "update pushes", "项目动态", "动态推送"):
+            missing.append("project update access/项目动态入口")
+        if not (
+            has("contract", "合约")
+            and has("verifiable onchain", "on-chain verifiable", "链上可验证")
+        ):
+            missing.append("contract execution and onchain verification/合约执行且链上可验证")
+        return missing
+
+    fixed_apy_change_question = bool(
+        ("fixed apy" in question or "固定收益率" in question)
+        and re.search(r"\b(?:change|changed|later|adjust)\b|以后.{0,8}(?:变|改)|会变|调整", question)
+    )
+    if agent_type == "ballot" and fixed_apy_change_question:
+        required_groups = (
+            (
+                "fixed APY is set and disclosed at launch/固定收益率在发起时设定并公开",
+                ("set and disclosed at launch", "set at launch", "发起时设定并公开"),
+            ),
+            (
+                "fixed APY is enforced by contract/固定收益率由合约执行",
+                ("enforced by contract", "contract-enforced", "由合约执行", "合约执行"),
+            ),
+            (
+                "fixed APY cannot be changed after the fact/固定收益率不能事后更改",
+                (
+                    "cannot be changed after the fact",
+                    "can't be changed after the fact",
+                    "cannot change after launch",
+                    "不能事后更改",
+                    "不可事后更改",
+                ),
+            ),
+        )
+        return [
+            label
+            for label, terms in required_groups
+            if not any(term.casefold() in answer for term in terms)
+        ]
+
+    fixed_apy_accrual_question = bool(
+        ("fixed apy" in question or "固定收益率" in question)
+        and ("accrue" in question or "累积" in question)
+    )
+    if agent_type == "ballot" and fixed_apy_accrual_question:
+        required = (
+            ("share size/份额规模", ("share size", "share balance", "份额规模", "份额数量")),
+            ("holding duration/持有时长", ("holding duration", "holding period", "持有时长", "持有期间")),
+            ("annualized rate/年化", ("annualized", "per year", "年化")),
+            ("rate set and disclosed at launch/费率在发起时设定并公开", ("set and disclosed at launch", "发起时设定并公开")),
+            ("contract enforcement/合约执行", ("enforced by contract", "由合约执行", "合约执行")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    airdrop_claim_question = bool(
+        ("airdrop" in question or "空投" in question)
+        and ("claim" in question or "when" in question or "how" in question or "领" in question)
+    )
+    exit_rewards_question = bool(
+        ("exit" in question and "reward" in question)
+        or ("退出" in question and ("收益" in question or "奖励" in question))
+        or ("赎回" in question and "损失" in question)
+    )
+    if agent_type == "ballot" and (airdrop_claim_question or exit_rewards_question):
+        required = (
+            ("airdrop accrues while held/空投在持有期间累积", ("accrue while you hold", "accrue while shares are held", "持有期间持续累积", "持有份额期间累积")),
+            ("claim at Redeem/在 Redeem 时领取", ("claimed at redeem", "at redeem", "redeem 时", "赎回时")),
+            ("principal returned at Redeem/赎回本金", ("principal", "本金")),
+            ("fixed yield delivered at Redeem/赎回固定收益", ("fixed yield", "fixed apy", "固定收益")),
+            ("airdrops delivered at Redeem/赎回空投", ("airdrop", "空投")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
+    reward_sustainability_question = bool(
+        ("reward" in question or "收益" in question or "空投" in question)
+        and ("sustain" in question or "持续" in question)
+    )
+    if agent_type == "ballot" and reward_sustainability_question:
+        required = (
+            ("reward source availability/奖励来源可用性", ("reward source", "收益来源", "奖励来源", "来源")),
+            ("contract-governed reward rules/奖励规则由合约执行", ("contract", "合约")),
+            ("sustainability cannot be confirmed without source data/缺少来源数据无法确认可持续性", ("sustainability", "sustainable", "可持续性", "持续")),
+        )
+        return [label for label, terms in required if not has(*terms)]
+
     if not (
         ("mint" in question or "铸造" in question)
         and ("share" in question or "份额" in question)
     ):
         return []
-    answer = str(output or "").casefold()
     required_groups = (
         ("proportional", "按比例", "权益"),
         ("wallet", "钱包"),

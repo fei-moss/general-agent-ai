@@ -31,6 +31,44 @@ ATTRIBUTIONS = {
     "product_behavior",
 }
 BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
+_BALLOT_DYNAMIC_FIELD_TERMS = {
+    "accrual_display_location": [
+        "accrual_display_location", "accrual display location", "累积展示位置", "累积明细"
+    ],
+    "airdrop_token": ["airdrop_token", "airdrop token", "空投代币"],
+    "concentration_note": ["concentration_note", "concentration note", "集中度提示"],
+    "early_redeem_rule": ["early_redeem_rule", "early redeem rule", "提前赎回规则"],
+    "execution_rule": ["execution_rule", "execution rule", "执行规则", "执行机制"],
+    "fixed_apy": ["fixed_apy", "fixed apy", "固定 apy", "固定收益率"],
+    "gov_reward_detail": ["gov_reward_detail", "gov reward detail", "治理奖励细节", "奖励详情"],
+    "governance_rewards_rule": [
+        "governance_rewards_rule", "governance rewards rule", "治理奖励规则"
+    ],
+    "proposal_creation_rule": [
+        "proposal_creation_rule", "proposal creation rule", "提案发起规则", "提案创建规则"
+    ],
+    "proposal_display_location": [
+        "proposal_display_location", "proposal display location", "提案展示位置", "提案页面"
+    ],
+    "proposal_threshold": ["proposal_threshold", "proposal threshold", "提案门槛"],
+    "redeem_during_vote_rule": [
+        "redeem_during_vote_rule", "redeem during vote rule", "投票期间赎回规则"
+    ],
+    "reward_source_summary": [
+        "reward_source_summary", "reward source summary", "奖励来源摘要", "奖励来源"
+    ],
+    "snapshot_timing_rule": [
+        "snapshot_timing_rule", "snapshot timing rule", "快照时间规则", "快照时点"
+    ],
+    "vote_change_rule": ["vote_change_rule", "vote change rule", "投票修改规则"],
+    "vote_cost_note": ["vote_cost_note", "vote cost note", "投票费用", "gas"],
+    "voting_power_rule": [
+        "voting_power_rule", "voting power rule", "投票权计算规则", "投票权换算规则"
+    ],
+    "yield_denomination": [
+        "yield_denomination", "yield denomination", "收益计价币种", "收益代币"
+    ],
+}
 DYNAMIC_FACT_RULES = BALLOT_DYNAMIC_FACT_RULES | {
     "current_agent_redemption_policy",
     "current_agent_fee_schedule",
@@ -190,6 +228,9 @@ def _ballot_target_facts(
         else:
             facts[rule] = {
                 "required_fact_groups": [
+                    _BALLOT_DYNAMIC_FIELD_TERMS.get(
+                        rule, [rule, rule.replace("_", " ")]
+                    ),
                     ["not provided", "unavailable", "not returned", "未提供", "无法获取"]
                 ],
                 "forbidden_claims": [],

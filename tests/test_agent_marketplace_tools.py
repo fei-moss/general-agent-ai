@@ -18,8 +18,9 @@ from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     _knowledge_query_for_context,
     _is_correctable_compute_failure,
-    _violation_feedback,
+    _missing_approved_mechanism_facts,
     _unsupported_dynamic_claims,
+    _violation_feedback,
     build_agent,
 )
 from app.runtime.marketplace_ai import MarketplaceViewerContext
@@ -89,6 +90,125 @@ def test_ballot_knowledge_query_is_qualified_by_typed_agent_context():
 def test_ballot_retry_feedback_names_the_required_missing_data_wording():
     assert "not provided" in _violation_feedback("ballot_missing_value_as_absent")
     assert "未提供" in _violation_feedback("ballot_missing_value_as_absent")
+
+
+def test_ballot_output_guard_rejects_redeem_vote_answer_when_rule_is_missing():
+    context = {
+        "data": {
+            "agent": {"agent_type": "ballot"},
+            "ballot_governance": {
+                "redeem_during_vote_rule": {
+                    "availability": "not_provided",
+                    "value": None,
+                }
+            },
+        }
+    }
+
+    assert "ballot_redeem_vote_rule_invented" in _unsupported_dynamic_claims(
+        "Redeeming after the snapshot does not affect the vote you cast.", context
+    )
+    assert "ballot_redeem_vote_rule_invented" in _unsupported_dynamic_claims(
+        "赎回不会影响已经投出的票，这一票仍然有效。", context
+    )
+
+
+def test_ballot_output_guard_allows_snapshot_mechanism_without_redeem_claim():
+    context = {
+        "data": {
+            "agent": {"agent_type": "ballot"},
+            "ballot_governance": {
+                "redeem_during_vote_rule": {
+                    "availability": "not_provided",
+                    "value": None,
+                }
+            },
+        }
+    }
+
+    output = (
+        "A snapshot fixes eligibility and voting weight for that proposal. "
+        "The current Agent does not provide its redeem-during-vote rule."
+    )
+    assert "ballot_redeem_vote_rule_invented" not in _unsupported_dynamic_claims(
+        output, context
+    )
+
+
+def test_ballot_fixed_apy_change_answer_requires_complete_stable_mechanism():
+    assert _missing_approved_mechanism_facts(
+        "Can the fixed APY change later?",
+        "The current Agent does not provide its fixed APY.",
+        agent_type="ballot",
+    ) == [
+        "fixed APY is set and disclosed at launch/固定收益率在发起时设定并公开",
+        "fixed APY is enforced by contract/固定收益率由合约执行",
+        "fixed APY cannot be changed after the fact/固定收益率不能事后更改",
+    ]
+    assert _missing_approved_mechanism_facts(
+        "固定收益率以后会变吗？",
+        "固定收益率在发起时设定并公开，由合约执行，不能事后更改。",
+        agent_type="ballot",
+    ) == []
+
+
+def test_ballot_direct_token_comparison_requires_every_stable_layer():
+    missing = _missing_approved_mechanism_facts(
+        "Why not just hold the token directly?",
+        "Agent shares add governance voting and airdrops.",
+        agent_type="ballot",
+    )
+
+    assert "direct token holding gives price exposure/直接持币提供价格敞口" in missing
+    assert "fixed APY accrual/固定收益率累积" in missing
+    assert "project update access/项目动态入口" in missing
+    assert "contract execution and onchain verification/合约执行且链上可验证" in missing
+
+
+def test_ballot_fixed_apy_accrual_requires_basis_and_enforcement():
+    missing = _missing_approved_mechanism_facts(
+        "How does the fixed APY accrue?",
+        "Fixed yield accrues while you hold shares.",
+        agent_type="ballot",
+    )
+
+    assert "share size/份额规模" in missing
+    assert "holding duration/持有时长" in missing
+    assert "annualized rate/年化" in missing
+    assert "rate set and disclosed at launch/费率在发起时设定并公开" in missing
+    assert "contract enforcement/合约执行" in missing
+
+
+def test_ballot_airdrop_claim_requires_complete_redemption_bundle():
+    missing = _missing_approved_mechanism_facts(
+        "When and how do I claim airdrops?",
+        "Airdrops accrue while you hold and are claimed at Redeem.",
+        agent_type="ballot",
+    )
+
+    assert "principal returned at Redeem/赎回本金" in missing
+    assert "fixed yield delivered at Redeem/赎回固定收益" in missing
+
+
+def test_ballot_reward_sustainability_requires_contract_boundary():
+    missing = _missing_approved_mechanism_facts(
+        "Where do the rewards come from? Are they sustainable?",
+        "The current reward source is not provided, so sustainability is unknown.",
+        agent_type="ballot",
+    )
+
+    assert "contract-governed reward rules/奖励规则由合约执行" in missing
+
+
+def test_ballot_exit_answer_requires_complete_redemption_bundle():
+    missing = _missing_approved_mechanism_facts(
+        "Can I exit anytime? Do I lose accrued rewards?",
+        "Redemption is unsupported for the current Agent; airdrops are not provided.",
+        agent_type="ballot",
+    )
+
+    assert "principal returned at Redeem/赎回本金" in missing
+    assert "fixed yield delivered at Redeem/赎回固定收益" in missing
 
 
 async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():

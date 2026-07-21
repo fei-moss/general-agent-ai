@@ -714,7 +714,13 @@ def test_build_target_truth_marks_missing_ballot_variables_without_demo_values()
     fixed_apy = truth["dynamic_facts"]["fixed_apy"]
     assert fixed_apy["availability"] == "not_provided"
     assert fixed_apy["source"] == "marketplace_agent_context"
-    assert "not provided" in fixed_apy["required_fact_groups"][0]
+    assert fixed_apy["required_fact_groups"][0] == [
+        "fixed_apy",
+        "fixed apy",
+        "固定 apy",
+        "固定收益率",
+    ]
+    assert "not provided" in fixed_apy["required_fact_groups"][1]
 
 
 def test_build_target_truth_preserves_explicit_zero_and_unavailable_states():
