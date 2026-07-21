@@ -187,6 +187,34 @@ _UNSUPPORTED_AGENT_NARRATIVE_CLAIMS = (
     "platform regularly generates agent reports",
     "平台会定期生成 agent 运行报告",
 )
+_BALLOT_ABSENCE_INFERENCE_PATTERNS = (
+    re.compile(
+        r"(?:does not have|doesn't have|has no|no)\s+(?:a\s+)?(?:fixed apy|"
+        r"governance rewards?|voting rewards?)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:fixed apy|governance rewards?|voting rewards?).{0,32}"
+        r"(?:does not exist|is not configured|are not configured)",
+        re.I,
+    ),
+    re.compile(r"(?:没有|未配置|不存在).{0,20}(?:固定收益|治理奖励|投票奖励)"),
+)
+_BALLOT_DEFAULT_VOTING_RULE = re.compile(
+    r"default.{0,24}(?:share[- ]weighted|voting).{0,16}(?:applies|model)|"
+    r"默认.{0,20}(?:按份额加权|一份一票)",
+    re.I,
+)
+_BALLOT_EXCHANGE_RATE_YIELD = re.compile(
+    r"(?:yield|returns?|earnings?|收益).{0,96}(?:exchange\s*rate|份额单价)|"
+    r"(?:exchange\s*rate|份额单价).{0,96}(?:yield|returns?|earnings?|收益)",
+    re.I,
+)
+_BALLOT_CONTRACT_SIGNATURE_OVERCLAIM = re.compile(
+    r"no one.{0,80}(?:transfer|freeze).{0,80}without your signature|"
+    r"没有任何人.{0,80}(?:转移|冻结).{0,80}(?:不签名|未签名|没有签名)",
+    re.I,
+)
 
 
 @dataclass
@@ -289,9 +317,14 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     " not returned. settlement_required is only a boolean: do not claim"
                     " settlement closes positions or explain how it works. Never"
                     " substitute viewer wallet activity or"
-                    " viewer shares for Agent trades or positions. If a field is absent,"
-                    " name the requested field and explicitly say 'not provided' or"
-                    " '未提供'; do not invent a generic strategy or value, and never answer"
+                    " viewer shares for Agent trades or positions. For a ballot Agent,"
+                    " use retrieved Ballot knowledge for stable mechanisms and context"
+                    " only for dynamic facts. If a field is absent, say 'not provided' or"
+                    " '未提供', never none, unconfigured, or a default. Do not apply a"
+                    " trading-Agent exchangeRate yield model to ballot without typed"
+                    " support. Non-custodial wallet signing does not prove that"
+                    " contract-held principal cannot move under contract or executor"
+                    " permissions. Do not invent a generic strategy or value, and never answer"
                     " with the assistant's own holdings, strategy, or creator. For past"
                     " performance, add that it does not guarantee future results. Do not"
                     " urge the user to Mint or participate."
@@ -555,6 +588,12 @@ def _unsupported_dynamic_claims(
     violations.extend(
         claim for claim in _INCOMPLETE_TOOL_NARRATION_CLAIMS if claim in normalized
     )
+    agent = payload.get("agent")
+    if (
+        isinstance(agent, dict)
+        and str(agent.get("agent_type") or "").strip().casefold() == "ballot"
+    ):
+        violations.extend(_unsupported_ballot_claims(output))
     fee_schedule = payload.get("fee_schedule")
     if _typed_section_available(fee_schedule):
         violations.extend(
@@ -570,6 +609,21 @@ def _unsupported_dynamic_claims(
             for claim in _UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS
             if claim in normalized
         )
+    return violations
+
+
+def _unsupported_ballot_claims(output: str) -> list[str]:
+    """Reject high-confidence Ballot inferences that typed context cannot support."""
+    text = str(output or "")
+    violations: list[str] = []
+    if any(pattern.search(text) for pattern in _BALLOT_ABSENCE_INFERENCE_PATTERNS):
+        violations.append("ballot_missing_value_as_absent")
+    if _BALLOT_DEFAULT_VOTING_RULE.search(text):
+        violations.append("ballot_default_voting_rule")
+    if _BALLOT_EXCHANGE_RATE_YIELD.search(text):
+        violations.append("ballot_exchange_rate_yield")
+    if _BALLOT_CONTRACT_SIGNATURE_OVERCLAIM.search(text):
+        violations.append("ballot_contract_signature_overclaim")
     return violations
 
 

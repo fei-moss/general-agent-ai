@@ -25,7 +25,7 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     prompt = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
     assert DEFAULT_CHAT_BEHAVIOR_POLICY.version in prompt
-    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v4")
+    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v5")
     assert "Ask this Agent" in prompt
     assert "语言一致性" in prompt
     assert "SPEC-CHAT-LANGUAGE-CONSISTENCY-001" in prompt
@@ -111,6 +111,36 @@ def test_platform_mechanism_knowledge_request_detects_approved_question_families
 
     assert not is_platform_mechanism_knowledge_request("What fees do you charge?")
     assert not is_platform_mechanism_knowledge_request("你现在持有什么仓位？")
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "What do I do?",
+        "Why not just hold the token directly?",
+        "How does the fixed APY accrue?",
+        "Where do rewards and airdrops come from?",
+        "Who can create a proposal?",
+        "How is my voting power calculated?",
+        "What's the snapshot and when is it taken?",
+        "Can I change my vote?",
+        "Who executes a passed proposal?",
+        "Can I exit through Redeem?",
+        "Is my principal safe?",
+        "你是做什么的？",
+        "和直接持有项目代币有什么区别？",
+        "固定收益率怎么累积？",
+        "空投什么时候领？",
+        "谁能发起治理提案？",
+        "投票权怎么计算？",
+        "快照什么时候拍？",
+        "参与治理有额外奖励吗？",
+        "赎回会不会损失收益？",
+        "我的本金安全吗？",
+    ],
+)
+def test_platform_mechanism_knowledge_request_detects_ballot_families(message: str):
+    assert is_platform_mechanism_knowledge_request(message)
 
 
 def test_detect_target_language_prefers_explicit_user_request():

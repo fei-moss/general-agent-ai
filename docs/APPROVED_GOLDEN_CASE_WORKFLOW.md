@@ -20,6 +20,8 @@
   "requires_rag": true,
   "risk_level": "high",
   "applicable_agent_types": ["hyperliquid"],
+  "source_question_id": "Q9",
+  "dynamic_fact_variables": ["redemption_policy"],
   "dynamic_fact_rules": ["current_agent_redemption_policy"],
   "tags": ["mint", "marketplace"]
 }
@@ -29,10 +31,23 @@
 
 `applicable_agent_types` 是可选的小写 Agent 类型列表。运营文档只覆盖 Hyperliquid 时，案例应标记 `hyperliquid`；在其他类型 Agent 上运行会记录为 `not_applicable`，不会误报产品缺陷。没有该字段的旧案例保持原行为。
 
+`source_question_id` 保留产品文档内的原始题号；`dynamic_fact_variables` 保留样例中必须由当前 Agent 配置或链上数据填充的变量名。两者都是审计元数据，不会把变量值写进 Prompt。业务范围、语言与风险分别由 `area`、`locale`、`risk_level` 固化。
+
 `dynamic_fact_rules` 用于会随当前 Agent 配置变化的事实。目前支持：
 
 - `current_agent_redemption_policy`：锁定期以及 request / claim 流程。
 - `current_agent_fee_schedule`：当前可见费用名称与费率。
+- Ballot 项目与收益：`project_name`、`project_token`、`fixed_apy`、
+  `accrual_display_location`、`reward_source_summary`、`yield_denomination`、
+  `airdrop_token`。
+- Ballot 治理与退出：`proposal_creation_rule`、`proposal_threshold`、
+  `proposal_display_location`、`voting_power_rule`、`snapshot_timing_rule`、
+  `vote_change_rule`、`vote_cost_note`、`governance_rewards_rule`、
+  `gov_reward_detail`、`execution_rule`、`early_redeem_rule`、
+  `redeem_during_vote_rule`、`concentration_note`。
+
+Ballot 动态规则若未出现在当前 `ai-context`，目标真值会显式标记
+`not_provided`；这要求回答保留稳定机制说明，同时不得用示例值填空。
 
 包含动态规则或 Agent 类型约束的批次，报告阶段必须提供一个不含地址、钱包或凭据的当前 Agent 真值快照。例如：
 

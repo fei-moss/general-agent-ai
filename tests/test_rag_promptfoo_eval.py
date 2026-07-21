@@ -396,6 +396,44 @@ def test_moss_gemini_preflight_classifies_ip_restriction_without_secret():
     assert "x-goog-api-key" not in serialized
 
 
+def test_moss_gemini_preflight_accepts_deployed_strict_rag_path(monkeypatch):
+    import httpx
+
+    from tests.rag_eval.moss_gemini_preflight import run_remote_rag_preflight
+
+    def post(url, *, headers, json, timeout):
+        assert url == "https://example.test/rag/query"
+        assert headers["Authorization"] == "Bearer admin-fixture"
+        assert json == {
+            "knowledge_base_id": "kb_v5",
+            "query": "MOSS RAG eval smoke",
+            "top_k": 1,
+            "strict": True,
+        }
+        assert timeout == 5
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={"degraded": False, "chunks": [{"content": "ok"}]},
+        )
+
+    monkeypatch.setattr(httpx, "post", post)
+    result = run_remote_rag_preflight(
+        base_url="https://example.test",
+        knowledge_base_id="kb_v5",
+        admin_id="admin-fixture",
+        timeout_s=5,
+    )
+
+    assert result == {
+        "status": "passed",
+        "http_status": 200,
+        "embedding_model": "gemini-embedding-2",
+        "embedding_dimension": 256,
+        "mode": "dockerhost_strict_rag_query",
+    }
+
+
 async def test_moss_rag_seed_can_be_ingested_by_local_retriever():
     from app.core.config import Settings
     from app.rag.retriever import RAGRetriever

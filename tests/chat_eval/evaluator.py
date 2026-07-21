@@ -30,6 +30,7 @@ _ALLOWED_CATEGORIES = {category.value for category in GuardrailCategory}
 _ALLOWED_RISK_LEVELS = {"low", "medium", "high", "critical"}
 _OPTIONAL_LIST_FIELDS = {
     "applicable_agent_types",
+    "dynamic_fact_variables",
     "dynamic_fact_rules",
     "expected_sources",
     "expected_fields",

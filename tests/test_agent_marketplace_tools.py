@@ -17,6 +17,7 @@ from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     _is_correctable_compute_failure,
+    _unsupported_dynamic_claims,
     build_agent,
 )
 from app.runtime.marketplace_ai import MarketplaceViewerContext
@@ -30,6 +31,45 @@ VIEWER = MarketplaceViewerContext(
     conversation_id="conv-tool-1",
     trace_id="trace-tool-1",
 )
+
+
+def test_ballot_output_guard_rejects_absence_inference_and_wrong_mechanism():
+    context = {
+        "data": {
+            "agent": {"agent_type": "ballot"},
+            "redemption_policy": {
+                "available": False,
+                "status": "unsupported",
+            },
+            "fee_schedule": {"available": False, "status": "unsupported"},
+        }
+    }
+
+    output = (
+        "This Agent does not have a fixed APY configured and no governance rewards "
+        "are provided. The default share-weighted model applies. Yield is reflected "
+        "in exchangeRate appreciation. No one can transfer or freeze contract-held "
+        "principal without your signature."
+    )
+
+    violations = _unsupported_dynamic_claims(output, context)
+
+    assert "ballot_missing_value_as_absent" in violations
+    assert "ballot_default_voting_rule" in violations
+    assert "ballot_exchange_rate_yield" in violations
+    assert "ballot_contract_signature_overclaim" in violations
+
+
+def test_ballot_output_guard_accepts_missing_data_and_contract_boundary():
+    context = {"data": {"agent": {"agent_type": "ballot"}}}
+    output = (
+        "The current Agent context does not provide its fixed APY, voting-reward "
+        "configuration, or exact voting formula. Stable Ballot mechanics come from "
+        "the platform knowledge base. Wallet-held assets require your signature; "
+        "after Mint, deposited principal follows the contract and executor permissions."
+    )
+
+    assert _unsupported_dynamic_claims(output, context) == []
 
 
 async def test_agent_marketplace_context_tool_ignores_context_chain_id_by_default():

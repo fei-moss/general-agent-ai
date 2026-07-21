@@ -4,6 +4,8 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
+import re
+import httpx
 import pytest
 
 
@@ -27,10 +29,10 @@ def test_marketplace_qna_sources_have_expected_shape():
 
     bundle = build_fixture_bundle()
 
-    assert len(bundle.sources) == 18
-    assert sum(source.language == "zh-CN" for source in bundle.sources) == 9
-    assert sum(source.language == "en" for source in bundle.sources) == 9
-    assert sum(len(source.questions) for source in bundle.sources) == 114
+    assert len(bundle.sources) == 20
+    assert sum(source.language == "zh-CN" for source in bundle.sources) == 10
+    assert sum(source.language == "en" for source in bundle.sources) == 10
+    assert sum(len(source.questions) for source in bundle.sources) == 150
     assert {len(source.questions) for source in bundle.sources if source.order == 4} == {16}
 
 
@@ -49,6 +51,21 @@ def test_marketplace_qna_v3_contains_approved_ask_this_agent_mechanisms():
     assert "Top Holders" in sources["marketplace_qna_zh_cn_05"]
 
 
+def test_marketplace_qna_v5_contains_stable_ballot_mechanisms_without_target_values():
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
+
+    sources = {source.id: source.text for source in build_fixture_bundle().sources}
+    zh = sources["marketplace_qna_zh_cn_10"]
+    en = sources["marketplace_qna_en_10"]
+
+    assert "Governance Agent" in zh
+    assert "当前 Agent" in zh
+    assert "动态事实" in zh
+    assert "snapshot" in en.casefold()
+    assert "current Agent context" in en
+    assert re.search(r"\b0x[a-fA-F0-9]{40}\b", zh + en) is None
+
+
 def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_paraphrases():
     from tests.rag_eval.marketplace_qna_fixture_builder import (
         build_fixture_bundle,
@@ -63,8 +80,8 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for question in source.questions
     }
 
-    assert len(cases) == 114
-    assert Counter(case.language for case in cases.values()) == {"zh-CN": 57, "en": 57}
+    assert len(cases) == 150
+    assert Counter(case.language for case in cases.values()) == {"zh-CN": 75, "en": 75}
     assert set(cases) == set(source_questions)
     assert all(case.query.strip() for case in cases.values())
     assert all(
@@ -79,7 +96,7 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for fact in case.required_facts
     )
     assert all(case.review_reason for case in cases.values())
-    assert sum(case.representative_chat for case in cases.values()) == 18
+    assert sum(case.representative_chat for case in cases.values()) == 20
     assert Counter(
         case.document_id for case in cases.values() if case.representative_chat
     ) == {source.id: 1 for source in bundle.sources}
@@ -105,10 +122,10 @@ def test_marketplace_qna_generated_fixture_rows_are_complete_and_traceable():
 
     rows = build_fixture_rows()
 
-    assert len(rows.corpus) == 18
-    assert len(rows.golden_queries) == 114
-    assert len(rows.review_evidence) == 114
-    assert len(rows.chat_cases) == 18
+    assert len(rows.corpus) == 20
+    assert len(rows.golden_queries) == 150
+    assert len(rows.review_evidence) == 150
+    assert len(rows.chat_cases) == 20
     assert {row["id"] for row in rows.corpus} == {
         row["relevant_doc_ids"][0] for row in rows.golden_queries
     }
@@ -133,17 +150,17 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     chat = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
     assert coverage["contract_id"] == "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE"
-    assert len(coverage["topic_groups"]) == 18
+    assert len(coverage["topic_groups"]) == 20
     assert {group["language"] for group in coverage["topic_groups"]} == {"zh-CN", "en"}
     assert {query_id for group in coverage["topic_groups"] for query_id in group["query_ids"]} == {
         row["id"] for row in golden
     }
     assert acceptance["thresholds"] == {
-        "source_documents": 18,
-        "golden_queries": 114,
-        "chat_cases": 18,
-        "promptfoo_required_passes": 114,
-        "live_required_passes": 114,
+        "source_documents": 20,
+        "golden_queries": 150,
+        "chat_cases": 20,
+        "promptfoo_required_passes": 150,
+        "live_required_passes": 150,
         "minimum_top1_rate": 0.8,
         "maximum_degraded_cases": 0,
         "maximum_failed_ingestion_jobs": 0,
@@ -158,7 +175,7 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
 
 
-def test_marketplace_qna_v2_expected_chunk_count_matches_production_chunking():
+def test_marketplace_qna_v5_expected_chunk_count_matches_production_chunking():
     from app.rag.chunker import chunk_text
 
     acceptance = json.loads(
@@ -171,7 +188,6 @@ def test_marketplace_qna_v2_expected_chunk_count_matches_production_chunking():
         len(chunk_text(row["text"], chunk_size=400, overlap=80)) for row in corpus
     )
 
-    assert chunk_count == 152
     assert acceptance["ingestion"]["expected_chunks"] == chunk_count
 
 
@@ -203,7 +219,7 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
             assert entry["row_count"] == len(_read_jsonl(path))
 
 
-def test_marketplace_qna_v2_seed_is_explicitly_versioned():
+def test_marketplace_qna_v5_seed_is_explicitly_versioned():
     from tests.rag_eval.marketplace_qna_fixture_builder import CORPUS_VERSION
 
     manifest = json.loads(
@@ -215,10 +231,10 @@ def test_marketplace_qna_v2_seed_is_explicitly_versioned():
         )
     )
 
-    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-07-21-v3"
-    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v3"
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-07-21-v5"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v5"
     assert manifest["source_set"] == CORPUS_VERSION
-    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V3"
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V5"
     assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
     assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
 
@@ -229,14 +245,14 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
 
     payloads = build_document_payloads(knowledge_base_id="kb_marketplace_qna")
 
-    assert len(payloads) == 18
+    assert len(payloads) == 20
     assert {payload["metadata"]["doc_id"] for payload in payloads} == {
         row["id"] for row in _read_jsonl(EVAL_DIR / "marketplace_qna_corpus.jsonl")
     }
     assert {payload["source_uri"] for payload in payloads} == {
         f"urn:moss:marketplace-qna:{language}:{order:02d}"
         for language in ("cn", "en")
-        for order in range(1, 10)
+        for order in range(1, 11)
     }
     for payload in payloads:
         parsed = RAGDocumentCreate(**payload)
@@ -245,7 +261,7 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.mime_type == "text/markdown"
         assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-21-v3"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-07-21-v5"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
@@ -254,10 +270,10 @@ def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_s
     cases = generate_tests()
     config = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(encoding="utf-8")
 
-    assert len(cases) == 114
+    assert len(cases) == 150
     assert all(case["vars"]["max_rank"] == 5 for case in cases)
     assert all(case["vars"]["top_k"] == 5 for case in cases)
-    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 57, "en": 57}
+    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 75, "en": 75}
     assert all(case["assert"] == [{"type": "python", "value": "file://assert_retrieval.py"}] for case in cases)
     for expected in (
         'corpus_path: "marketplace_qna_corpus.jsonl"',
@@ -278,11 +294,11 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "source_documents": 18,
-        "golden_queries": 114,
-        "review_rows": 114,
-        "chat_cases": 18,
-        "source_questions": 114,
+        "source_documents": 20,
+        "golden_queries": 150,
+        "review_rows": 150,
+        "chat_cases": 20,
+        "source_questions": 150,
     }
     assert report["gaps"] == {
         "missing_query_ids": [],
@@ -328,10 +344,65 @@ def test_rag_eval_provider_filters_bilingual_corpus_by_case_language():
     assert _filter_corpus_docs(docs, {}) == docs
 
 
+@pytest.mark.asyncio
+async def test_rag_eval_provider_can_use_deployed_strict_retrieval():
+    from tests.rag_eval.provider import _run_remote_retrieval
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/rag/query"
+        assert request.headers["Authorization"] == "Bearer admin-fixture"
+        payload = json.loads(request.content)
+        assert payload["knowledge_base_id"] == "kb_v5"
+        assert payload["filters"] == {"language": "en"}
+        assert payload["strict"] is True
+        return httpx.Response(
+            200,
+            json={
+                "degraded": False,
+                "reason": None,
+                "chunks": [
+                    {
+                        "content": "Governance answer",
+                        "score": 0.91,
+                        "metadata": {"doc_id": "marketplace_qna_en_10"},
+                        "citation": {"source_uri": "urn:moss:marketplace-qna:en:10"},
+                    }
+                ],
+            },
+        )
+
+    result = await _run_remote_retrieval(
+        query="Governance custody",
+        top_k=5,
+        base_url="https://example.test",
+        knowledge_base_id="kb_v5",
+        admin_id="admin-fixture",
+        metadata_filters={"language": "en"},
+        timeout_s=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result == {
+        "query": "Governance custody",
+        "degraded": False,
+        "reason": None,
+        "top_k": 5,
+        "hits": [
+            {
+                "rank": 1,
+                "doc_id": "marketplace_qna_en_10",
+                "score": 0.91,
+                "source": "urn:moss:marketplace-qna:en:10",
+                "preview": "Governance answer",
+            }
+        ],
+    }
+
+
 def test_marketplace_qna_chat_cases_define_deterministic_fact_groups():
     rows = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
-    assert len(rows) == 18
+    assert len(rows) == 20
     assert all(row["required_fact_groups"] for row in rows)
     assert all(
         alternatives
@@ -507,6 +578,47 @@ def test_marketplace_qna_live_retrieval_evaluator_requires_uri_language_and_no_d
     assert degraded["passed"] is False
 
 
+def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkeypatch):
+    from tests.rag_eval import marketplace_qna_live_eval as live_eval
+
+    cases = [
+        {
+            "id": f"case-{index}",
+            "query": "q",
+            "relevant_doc_ids": ["doc"],
+            "tags": ["en"],
+        }
+        for index in range(150)
+    ]
+    monkeypatch.setattr(live_eval, "_read_jsonl", lambda _path: cases)
+    monkeypatch.setattr(
+        live_eval,
+        "_retrieval_case",
+        lambda case, **_kwargs: {
+            "case_id": case["id"],
+            "passed": True,
+            "matched_rank": 1,
+            "degraded": False,
+        },
+    )
+
+    report = live_eval.run_retrieval_eval(
+        base_url="https://example.test",
+        knowledge_base_id="kb_test",
+        admin_id="admin",
+        workers=4,
+    )
+
+    assert report["status"] == "passed"
+    assert report["counts"] == {
+        "total": 150,
+        "passed": 150,
+        "failed": 0,
+        "top1": 150,
+        "degraded": 0,
+    }
+
+
 def test_marketplace_qna_live_chat_payload_uses_server_default_knowledge_base():
     from tests.rag_eval.marketplace_qna_live_eval import build_chat_payload
 
@@ -588,11 +700,11 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "source_documents": 18,
-                "golden_queries": 114,
-                "review_rows": 114,
-                "chat_cases": 18,
-                "source_questions": 114,
+                "source_documents": 20,
+                "golden_queries": 150,
+                "review_rows": 150,
+                "chat_cases": 20,
+                "source_questions": 150,
             },
             "errors": [],
         },
@@ -609,9 +721,9 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
     write(
         "ingestion",
         {
-            "submitted_documents": 18,
-            "persisted_documents": 18,
-            "succeeded_jobs": 18,
+            "submitted_documents": 20,
+            "persisted_documents": 20,
+            "succeeded_jobs": 20,
             "failed_jobs": 0,
             "persisted_chunks": contract["ingestion"]["expected_chunks"],
             "embedding_provider": "gemini",
@@ -624,7 +736,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         "promptfoo",
         {
             "results": {
-                "stats": {"successes": 114, "failures": 0, "errors": 0},
+                "stats": {"successes": 150, "failures": 0, "errors": 0},
                 "results": [
                     {
                         "response": {
@@ -636,7 +748,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                             "vars": {"relevant_doc_ids": f"doc{index}"}
                         },
                     }
-                    for index in range(114)
+                    for index in range(150)
                 ],
             }
         },
@@ -646,16 +758,16 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "total": 114,
-                "passed": 114,
+                "total": 150,
+                "passed": 150,
                 "failed": 0,
-                "top1": 92,
+                "top1": 120,
                 "degraded": 0,
             },
-            "top1_rate": 92 / 114,
+            "top1_rate": 120 / 150,
             "results": [
                 {"case_id": f"q{index}", "passed": True, "matched_rank": 1}
-                for index in range(114)
+                for index in range(150)
             ],
         },
     )
@@ -664,7 +776,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "server_default_knowledge_base": True,
-            "counts": {"total": 18, "passed": 18, "failed": 0},
+            "counts": {"total": 20, "passed": 20, "failed": 0},
             "results": [
                 {
                     "case_id": f"chat{index}",
@@ -675,7 +787,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                     "fact_groups": [True],
                     "forbidden_claims": [],
                 }
-                for index in range(18)
+                for index in range(20)
             ],
         },
     )

@@ -16,7 +16,7 @@ import re
 POLICY_SPEC_ID = "SPEC-CHAT-BEHAVIOR-POLICY-001"
 POSITIONING_SPEC_ID = "SPEC-AGENT-POSITIONING-POLICY-001"
 LANGUAGE_SPEC_ID = "SPEC-CHAT-LANGUAGE-CONSISTENCY-001"
-POLICY_VERSION = f"{POLICY_SPEC_ID}/v4"
+POLICY_VERSION = f"{POLICY_SPEC_ID}/v5"
 TARGET_LANGUAGE_ZH_HANS = "zh-Hans"
 TARGET_LANGUAGE_EN = "en"
 TARGET_LANGUAGE_UNKNOWN = "unknown"
@@ -368,6 +368,15 @@ _PLATFORM_MECHANISM_KNOWLEDGE_PATTERNS = (
     re.compile(r"谁持有.{0,12}最多"),
     re.compile(r"\bwho created (?:you|this agent)\b", re.I),
     re.compile(r"创建者是谁|谁创建了"),
+    re.compile(r"\bwhat do (?:i|you|this agent) do\b", re.I),
+    re.compile(r"\bhold(?:ing)?\b.{0,24}\btoken\b.{0,24}\bdirectly\b", re.I),
+    re.compile(
+        r"\b(?:fixed apy|fixed yield|airdrops?|governance|proposals?|propose|"
+        r"voting|vote|snapshot|redeem|redemption|principal)\b",
+        re.I,
+    ),
+    re.compile(r"你是做什么|直接持有.{0,12}代币.{0,12}区别"),
+    re.compile(r"固定收益|空投|治理|提案|投票|快照|赎回|本金|退出"),
 )
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 _LATIN_CHAR_RE = re.compile(r"[A-Za-z]")

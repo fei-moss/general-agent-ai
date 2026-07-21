@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The V2 seed (`marketplace-qna-rag-seed-v2`) is an exact in-repository copy of 9 Chinese and 9 English Marketplace QnA Markdown files. It covers 114 source questions with one same-language semantic retrieval case per question and 18 representative end-to-end chat cases.
+This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The current V5 seed (`marketplace-qna-rag-seed-v5`) contains 10 Chinese and 10 English Marketplace QnA Markdown files. It covers 150 source questions with one same-language semantic retrieval case per question and 20 representative end-to-end chat cases. V5 adds stable Governance/Ballot mechanisms, improves custody-query retrieval, and keeps current-Agent values out of the fixed corpus.
 
 Machine-readable authorities:
 
@@ -14,14 +14,14 @@ Machine-readable authorities:
 
 ## Review Conclusion
 
-The fixture family has complete source-question coverage: 18 documents, 114 Golden Queries, 114 review rows, and 18 chat cases. Chinese and English each contribute 57 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
+The fixture family has complete source-question coverage: 20 documents, 150 Golden Queries, 150 review rows, and 20 chat cases. Chinese and English each contribute 75 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
 
 The current acceptance target is deliberately strict:
 
-- local Promptfoo: 114/114 top-5, zero degraded, Top-1 at least 80%;
-- DockerHost `/rag/query`: 114/114 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
-- live chat: 18/18 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
-- persistent ingestion: 18 documents, 18 successful jobs, 143 chunks, zero failed jobs, exact source-hash equality.
+- local Promptfoo: 150/150 top-5, zero degraded, Top-1 at least 80%;
+- DockerHost `/rag/query`: 150/150 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
+- live chat: 20/20 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
+- persistent ingestion: 20 documents, 20 successful jobs, 184 chunks, zero failed jobs, exact source-hash equality.
 
 ## Corpus Quality Finding
 
@@ -44,6 +44,7 @@ V2 now states the layer distinction, explicitly rejects official endorsement or 
 | `marketplace_qna_en_07` | 4 | `marketplace_qna_en_07_q01`, `marketplace_qna_en_07_q02`, `marketplace_qna_en_07_q03`, `marketplace_qna_en_07_q04` |
 | `marketplace_qna_en_08` | 7 | `marketplace_qna_en_08_q01`, `marketplace_qna_en_08_q02`, `marketplace_qna_en_08_q03`, `marketplace_qna_en_08_q04`, `marketplace_qna_en_08_q05`, `marketplace_qna_en_08_q06`, `marketplace_qna_en_08_q07` |
 | `marketplace_qna_en_09` | 3 | `marketplace_qna_en_09_q01`, `marketplace_qna_en_09_q02`, `marketplace_qna_en_09_q03` |
+| `marketplace_qna_en_10` | 18 | `marketplace_qna_en_10_q01`, `marketplace_qna_en_10_q02`, `marketplace_qna_en_10_q03`, `marketplace_qna_en_10_q04`, `marketplace_qna_en_10_q05`, `marketplace_qna_en_10_q06`, `marketplace_qna_en_10_q07`, `marketplace_qna_en_10_q08`, `marketplace_qna_en_10_q09`, `marketplace_qna_en_10_q10`, `marketplace_qna_en_10_q11`, `marketplace_qna_en_10_q12`, `marketplace_qna_en_10_q13`, `marketplace_qna_en_10_q14`, `marketplace_qna_en_10_q15`, `marketplace_qna_en_10_q16`, `marketplace_qna_en_10_q17`, `marketplace_qna_en_10_q18` |
 | `marketplace_qna_zh_cn_01` | 5 | `marketplace_qna_zh_cn_01_q01`, `marketplace_qna_zh_cn_01_q02`, `marketplace_qna_zh_cn_01_q03`, `marketplace_qna_zh_cn_01_q04`, `marketplace_qna_zh_cn_01_q05` |
 | `marketplace_qna_zh_cn_02` | 7 | `marketplace_qna_zh_cn_02_q01`, `marketplace_qna_zh_cn_02_q02`, `marketplace_qna_zh_cn_02_q03`, `marketplace_qna_zh_cn_02_q04`, `marketplace_qna_zh_cn_02_q05`, `marketplace_qna_zh_cn_02_q06`, `marketplace_qna_zh_cn_02_q07` |
 | `marketplace_qna_zh_cn_03` | 2 | `marketplace_qna_zh_cn_03_q01`, `marketplace_qna_zh_cn_03_q02` |
@@ -53,6 +54,7 @@ V2 now states the layer distinction, explicitly rejects official endorsement or 
 | `marketplace_qna_zh_cn_07` | 4 | `marketplace_qna_zh_cn_07_q01`, `marketplace_qna_zh_cn_07_q02`, `marketplace_qna_zh_cn_07_q03`, `marketplace_qna_zh_cn_07_q04` |
 | `marketplace_qna_zh_cn_08` | 7 | `marketplace_qna_zh_cn_08_q01`, `marketplace_qna_zh_cn_08_q02`, `marketplace_qna_zh_cn_08_q03`, `marketplace_qna_zh_cn_08_q04`, `marketplace_qna_zh_cn_08_q05`, `marketplace_qna_zh_cn_08_q06`, `marketplace_qna_zh_cn_08_q07` |
 | `marketplace_qna_zh_cn_09` | 3 | `marketplace_qna_zh_cn_09_q01`, `marketplace_qna_zh_cn_09_q02`, `marketplace_qna_zh_cn_09_q03` |
+| `marketplace_qna_zh_cn_10` | 18 | `marketplace_qna_zh_cn_10_q01`, `marketplace_qna_zh_cn_10_q02`, `marketplace_qna_zh_cn_10_q03`, `marketplace_qna_zh_cn_10_q04`, `marketplace_qna_zh_cn_10_q05`, `marketplace_qna_zh_cn_10_q06`, `marketplace_qna_zh_cn_10_q07`, `marketplace_qna_zh_cn_10_q08`, `marketplace_qna_zh_cn_10_q09`, `marketplace_qna_zh_cn_10_q10`, `marketplace_qna_zh_cn_10_q11`, `marketplace_qna_zh_cn_10_q12`, `marketplace_qna_zh_cn_10_q13`, `marketplace_qna_zh_cn_10_q14`, `marketplace_qna_zh_cn_10_q15`, `marketplace_qna_zh_cn_10_q16`, `marketplace_qna_zh_cn_10_q17`, `marketplace_qna_zh_cn_10_q18` |
 
 ## Evaluation Notes
 
