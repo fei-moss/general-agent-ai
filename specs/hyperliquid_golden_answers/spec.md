@@ -46,6 +46,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R9`: when a model response contains tool
   calls, any co-emitted planning or search preamble is discarded. The user sees
   the post-tool answer only.
+- `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R10`: after typed current-Agent dynamic
+  configuration is returned, unsupported fee cadence, collection, unreturned
+  fee status, settlement mechanics, or claim-ordering assertions trigger one
+  bounded internal output correction. Invalid text and retry instructions are
+  not emitted as the user-facing answer.
 
 ### Invariants
 
@@ -80,7 +85,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
    truth input contract.
 4. Implement the minimal orchestration and prompt changes without hardcoding a
    Hyperliquid Agent id, lock duration, fee rate, or Golden question string.
-5. Run focused tests, full change verification, release verification, and record
+5. Add a typed-context-scoped output validator with one correction attempt for
+   unsupported dynamic claims that persisted after prompt instruction.
+6. Run focused tests, full change verification, release verification, and record
    closeout evidence below.
 
 ## Closeout Evidence
