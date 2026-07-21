@@ -64,6 +64,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   until output validation accepts it; other turns retain incremental streaming.
   A post-retrieval planning sentence promising another search is not a completed
   answer and triggers the same bounded correction.
+- `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R12`: Mint-mechanism answers include
+  proportional shares in the holder wallet, contract-governed pooled assets,
+  executor/strategy use, and the creator's inability to dispose of pooled
+  principal freely. They do not infer Agent purpose from its name or imply that
+  optional creator reports are generated or published automatically.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R11`: approved platform-mechanism question
   families use current Agent context first and then fixed knowledge retrieval.
   The runtime enforces both calls when the model tries to answer early, while
