@@ -17,6 +17,7 @@ run 时注入,便于 task 装配与测试替身。
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -107,6 +108,7 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "not waived for losses",
     "only fee currently configured",
     "only fee configured",
+    "fee schedule includes only",
     "no other fee types are currently configured",
     "no other fees are configured",
     "no profit share is configured",
@@ -152,6 +154,7 @@ _UNSUPPORTED_SETTLEMENT_CLAIMS = (
     "结算会平仓",
     "先结算再领取",
     "领取前必须结算",
+    "领取前需要进行结算",
 )
 _UNSUPPORTED_REDEMPTION_SCOPE_CLAIMS = (
     "after minting there is a lock",
@@ -169,6 +172,15 @@ _INCOMPLETE_TOOL_NARRATION_CLAIMS = (
     "i will search",
     "让我再检索",
     "我再搜索",
+)
+_UNSUPPORTED_AGENT_NARRATIVE_CLAIMS = (
+    "seems to be a test agent",
+    "appears to be a test agent",
+    "似乎是一个用于测试",
+    "看起来是一个测试 agent",
+    "reasoning, decisions, and operations are published as reports",
+    "platform regularly generates agent reports",
+    "平台会定期生成 agent 运行报告",
 )
 
 
@@ -316,12 +328,17 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             output,
             ctx.deps.marketplace_context_result,
         )
-        if not violations:
+        missing_mechanism_facts = _missing_approved_mechanism_facts(
+            _query_from_prompt(ctx.prompt), output
+        )
+        if not violations and not missing_mechanism_facts:
             return output
         raise ModelRetry(
-            "Revise the final answer and remove these claims because the typed "
+            "Revise the final answer. Remove these claims because the typed "
             "current-Agent context does not support them: "
-            + "; ".join(violations)
+            + ("; ".join(violations) if violations else "none")
+            + ". Include these approved platform-mechanism facts that were omitted: "
+            + ("; ".join(missing_mechanism_facts) if missing_mechanism_facts else "none")
             + ". Keep the exact returned lock, claim, settlement-required, fee-type, "
             "and rate values. For cadence, collection mechanics, settlement mechanics, "
             "or unreturned fee types, say the source did not return that information. "
@@ -526,6 +543,9 @@ def _unsupported_dynamic_claims(
         claim for claim in _UNSUPPORTED_RISK_CLAIMS if claim in normalized
     ]
     violations.extend(
+        claim for claim in _UNSUPPORTED_AGENT_NARRATIVE_CLAIMS if claim in normalized
+    )
+    violations.extend(
         claim for claim in _INCOMPLETE_TOOL_NARRATION_CLAIMS if claim in normalized
     )
     fee_schedule = payload.get("fee_schedule")
@@ -544,6 +564,35 @@ def _unsupported_dynamic_claims(
             if claim in normalized
         )
     return violations
+
+
+def _missing_approved_mechanism_facts(prompt: str, output: str) -> list[str]:
+    """Require core approved Mint mechanics without pinning Agent-specific values."""
+    question = str(prompt or "").casefold()
+    if not (
+        ("mint" in question or "铸造" in question)
+        and ("share" in question or "份额" in question)
+    ):
+        return []
+    answer = str(output or "").casefold()
+    required_groups = (
+        ("proportional", "按比例", "权益"),
+        ("wallet", "钱包"),
+        ("contract", "合约"),
+        ("strategy", "executor", "策略", "执行"),
+    )
+    missing = [
+        "/".join(group)
+        for group in required_groups
+        if not any(item in answer for item in group)
+    ]
+    creator_constrained = bool(
+        re.search(r"creator.{0,48}(?:cannot|can't|not freely)", answer, re.I)
+        or re.search(r"创建者.{0,24}(?:不能|无法|不可|不能随意)", answer)
+    )
+    if not creator_constrained:
+        missing.append("creator cannot freely dispose of pooled principal/创建者不能随意处置池中本金")
+    return missing
 
 
 def _typed_section_available(value: Any) -> bool:

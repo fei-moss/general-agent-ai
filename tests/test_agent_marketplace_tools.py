@@ -136,7 +136,8 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
                         "on assets under management, is unrelated to profit or "
                         "loss, and is not waived for losses. There is no insurance "
                         "mechanism or loss-absorbing party and no generic stop-loss "
-                        "mechanism. 管理费不会因亏损而豁免。"
+                        "mechanism. It seems to be a test agent. The fee schedule "
+                        "includes only this fee. 管理费不会因亏损而豁免，领取前需要进行结算。"
                     )
                 )
             ]
@@ -172,7 +173,10 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
     assert "no insurance mechanism" in retry_feedback[0]
     assert "loss-absorbing party" in retry_feedback[0]
     assert "no generic stop-loss mechanism" in retry_feedback[0]
+    assert "seems to be a test agent" in retry_feedback[0]
+    assert "fee schedule includes only" in retry_feedback[0]
     assert "不会因亏损而豁免" in retry_feedback[0]
+    assert "领取前需要进行结算" in retry_feedback[0]
     assert result.output == (
         "Management Fee: 1%. The source does not return fee cadence, "
         "collection mechanics, or other fee types."
@@ -227,7 +231,16 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
                 if isinstance(part, RetryPromptPart):
                     retry_feedback.append(str(part.content))
                     return ModelResponse(
-                        parts=[TextPart(content="The available evidence does not say.")]
+                        parts=[
+                            TextPart(
+                                content=(
+                                    "You receive a proportional on-chain share in your "
+                                    "wallet. Pooled assets enter the contract for the "
+                                    "executor's strategy, and the creator cannot freely "
+                                    "dispose of pooled principal."
+                                )
+                            )
+                        ]
                     )
         return ModelResponse(
             parts=[
@@ -254,13 +267,15 @@ async def test_current_agent_output_retries_incomplete_search_and_mint_lock_clai
         },
     )
 
-    result = await agent.run("What happens when I mint?", deps=deps)
+    result = await agent.run("What happens when I mint a share?", deps=deps)
 
     assert calls == 3
     assert "after minting there is a lock" in retry_feedback[0]
     assert "the search didn't return" in retry_feedback[0]
     assert "let me search" in retry_feedback[0]
-    assert result.output == "The available evidence does not say."
+    assert "wallet" in retry_feedback[0]
+    assert "creator cannot freely dispose" in retry_feedback[0]
+    assert "proportional on-chain share" in result.output
 
 
 async def test_current_agent_context_is_forced_when_model_answers_without_tool():
@@ -323,7 +338,17 @@ async def test_required_platform_knowledge_is_forced_after_current_agent_context
             TOOL_MARKETPLACE_AGENT_CONTEXT,
             "search_knowledge",
         }.issubset(returned_tools):
-            return ModelResponse(parts=[TextPart(content="Approved mechanism used.")])
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "You receive a proportional share in your wallet. Pooled "
+                            "assets enter the contract for the executor's strategy, and "
+                            "the creator cannot freely dispose of pooled principal."
+                        )
+                    )
+                ]
+            )
         return ModelResponse(parts=[TextPart(content="Answered without required evidence.")])
 
     agent = build_agent(FunctionModel(function=function))
@@ -345,7 +370,7 @@ async def test_required_platform_knowledge_is_forced_after_current_agent_context
 
     assert len(marketplace.context_calls) == 1
     assert retriever.queries == ["What happens when I mint your share?"]
-    assert result.output == "Approved mechanism used."
+    assert "creator cannot freely dispose" in result.output
 
 
 async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chain_id():
