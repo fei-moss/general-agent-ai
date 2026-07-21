@@ -33,10 +33,12 @@ ATTRIBUTIONS = {
 BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
 _BALLOT_DYNAMIC_FIELD_TERMS = {
     "accrual_display_location": [
-        "accrual_display_location", "accrual display location", "累积展示位置", "累积明细"
+        "accrual_display_location", "accrual display location", "累积展示位置", "展示位置", "累积明细"
     ],
     "airdrop_token": ["airdrop_token", "airdrop token", "空投代币"],
-    "concentration_note": ["concentration_note", "concentration note", "集中度提示"],
+    "concentration_note": [
+        "concentration_note", "concentration note", "vote concentration", "voting concentration", "集中度提示", "投票集中"
+    ],
     "early_redeem_rule": ["early_redeem_rule", "early redeem rule", "提前赎回规则"],
     "execution_rule": ["execution_rule", "execution rule", "执行规则", "执行机制"],
     "fixed_apy": ["fixed_apy", "fixed apy", "固定 apy", "固定收益率"],

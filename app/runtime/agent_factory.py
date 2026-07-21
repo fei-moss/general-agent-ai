@@ -758,18 +758,6 @@ def _missing_approved_mechanism_facts(
     def has(*terms: str) -> bool:
         return any(term.casefold() in answer for term in terms)
 
-    if agent_type == "ballot" and bool(
-        re.search(r"\bwhat do (?:i|you|this agent) do\b", question)
-        or "你是做什么" in question
-    ):
-        required = (
-            ("fixed APY availability/固定收益率可用性", ("fixed apy", "固定收益率")),
-            ("airdrop accrual and Redeem claim/空投累积并在 Redeem 领取", ("airdrop", "空投")),
-            ("governance voting/治理投票", ("governance voting", "治理投票")),
-            ("project updates/项目动态", ("project updates", "项目动态")),
-        )
-        return [label for label, terms in required if not has(*terms)]
-
     fixed_apy_change_question = bool(
         ("fixed apy" in question or "固定收益率" in question)
         and re.search(r"\b(?:change|changed|later|adjust)\b|以后.{0,8}(?:变|改)|会变|调整", question)
