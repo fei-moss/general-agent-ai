@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-BALLOT-GOLDEN-ANSWERS-001
 module: ballot_golden_answers
-status: approved
+status: implemented
 workflow_class: HARNESS-SPEC-FIRST-FEATURE
 ---
 
@@ -99,4 +99,21 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 
 ## Closeout Evidence
 
-- Pending implementation and target-Agent acceptance.
+- The owner-approved Q1-Q18 source was normalized losslessly into 36 applicable
+  `ballot` cases: 18 Chinese and 18 English. Q19 remains explicitly excluded
+  and creates no review or completion obligation.
+- Current-Agent truth was derived from typed Marketplace `ai-context`. Stable
+  mechanisms use the bilingual versioned QnA corpus; Agent-specific values and
+  explicit `not_provided` states remain in typed current-Agent context.
+- Final target acceptance passed all 36 applicable cases with zero hard
+  failures, semantic gaps, pending reviews, release blockers, and completion
+  blockers. Transport/runtime, required facts, forbidden claims, bilingual
+  consistency, and human semantic review are included in the evidence.
+- Blue-green QnA V5 acceptance passed: 20 documents and 184 chunks ingested,
+  150/150 live retrieval cases passed with 131/150 Top-1 (87.33%), 150/150
+  Promptfoo cases passed, and 20/20 live Chat cases passed. The prior production
+  knowledge base remains retained for data-only rollback.
+- Full `pytest`, Marketplace QnA acceptance validation, `verify-change`, and
+  `verify-release` are required on the final integrated tree. DockerHost release
+  evidence must additionally prove pushed `Deploy` ref/SHA equality, health,
+  readiness, async Chat, SSE completion, and final run success.
