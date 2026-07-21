@@ -57,6 +57,7 @@ from app.runtime.chat_behavior import (
     evaluate_user_message,
     is_identity_introduction_request,
     is_marketplace_compute_request,
+    is_platform_mechanism_knowledge_request,
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
@@ -280,7 +281,10 @@ class AgentOrchestrator:
                 )
             elif extract_current_agent_ref(effective_run_context) is not None:
                 effective_run_context = _with_marketplace_context_turn_policy(
-                    effective_run_context
+                    effective_run_context,
+                    knowledge_required=is_platform_mechanism_knowledge_request(
+                        user_message
+                    ),
                 )
             return await self._execute(
                 agent_run_id,
@@ -1127,7 +1131,11 @@ def _with_marketplace_compute_turn_policy(run_context: dict[str, Any]) -> dict[s
     return context
 
 
-def _with_marketplace_context_turn_policy(run_context: dict[str, Any]) -> dict[str, Any]:
+def _with_marketplace_context_turn_policy(
+    run_context: dict[str, Any],
+    *,
+    knowledge_required: bool = False,
+) -> dict[str, Any]:
     """Return a server-owned context copy that resolves current-Agent facts first."""
     context = dict(run_context)
     existing = context.get("turn_policy")
@@ -1136,6 +1144,7 @@ def _with_marketplace_context_turn_policy(run_context: dict[str, Any]) -> dict[s
         {
             "intent": "current_agent_question",
             "tool_use": "marketplace_context_first",
+            "knowledge_required": knowledge_required,
             "reason": "current Agent facts require current configuration context",
         }
     )

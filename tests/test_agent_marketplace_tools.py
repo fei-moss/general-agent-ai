@@ -132,7 +132,8 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
                     content=(
                         "Management Fee: 1% per annum. This is the only fee "
                         "currently configured. Settlement must occur before you "
-                        "can claim because it closes positions."
+                        "can claim because it closes positions. The fee is based "
+                        "on assets under management."
                     )
                 )
             ]
@@ -162,6 +163,7 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
     assert "only fee currently configured" in retry_feedback[0]
     assert "settlement must occur before you can claim" in retry_feedback[0]
     assert "closes positions" in retry_feedback[0]
+    assert "based on assets under management" in retry_feedback[0]
     assert result.output == (
         "Management Fee: 1%. The source does not return fee cadence, "
         "collection mechanics, or other fee types."
@@ -190,6 +192,91 @@ async def test_dynamic_claim_validator_is_inactive_without_typed_context_result(
 
     assert calls == 1
     assert result.output == "This is the only fee currently configured."
+
+
+async def test_current_agent_context_is_forced_when_model_answers_without_tool():
+    marketplace = _FakeMarketplaceAI()
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in returned_tools:
+            return ModelResponse(parts=[TextPart(content="Current Agent context used.")])
+        return ModelResponse(parts=[TextPart(content="I am the assistant, not the Agent.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("What are you holding?", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert result.output == "Current Agent context used."
+
+
+async def test_required_platform_knowledge_is_forced_after_current_agent_context():
+    marketplace = _FakeMarketplaceAI()
+
+    class _RecordingRetriever:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        async def retrieve(self, query: str, _top_k: int):
+            self.queries.append(query)
+            return [{"text": "Approved platform mechanism."}]
+
+    retriever = _RecordingRetriever()
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if {
+            TOOL_MARKETPLACE_AGENT_CONTEXT,
+            "search_knowledge",
+        }.issubset(returned_tools):
+            return ModelResponse(parts=[TextPart(content="Approved mechanism used.")])
+        return ModelResponse(parts=[TextPart(content="Answered without required evidence.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=retriever,
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+                "knowledge_required": True,
+            },
+        },
+    )
+
+    result = await agent.run("What happens when I mint your share?", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert retriever.queries == ["What happens when I mint your share?"]
+    assert result.output == "Approved mechanism used."
 
 
 async def test_agent_marketplace_compute_tool_passes_metric_queries_without_chain_id():

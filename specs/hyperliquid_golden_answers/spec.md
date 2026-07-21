@@ -21,11 +21,14 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R3`: a case that declares a dynamic fact
   rule is blocked when its target truth is absent. Each dynamic rule supplies
   required fact groups and forbidden claims using the same deterministic
-  matching contract as static hard facts.
+  matching contract as static hard facts. Approved missing-data alternatives
+  recognize equivalent explicit wording such as not disclosed, not returned,
+  unavailable, 未披露, 未返回, and no-current-data states.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R4`: for a current-Agent detail-page turn,
   the answer chain obtains current Agent context before using fixed platform
   knowledge. Tool data wins on Agent identity, type, chain, creator, strategy
-  disclosure, positions, activities, redemption configuration, and fees.
+  disclosure, positions, activities, redemption configuration, and fees. A
+  premature model answer is replaced by the required context call.
 - `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R5`: redemption answers state the current
   lock period and request/claim flow when configured. They state no lock or no
   window only when the current configuration explicitly supports that claim.
@@ -52,6 +55,10 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   bounded internal output correction. Invalid text and retry instructions are
   not emitted as the user-facing answer. Current-Agent final text is buffered
   until output validation accepts it; other turns retain incremental streaming.
+- `SPEC-HYPERLIQUID-GOLDEN-ANSWERS-001-R11`: approved platform-mechanism question
+  families use current Agent context first and then fixed knowledge retrieval.
+  The runtime enforces both calls when the model tries to answer early, while
+  current typed configuration still overrides generic mechanism documentation.
 
 ### Invariants
 

@@ -797,7 +797,32 @@ def _contains(text: str, fragment: str) -> bool:
 
 def _normalize_text(value: str) -> str:
     normalized = str(value).casefold().replace("%", " percent ")
+    for pattern in _MISSING_FACT_PATTERNS:
+        normalized = pattern.sub(" missingfactmarker ", normalized)
     return " ".join(re.sub(r"[^\w]+", " ", normalized).split())
+
+
+_MISSING_FACT_PATTERNS = (
+    re.compile(
+        r"\b(?:unavailable|not available|not provided|not disclosed|not returned|"
+        r"not materialized|no data|cannot retrieve|can't retrieve|no disclosed|"
+        r"unable to (?:retrieve|determine|provide))\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bno\b[^.!?\n]{0,60}\b(?:available|provided|disclosed|returned|"
+        r"to report|on record)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bno\b(?: current)?\s+(?:positions?|holdings?|holders?|shares?|trades?|"
+        r"reports?|activities|activity)\b",
+        re.I,
+    ),
+    re.compile(r"未(?:提供|披露|返回|物化)|暂(?:无|不可用)|无法(?:获取|提供|确定|检索)"),
+    re.compile(r"没有可(?:用|展示)"),
+    re.compile(r"(?:没有|无)[^，。；！？\n]{0,16}(?:仓位|持仓|持有人|份额|交易|报告|活动|数据|记录)"),
+)
 
 
 def _suggest_attribution(

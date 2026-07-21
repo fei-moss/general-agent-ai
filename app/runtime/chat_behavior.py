@@ -348,6 +348,20 @@ _MARKETPLACE_COMPUTE_REQUEST_PATTERNS = (
     re.compile(r"\bshare[_ -]?price[_ -]?(?:change|delta)\b", re.I),
     re.compile(r"\bai-compute\b", re.I),
 )
+_PLATFORM_MECHANISM_KNOWLEDGE_PATTERNS = (
+    re.compile(r"\b(?:mint|minting)\b.{0,32}\bshares?\b", re.I),
+    re.compile(r"mint.{0,20}份额", re.I),
+    re.compile(r"\bcopy[ -]?trading\b", re.I),
+    re.compile(r"跟单"),
+    re.compile(r"\b(?:who\s+bears?|bear)\b.{0,24}\bloss(?:es)?\b", re.I),
+    re.compile(r"亏了算谁|谁.{0,12}承担.{0,8}(?:亏损|损失)"),
+    re.compile(r"\b(?:track|view|check)\b.{0,24}\b(?:earnings?|profit|pnl)\b", re.I),
+    re.compile(r"怎么看.{0,12}(?:赚了多少|收益|盈亏)"),
+    re.compile(r"\btop holders?\b|\bwho holds?.{0,16}\bmost\b", re.I),
+    re.compile(r"谁持有.{0,12}最多"),
+    re.compile(r"\bwho created (?:you|this agent)\b", re.I),
+    re.compile(r"创建者是谁|谁创建了"),
+)
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 _LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
 _ZH_MISMATCH_LATIN_THRESHOLD = 16
@@ -707,6 +721,14 @@ def is_marketplace_compute_request(message: str) -> bool:
     if not text:
         return False
     return any(pattern.search(text) for pattern in _MARKETPLACE_COMPUTE_REQUEST_PATTERNS)
+
+
+def is_platform_mechanism_knowledge_request(message: str) -> bool:
+    """Return whether a current-Agent turn also requires fixed platform knowledge."""
+    text = str(message or "").strip()
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in _PLATFORM_MECHANISM_KNOWLEDGE_PATTERNS)
 
 
 def evaluate_assistant_answer(

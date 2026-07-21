@@ -254,7 +254,7 @@ async def test_current_agent_turn_policy_requires_context_tool_first():
 
     await agent.run("What fees do you charge?", deps=deps)
 
-    assert seen_tool_names == [[TOOL_MARKETPLACE_AGENT_CONTEXT]]
+    assert seen_tool_names[0] == [TOOL_MARKETPLACE_AGENT_CONTEXT]
 
 
 async def test_agent_injects_current_agent_fact_precedence_instruction():
