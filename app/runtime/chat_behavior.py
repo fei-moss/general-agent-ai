@@ -301,6 +301,13 @@ _IDENTITY_INTRO_PATTERNS = (
     re.compile(r"\bintroduce\s+yourself\b", re.I),
     re.compile(r"\byour\s+capabilities\b", re.I),
 )
+_CURRENT_AGENT_FACT_PATTERNS = (
+    re.compile(r"策略|仓位|持仓|创建者|谁创建"),
+    re.compile(
+        r"\b(?:strateg(?:y|ies)|holdings?|positions?|creator|created)\b",
+        re.I,
+    ),
+)
 _OUTPUT_POLICY_LEAK_PATTERNS = (
     "system prompt 是",
     "系统提示是",
@@ -711,6 +718,8 @@ def is_identity_introduction_request(message: str) -> bool:
     """
     text = str(message or "").strip()
     if not text:
+        return False
+    if any(pattern.search(text) for pattern in _CURRENT_AGENT_FACT_PATTERNS):
         return False
     return any(pattern.search(text) for pattern in _IDENTITY_INTRO_PATTERNS)
 

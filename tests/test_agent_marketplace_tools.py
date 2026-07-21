@@ -133,7 +133,9 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
                         "Management Fee: 1% per annum. This is the only fee "
                         "currently configured. Settlement must occur before you "
                         "can claim because it closes positions. The fee is based "
-                        "on assets under management."
+                        "on assets under management, is unrelated to profit or "
+                        "loss, and is not waived for losses. There is no insurance "
+                        "mechanism or loss-absorbing party."
                     )
                 )
             ]
@@ -164,6 +166,10 @@ async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
     assert "settlement must occur before you can claim" in retry_feedback[0]
     assert "closes positions" in retry_feedback[0]
     assert "based on assets under management" in retry_feedback[0]
+    assert "unrelated to profit or loss" in retry_feedback[0]
+    assert "not waived for losses" in retry_feedback[0]
+    assert "no insurance mechanism" in retry_feedback[0]
+    assert "loss-absorbing party" in retry_feedback[0]
     assert result.output == (
         "Management Fee: 1%. The source does not return fee cadence, "
         "collection mechanics, or other fee types."
