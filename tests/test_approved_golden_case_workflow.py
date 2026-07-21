@@ -306,6 +306,31 @@ def test_report_blocks_missing_hard_fact_and_attributes_rag_gap():
     assert result["suggested_attribution"] == "rag_or_retrieval"
 
 
+@pytest.mark.parametrize(
+    ("answer", "fallback"),
+    [
+        ("The requested strategy was not disclosed.", "not provided"),
+        ("No current positions are available.", "unavailable"),
+        ("该字段未返回。", "未提供"),
+        ("当前没有任何仓位。", "没有可展示"),
+    ],
+)
+def test_report_treats_equivalent_missing_data_wording_as_fallback(
+    answer: str,
+    fallback: str,
+):
+    source = _source_case(required_fact_groups=[["specific value", fallback]])
+    cases = normalize_approved_cases(
+        [source],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    report = build_optimization_report(cases, _live_report(answer))
+
+    assert report["case_results"][0]["hard_pass"] is True
+
+
 def test_report_skips_cases_outside_the_target_agent_type():
     cases = normalize_approved_cases(
         [_source_case(applicable_agent_types=["hyperliquid"])],

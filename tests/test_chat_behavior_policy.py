@@ -14,6 +14,7 @@ from app.runtime.chat_behavior import (
     detect_target_language,
     evaluate_assistant_answer,
     evaluate_user_message,
+    is_platform_mechanism_knowledge_request,
     is_marketplace_compute_request,
 )
 
@@ -79,6 +80,21 @@ def test_marketplace_compute_request_detects_volume_sum_metric():
     assert is_marketplace_compute_request("过去一天这个 Agent 的 volume_sum 怎么算?")
     assert is_marketplace_compute_request("Can you use ai-compute for volume?")
     assert not is_marketplace_compute_request("Top Holders 应该怎么看?")
+
+
+def test_platform_mechanism_knowledge_request_detects_approved_question_families():
+    for message in (
+        "What happens when I mint your share?",
+        "持有你的份额和跟单有什么区别？",
+        "Who bears the losses?",
+        "我怎么看自己赚了多少？",
+        "Who holds you the most?",
+        "你的创建者是谁？",
+    ):
+        assert is_platform_mechanism_knowledge_request(message)
+
+    assert not is_platform_mechanism_knowledge_request("What fees do you charge?")
+    assert not is_platform_mechanism_knowledge_request("你现在持有什么仓位？")
 
 
 def test_detect_target_language_prefers_explicit_user_request():

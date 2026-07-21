@@ -99,6 +99,10 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "deducted from your holdings",
     "deducted from holdings",
     "deducted from the vault",
+    "on the position",
+    "based on assets under management",
+    "based on aum",
+    "regardless of profit or loss",
     "only fee currently configured",
     "only fee configured",
     "no other fee types are currently configured",
@@ -108,6 +112,9 @@ _UNSUPPORTED_FEE_CLAIMS = (
     "按年收取",
     "从持仓中扣除",
     "从您的持仓中扣除",
+    "基于管理的资产规模收取",
+    "按管理资产规模收取",
+    "不区分盈亏",
     "唯一费用",
     "唯一的费用",
     "仅有的费用",
@@ -231,7 +238,11 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     " settlement closes positions or explain how it works. Never"
                     " substitute viewer wallet activity or"
                     " viewer shares for Agent trades or positions. If a field is absent,"
-                    " say it is unavailable and do not invent a generic strategy or value."
+                    " name the requested field and explicitly say 'not provided' or"
+                    " '未提供'; do not invent a generic strategy or value, and never answer"
+                    " with the assistant's own holdings, strategy, or creator. For past"
+                    " performance, add that it does not guarantee future results. Do not"
+                    " urge the user to Mint or participate."
                 )
             if turn_policy.get("intent") != "marketplace_compute_metric":
                 return ""
@@ -356,16 +367,14 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         当前 Agent 地址只能来自服务端 run_context,不能由用户或模型指定。
         """
         if not tool_allowed(TOOL_MARKETPLACE_AGENT_CONTEXT, ctx.deps.run_context):
-            return tool_denied_result(TOOL_MARKETPLACE_AGENT_CONTEXT)
+            result = tool_denied_result(TOOL_MARKETPLACE_AGENT_CONTEXT)
+            ctx.deps.marketplace_context_result = result
+            return result
         ref = extract_current_agent_ref(ctx.deps.run_context)
         if ref is None:
-            return current_agent_missing_result()
-        client = ctx.deps.marketplace_ai
-        if client is None:
-            return marketplace_unavailable(
-                "marketplace_client_missing",
-                "Marketplace AI client is not available.",
-            )
+            result = current_agent_missing_result()
+            ctx.deps.marketplace_context_result = result
+            return result
         exhausted = _claim_tool_budget(
             ctx,
             TOOL_MARKETPLACE_AGENT_CONTEXT,
@@ -373,6 +382,14 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
         if exhausted is not None:
             return exhausted
+        client = ctx.deps.marketplace_ai
+        if client is None:
+            result = marketplace_unavailable(
+                "marketplace_client_missing",
+                "Marketplace AI client is not available.",
+            )
+            ctx.deps.marketplace_context_result = result
+            return result
         result = await client.get_agent_context(
             ref.address,
             viewer_context=ctx.deps.marketplace_viewer_context,
@@ -497,12 +514,64 @@ def _build_runtime_hooks() -> Hooks[AgentDeps]:
 
     @hooks.on.after_model_request
     def dedupe_marketplace_tool_calls(
-        _ctx: RunContext[AgentDeps], *, request_context: Any, response: ModelResponse
+        ctx: RunContext[AgentDeps], *, request_context: Any, response: ModelResponse
     ) -> ModelResponse:
         _ = request_context
-        return _dedupe_marketplace_tool_calls(response)
+        response = _dedupe_marketplace_tool_calls(response)
+        return _force_required_tool_call(ctx, response)
 
     return hooks
+
+
+def _force_required_tool_call(
+    ctx: RunContext[AgentDeps], response: ModelResponse
+) -> ModelResponse:
+    """Replace a premature answer with a server-required evidence tool call."""
+    turn_policy = (ctx.deps.run_context or {}).get("turn_policy") or {}
+    if not (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("intent") == "current_agent_question"
+    ):
+        return response
+    tool_names = {
+        part.tool_name for part in response.parts if isinstance(part, ToolCallPart)
+    }
+    context_missing = (
+        ctx.deps.marketplace_context_result is None
+        and int(
+            ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0)
+        )
+        == 0
+    )
+    if context_missing:
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in tool_names:
+            return response
+        return replace(
+            response,
+            parts=[
+                ToolCallPart(
+                    tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                    args={"reports_limit": 5, "include_raw": False},
+                )
+            ],
+        )
+    knowledge_missing = (
+        turn_policy.get("knowledge_required") is True
+        and int(ctx.deps.tool_call_counts.get(TOOL_SEARCH_KNOWLEDGE, 0)) == 0
+    )
+    if knowledge_missing:
+        if TOOL_SEARCH_KNOWLEDGE in tool_names:
+            return response
+        return replace(
+            response,
+            parts=[
+                ToolCallPart(
+                    tool_name=TOOL_SEARCH_KNOWLEDGE,
+                    args={"query": _query_from_prompt(ctx.prompt)},
+                )
+            ],
+        )
+    return response
 
 
 def _dedupe_marketplace_tool_calls(response: ModelResponse) -> ModelResponse:
@@ -580,11 +649,18 @@ def _prepare_tools_for_turn(
     if (
         isinstance(turn_policy, dict)
         and turn_policy.get("tool_use") == "marketplace_context_first"
+        and ctx.deps.marketplace_context_result is None
         and int(ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0)) == 0
     ):
         return [
             tool for tool in tool_defs if tool.name == TOOL_MARKETPLACE_AGENT_CONTEXT
         ]
+    if (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("knowledge_required") is True
+        and int(ctx.deps.tool_call_counts.get(TOOL_SEARCH_KNOWLEDGE, 0)) == 0
+    ):
+        return [tool for tool in tool_defs if tool.name == TOOL_SEARCH_KNOWLEDGE]
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
         return [tool for tool in tool_defs if tool.name in _ASK_THIS_AGENT_TOOLS]
     return tool_defs
