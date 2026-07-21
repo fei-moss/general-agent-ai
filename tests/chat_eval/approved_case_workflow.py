@@ -39,6 +39,14 @@ _FEE_TYPE_TERMS = {
     "management_fee": ["management fee", "management_fee", "管理费"],
     "profit_share": ["profit share", "profit_share", "收益分成"],
 }
+_UNSUPPORTED_FEE_MECHANICS = [
+    "annualized",
+    "per year",
+    "年化",
+    "按年",
+    "deducted from your holdings",
+    "从持仓中扣除",
+]
 _REAL_SECRET_PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.I),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
@@ -216,7 +224,10 @@ def _fee_target_fact(value: Any) -> dict[str, Any]:
             )
             groups.append(list(_FEE_TYPE_TERMS[fee_type]))
             groups.append(_rate_terms(bps))
-        return {"required_fact_groups": groups, "forbidden_claims": []}
+        return {
+            "required_fact_groups": groups,
+            "forbidden_claims": list(_UNSUPPORTED_FEE_MECHANICS),
+        }
     if available is False and status in {"unsupported", "unavailable"}:
         terms = (
             ["unsupported", "不支持", "未提供"]

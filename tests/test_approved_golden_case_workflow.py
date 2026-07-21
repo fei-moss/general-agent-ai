@@ -436,6 +436,32 @@ def test_percentage_fact_does_not_match_a_numbered_list_item():
     assert ["1%"] in report["case_results"][0]["missing_fact_groups"]
 
 
+def test_fee_truth_rejects_unreturned_collection_mechanics():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                required_fact_groups=[["fee", "费用"]],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    truth = build_target_truth_from_marketplace_context(_marketplace_context())
+
+    report = build_optimization_report(
+        cases,
+        _live_report("Management Fee is 1% annualized and deducted from your holdings."),
+        target_truth=truth,
+    )
+
+    assert report["case_results"][0]["hard_pass"] is False
+    assert report["case_results"][0]["forbidden_hits"] == [
+        "annualized",
+        "deducted from your holdings",
+    ]
+
+
 def test_build_target_truth_uses_typed_marketplace_dynamic_config():
     truth = build_target_truth_from_marketplace_context(_marketplace_context())
 
@@ -460,6 +486,9 @@ def test_build_target_truth_uses_typed_marketplace_dynamic_config():
     assert "1%" in rate_terms
     assert "1.0%" in rate_terms
     assert "1 percent" in rate_terms
+    assert "annualized" in fees["forbidden_claims"]
+    assert "年化" in fees["forbidden_claims"]
+    assert "从持仓中扣除" in fees["forbidden_claims"]
     assert all("mint fee" not in group for group in fees["required_fact_groups"])
 
 
