@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
-from pydantic_ai.messages import ModelRequest, ToolReturnPart
+from pydantic_ai.messages import ModelRequest, RetryPromptPart, ToolReturnPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from app.bus.event_bus import InMemoryEventBus, channel_for
@@ -715,6 +715,86 @@ async def test_current_agent_question_records_context_first_turn_policy(deps):
     turn_policy = plan_calls[0]["run_context"]["turn_policy"]
     assert turn_policy["intent"] == "current_agent_question"
     assert turn_policy["tool_use"] == "marketplace_context_first"
+
+
+async def test_current_agent_stream_emits_only_output_validator_accepted_text(deps):
+    runtime, bus, message_repo, _run_repo = deps
+
+    class _Marketplace:
+        async def get_agent_context(self, _address: str, **_kwargs: Any):
+            return {
+                "ok": True,
+                "data": {
+                    "fee_schedule": {
+                        "available": True,
+                        "status": "ok",
+                        "fees": [
+                            {"fee_type": "management_fee", "rate_bps": 100}
+                        ],
+                    }
+                },
+            }
+
+    def has_retry(messages: list[Any]) -> bool:
+        return any(
+            isinstance(part, RetryPromptPart)
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+        )
+
+    invalid = "Management Fee is 1% per annum and is the only fee configured."
+    corrected = (
+        "Management Fee is 1%. The source did not return cadence, collection "
+        "mechanics, or other fee types."
+    )
+
+    async def stream_fn(messages, _info):
+        if not _has_tool_result(messages):
+            yield {
+                0: DeltaToolCall(
+                    name="marketplace_agent_context",
+                    json_args='{"reports_limit":1,"include_raw":false}',
+                )
+            }
+            return
+        answer = corrected if has_retry(messages) else invalid
+        for index in range(0, len(answer), 8):
+            yield answer[index : index + 8]
+
+    runtime.marketplace_ai = _Marketplace()
+    orchestrator = AgentOrchestrator(
+        runtime,
+        agent=build_agent(FunctionModel(stream_function=stream_fn)),
+    )
+    agent_run_id = "run-current-agent-validated-stream"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-current-agent-validated-stream",
+        trace_id="trace-current-agent-validated-stream",
+        user_message="What fees do you charge?",
+        run_context={
+            "agent": {
+                "contract_address": "0x1111111111111111111111111111111111111111"
+            }
+        },
+    )
+    events = await collector
+
+    token_text = "".join(
+        event.data.get("token", "")
+        for event in events
+        if event.type is EventType.TOKEN
+    )
+    assert answer == corrected
+    assert token_text == corrected
+    assert invalid not in token_text
+    assert message_repo.added[0]["content"] == corrected
 
 
 async def test_guardrail_refusal_skips_provider_limiter_for_real_provider(deps):
