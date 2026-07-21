@@ -385,6 +385,11 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
         if not violations and not missing_mechanism_facts:
             return output
+        if (
+            violations == ["ballot_redeem_vote_rule_invented"]
+            and not missing_mechanism_facts
+        ):
+            return _safe_ballot_redeem_vote_unknown(_query_from_prompt(ctx.prompt))
         raise ModelRetry(
             "Revise the final answer. Remove these claims because the typed "
             "current-Agent context does not support them: "
@@ -719,6 +724,24 @@ def _violation_feedback(violation: str) -> str:
         ),
     }
     return details.get(violation, violation)
+
+
+def _safe_ballot_redeem_vote_unknown(prompt: str) -> str:
+    """Return a typed missing-rule fallback without inferring a vote outcome."""
+    if re.search(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", str(prompt or "")):
+        return (
+            "当前 Agent 的 `redeem_during_vote_rule`（投票期间赎回规则）未提供，"
+            "因此无法确认 Redeem 会保留还是使投票失效。治理快照会记录投票资格与"
+            "权重，但仅凭快照机制不能推断 Redeem 对已投票的影响；请以当前提案页"
+            "或后续返回的当前 Agent 配置为准。"
+        )
+    return (
+        "The current Agent's `redeem_during_vote_rule` is not provided, so I cannot "
+        "determine whether Redeeming preserves or invalidates a vote. A governance "
+        "snapshot records eligibility and weight, but the snapshot mechanism alone "
+        "does not determine the Redeem interaction; use the current proposal page or "
+        "a later current-Agent configuration if this rule is returned."
+    )
 
 
 def _knowledge_query_for_context(

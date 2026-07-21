@@ -19,6 +19,7 @@ from app.runtime.agent_factory import (
     _knowledge_query_for_context,
     _is_correctable_compute_failure,
     _missing_approved_mechanism_facts,
+    _safe_ballot_redeem_vote_unknown,
     _unsupported_dynamic_claims,
     _violation_feedback,
     build_agent,
@@ -136,6 +137,20 @@ def test_ballot_output_guard_allows_snapshot_mechanism_without_redeem_claim():
     assert "ballot_redeem_vote_rule_invented" not in _unsupported_dynamic_claims(
         output, context
     )
+
+
+def test_ballot_redeem_vote_safe_answer_is_bilingual_and_does_not_reassert_outcome():
+    english = _safe_ballot_redeem_vote_unknown(
+        "If I redeem during a vote, does my vote still count?"
+    )
+    chinese = _safe_ballot_redeem_vote_unknown("投票期间我赎回了，我的票还算吗？")
+
+    assert "redeem_during_vote_rule" in english
+    assert "not provided" in english
+    assert "cannot determine" in english
+    assert "redeem_during_vote_rule" in chinese
+    assert "未提供" in chinese
+    assert "无法确认" in chinese
 
 
 def test_ballot_fixed_apy_change_answer_requires_complete_stable_mechanism():
