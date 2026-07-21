@@ -709,7 +709,8 @@ def _asserts_redeem_does_not_affect_vote(text: str) -> bool:
 def _asserts_proportional_voting_rule(text: str) -> bool:
     return bool(
         re.search(
-            r"voting (?:power|rights?|weight) (?:is|are) proportional to (?:your )?shares",
+            r"voting (?:power|rights?|weight) (?:(?:is|are) )?proportional to "
+            r"(?:your )?share(?:s| holdings)",
             text,
             re.I,
         )

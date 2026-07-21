@@ -133,6 +133,9 @@ def test_ballot_output_guard_rejects_proportional_vote_assertion_when_rule_is_mi
     assert "ballot_proportional_voting_rule_invented" in _unsupported_dynamic_claims(
         "Voting power is proportional to your shares.", context
     )
+    assert "ballot_proportional_voting_rule_invented" in _unsupported_dynamic_claims(
+        "Voting weight proportional to your share holdings is included.", context
+    )
     assert "ballot_proportional_voting_rule_invented" not in _unsupported_dynamic_claims(
         "If the rule is share-proportional, a large holder could have influence; "
         "the current voting power rule is not provided.",
