@@ -111,6 +111,9 @@ def test_ballot_output_guard_rejects_redeem_vote_answer_when_rule_is_missing():
     assert "ballot_redeem_vote_rule_invented" in _unsupported_dynamic_claims(
         "赎回不会影响已经投出的票，这一票仍然有效。", context
     )
+    assert "ballot_redeem_vote_rule_invented" in _unsupported_dynamic_claims(
+        "快照后的 Redeem 不影响已记录的投票权重，你的票仍然算数。", context
+    )
 
 
 def test_ballot_output_guard_allows_snapshot_mechanism_without_redeem_claim():

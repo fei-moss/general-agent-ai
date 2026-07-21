@@ -678,6 +678,12 @@ def _asserts_redeem_does_not_affect_vote(text: str) -> bool:
             r"不受.{0,16}赎回.{0,16}影响)",
             text,
         )
+        or re.search(
+            r"redeem.{0,40}(?:不会|不影响|不再影响).{0,32}(?:票|投票|投票权重)",
+            text,
+            re.I,
+        )
+        or re.search(r"(?:票|投票).{0,16}(?:仍然算数|依然算数)", text)
     )
 
 
