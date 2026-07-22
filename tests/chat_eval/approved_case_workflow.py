@@ -26,9 +26,12 @@ ATTRIBUTIONS = {
     "prompt_or_answer_composition",
     "rag_or_retrieval",
     "tool_or_data",
+    "tool_behavior",
+    "data_behavior",
     "guardrail_or_policy",
     "runtime_or_transport",
     "product_behavior",
+    "evaluator_behavior",
 }
 BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
 _BALLOT_DYNAMIC_FIELD_TERMS = {
@@ -177,6 +180,110 @@ def write_jsonl(rows: Iterable[dict[str, Any]], path: Path) -> None:
         for row in rows
     )
     path.write_text(payload + ("\n" if payload else ""), encoding="utf-8")
+
+
+def build_preflight_contract(
+    cases: list[dict[str, Any]],
+    *,
+    target_truth: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Freeze case scope and sanitized current truth before any live replay."""
+    for case in cases:
+        _validate_approved_case(case)
+    truth = _validated_target_truth(target_truth)
+    target_agent_type = str((truth or {}).get("agent_type") or "").casefold()
+    dynamic_facts = dict((truth or {}).get("dynamic_facts") or {})
+    blockers: list[str] = []
+    matrix: list[dict[str, Any]] = []
+    target_type_required = False
+    dynamic_truth_required = False
+    for case in cases:
+        applicable_types = sorted(
+            {str(value).casefold() for value in case.get("applicable_agent_types", [])}
+        )
+        if applicable_types:
+            target_type_required = True
+        applicable = not applicable_types or (
+            bool(target_agent_type) and target_agent_type in applicable_types
+        )
+        rules = [str(value) for value in case.get("dynamic_fact_rules", [])]
+        if rules and (applicable or not target_agent_type):
+            dynamic_truth_required = True
+        availability: dict[str, str] = {}
+        for rule in rules:
+            fact = dynamic_facts.get(rule)
+            if not isinstance(fact, dict):
+                availability[rule] = "missing"
+            else:
+                availability[rule] = str(fact.get("availability") or "available")
+        matrix.append(
+            {
+                "case_id": str(case["id"]),
+                "applicable": applicable,
+                "applicable_agent_types": applicable_types,
+                "static_fact_group_count": len(_fact_groups(case)),
+                "dynamic_fact_variables": [
+                    str(value) for value in case.get("dynamic_fact_variables", [])
+                ],
+                "dynamic_fact_rules": rules,
+                "dynamic_fact_availability": availability,
+            }
+        )
+    if target_type_required and not target_agent_type:
+        blockers.append("target agent type missing")
+    if dynamic_truth_required and not truth:
+        blockers.append("dynamic target truth missing")
+    missing_rules = sorted(
+        {
+            rule
+            for row in matrix
+            if row["applicable"]
+            for rule, availability in row["dynamic_fact_availability"].items()
+            if availability == "missing"
+        }
+    )
+    if missing_rules:
+        blockers.append(f"dynamic target truth missing for {missing_rules}")
+    return {
+        "schema_version": "approved-golden-preflight-v1",
+        "status": "ready" if not blockers else "blocked",
+        "live_run_allowed": not blockers,
+        "case_contract_sha256": _contract_digest(cases),
+        "target_truth_sha256": _contract_digest(truth) if truth else None,
+        "target_agent_type": target_agent_type or None,
+        "case_ids": [row["case_id"] for row in matrix if row["applicable"]],
+        "blockers": blockers,
+        "fact_matrix": matrix,
+    }
+
+
+def validate_live_preflight(
+    preflight: dict[str, Any],
+    cases: list[dict[str, Any]],
+    *,
+    target_truth: dict[str, Any] | None = None,
+    require_target_truth: bool = False,
+) -> None:
+    """Reject approved live replay when its frozen case contract is stale."""
+    if preflight.get("status") != "ready" or preflight.get("live_run_allowed") is not True:
+        raise ValueError("approved Golden preflight is not ready")
+    if preflight.get("case_contract_sha256") != _contract_digest(cases):
+        raise ValueError("approved Golden case contract changed after preflight")
+    expected_ids = sorted(str(case["id"]) for case in cases)
+    matrix_ids = sorted(
+        str(row.get("case_id"))
+        for row in preflight.get("fact_matrix", [])
+        if isinstance(row, dict)
+    )
+    if matrix_ids != expected_ids:
+        raise ValueError("approved Golden preflight case matrix is incomplete")
+    expected_truth_hash = preflight.get("target_truth_sha256")
+    if require_target_truth and expected_truth_hash:
+        if target_truth is None:
+            raise ValueError("approved Golden live replay requires frozen target truth")
+        truth = _validated_target_truth(target_truth)
+        if _contract_digest(truth) != expected_truth_hash:
+            raise ValueError("approved Golden target truth changed after preflight")
 
 
 def build_target_truth_from_marketplace_context(
@@ -506,13 +613,14 @@ def build_optimization_report(
         attribution = _suggest_attribution(
             case,
             transport_ok=transport_ok,
+            tool_calls=[str(value) for value in (baseline or {}).get("tool_calls", [])],
             missing_static_groups=missing_static_groups,
             missing_dynamic_groups=missing_dynamic_groups,
             forbidden_hits=forbidden_hits,
             semantic_review=review,
         )
         if missing_dynamic_rules:
-            attribution = "tool_or_data"
+            attribution = "data_behavior"
 
         if not transport_ok:
             release_blockers.append(f"{case_id}: live baseline missing or failed")
@@ -594,6 +702,7 @@ def build_optimization_report(
     return {
         "schema_version": SCHEMA_VERSION,
         "status": status,
+        "baseline_suite_id": baseline_report.get("suite_id"),
         "summary": {
             "case_count": len(active_results),
             "not_applicable_count": not_applicable_count,
@@ -609,7 +718,106 @@ def build_optimization_report(
         "release_blockers": release_blockers,
         "completion_blockers": completion_blockers,
         "case_results": results,
+        "attribution_summary": _attribution_summary(results),
+        "repair_batches": _repair_batches(results),
         "semantic_review_packet": review_packet,
+    }
+
+
+def build_iteration_decision(
+    report: dict[str, Any],
+    *,
+    previous_reports: Iterable[dict[str, Any]],
+    max_same_failure_rounds: int = 2,
+) -> dict[str, Any]:
+    """Stop live patch loops when the same failure batch survives twice."""
+    if max_same_failure_rounds < 1:
+        raise ValueError("max_same_failure_rounds must be positive")
+    if report.get("status") == "passed":
+        return {
+            "schema_version": "approved-golden-iteration-v1",
+            "decision": "closeout",
+            "rerun_budget_exhausted": False,
+            "same_failure_rounds": 0,
+            "failure_signature": None,
+        }
+    if (
+        int((report.get("summary") or {}).get("semantic_pending_count", 0)) > 0
+        and not report.get("repair_batches")
+    ):
+        return {
+            "schema_version": "approved-golden-iteration-v1",
+            "decision": "complete_semantic_review",
+            "rerun_budget_exhausted": False,
+            "same_failure_rounds": 0,
+            "failure_signature": None,
+        }
+    signature = _failure_signature(report)
+    same_rounds = 1
+    for previous in reversed(list(previous_reports)):
+        if _failure_signature(previous) != signature:
+            break
+        same_rounds += 1
+    exhausted = same_rounds >= max_same_failure_rounds
+    return {
+        "schema_version": "approved-golden-iteration-v1",
+        "decision": "stop_and_redesign" if exhausted else "fix_batches",
+        "rerun_budget_exhausted": exhausted,
+        "same_failure_rounds": same_rounds,
+        "failure_signature": signature,
+        "repair_batches": list(report.get("repair_batches") or []),
+    }
+
+
+def build_closeout_report(
+    cases: list[dict[str, Any]],
+    preflight: dict[str, Any],
+    baseline_report: dict[str, Any],
+    optimization_report: dict[str, Any],
+) -> dict[str, Any]:
+    """Require one complete, unspliced live suite for final acceptance."""
+    validate_live_preflight(preflight, cases)
+    suite_id = str(baseline_report.get("suite_id") or "")
+    if baseline_report.get("suite_mode") != "full_suite" or not suite_id:
+        raise ValueError("closeout requires one full_suite live replay")
+    results = [
+        row for row in baseline_report.get("results", []) if isinstance(row, dict)
+    ]
+    if any(str(row.get("suite_id") or "") != suite_id for row in results):
+        raise ValueError("mixed suite evidence cannot be used for closeout")
+    expected_ids = sorted(str(value) for value in preflight.get("case_ids", []))
+    actual_ids = sorted(str(row.get("case_id") or "") for row in results)
+    if actual_ids != expected_ids or len(actual_ids) != len(set(actual_ids)):
+        raise ValueError("full_suite results do not match the frozen applicable cases")
+    if baseline_report.get("status") != "passed" or any(
+        row.get("status") != "completed" for row in results
+    ):
+        raise ValueError("full_suite live replay is not complete")
+    if optimization_report.get("baseline_suite_id") != suite_id:
+        raise ValueError("optimization report does not reference the full suite")
+    summary = dict(optimization_report.get("summary") or {})
+    zero_fields = (
+        "hard_failure_count",
+        "semantic_pending_count",
+        "semantic_gap_count",
+    )
+    if (
+        optimization_report.get("status") != "passed"
+        or any(int(summary.get(field, -1)) != 0 for field in zero_fields)
+        or optimization_report.get("release_blockers")
+        or optimization_report.get("completion_blockers")
+    ):
+        raise ValueError("optimization report is not ready for closeout")
+    return {
+        "schema_version": "approved-golden-closeout-v1",
+        "status": "passed",
+        "single_shot_full_suite": True,
+        "suite_id": suite_id,
+        "case_contract_sha256": preflight["case_contract_sha256"],
+        "target_truth_sha256": preflight.get("target_truth_sha256"),
+        "summary": summary,
+        "release_blockers": [],
+        "completion_blockers": [],
     }
 
 
@@ -891,6 +1099,81 @@ def _coverage_summary(cases: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _failure_modes(result: dict[str, Any]) -> list[str]:
+    modes: list[str] = []
+    if result.get("transport_ok") is False:
+        modes.append("runtime_or_transport")
+    if result.get("target_agent_type_missing"):
+        modes.append("target_agent_type_missing")
+    if result.get("missing_dynamic_rules"):
+        modes.append("dynamic_truth_missing")
+    if result.get("missing_static_fact_groups"):
+        modes.append("static_fact_missing")
+    if result.get("missing_dynamic_fact_groups"):
+        modes.append("dynamic_fact_missing")
+    if result.get("forbidden_hits"):
+        modes.append("forbidden_claim")
+    if result.get("semantic_verdict") == "gap":
+        modes.append("semantic_gap")
+    return modes
+
+
+def _attribution_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, dict[str, set[str]]] = {}
+    for result in results:
+        attribution = str(result.get("suggested_attribution") or "none")
+        modes = _failure_modes(result)
+        if attribution == "none" or not modes:
+            continue
+        bucket = grouped.setdefault(
+            attribution, {"case_ids": set(), "failure_modes": set()}
+        )
+        bucket["case_ids"].add(str(result["case_id"]))
+        bucket["failure_modes"].update(modes)
+    return {
+        attribution: {
+            "case_count": len(values["case_ids"]),
+            "case_ids": sorted(values["case_ids"]),
+            "failure_modes": sorted(values["failure_modes"]),
+        }
+        for attribution, values in sorted(grouped.items())
+    }
+
+
+def _repair_batches(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summary = _attribution_summary(results)
+    result_by_id = {str(result["case_id"]): result for result in results}
+    return [
+        {
+            "attribution": attribution,
+            "case_ids": values["case_ids"],
+            "failure_modes": values["failure_modes"],
+            "runtime_retry_guard_allowed": bool(
+                values["failure_modes"]
+                and set(values["failure_modes"]) == {"forbidden_claim"}
+                and all(
+                    str(result_by_id[case_id].get("risk_level"))
+                    in {"high", "critical"}
+                    for case_id in values["case_ids"]
+                )
+            ),
+        }
+        for attribution, values in summary.items()
+    ]
+
+
+def _failure_signature(report: dict[str, Any]) -> str:
+    batches = report.get("repair_batches") or []
+    return _contract_digest(batches)
+
+
+def _contract_digest(value: Any) -> str:
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _fact_groups(case: dict[str, Any]) -> list[list[str]]:
     return [[str(item) for item in group] for group in case["required_fact_groups"]]
 
@@ -981,6 +1264,7 @@ def _suggest_attribution(
     case: dict[str, Any],
     *,
     transport_ok: bool,
+    tool_calls: list[str],
     missing_static_groups: list[list[str]],
     missing_dynamic_groups: list[list[str]],
     forbidden_hits: list[str],
@@ -991,8 +1275,11 @@ def _suggest_attribution(
     if forbidden_hits:
         return "guardrail_or_policy"
     if missing_dynamic_groups:
-        if case.get("requires_tool") or case.get("expected_fields"):
-            return "tool_or_data"
+        required_tool = str(case.get("requires_tool") or "")
+        if required_tool and required_tool not in tool_calls:
+            return "tool_behavior"
+        if case.get("expected_fields") and not required_tool:
+            return "data_behavior"
         return "prompt_or_answer_composition"
     if missing_static_groups:
         if case.get("requires_rag") or case.get("expected_sources"):
@@ -1082,6 +1369,13 @@ def _build_parser() -> argparse.ArgumentParser:
     target_truth.add_argument("--context", type=Path, required=True)
     target_truth.add_argument("--output", type=Path, required=True)
 
+    preflight = subparsers.add_parser(
+        "preflight", help="freeze approved cases and target truth before live replay"
+    )
+    preflight.add_argument("--cases", type=Path, required=True)
+    preflight.add_argument("--target-truth", type=Path)
+    preflight.add_argument("--output", type=Path, required=True)
+
     report = subparsers.add_parser("report", help="build an optimization gap report")
     report.add_argument("--cases", type=Path, required=True)
     report.add_argument("--baseline", type=Path, required=True)
@@ -1093,6 +1387,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument("--output", type=Path, required=True)
     report.add_argument("--strict-hard", action="store_true")
+
+    decision = subparsers.add_parser(
+        "decision", help="enforce the repeated-failure rerun budget"
+    )
+    decision.add_argument("--report", type=Path, required=True)
+    decision.add_argument("--previous-report", type=Path, action="append", default=[])
+    decision.add_argument("--max-same-failure-rounds", type=int, default=2)
+    decision.add_argument("--output", type=Path, required=True)
+
+    closeout = subparsers.add_parser(
+        "closeout", help="require one complete unspliced full-suite acceptance"
+    )
+    closeout.add_argument("--cases", type=Path, required=True)
+    closeout.add_argument("--preflight", type=Path, required=True)
+    closeout.add_argument("--baseline", type=Path, required=True)
+    closeout.add_argument("--report", type=Path, required=True)
+    closeout.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -1116,6 +1427,43 @@ def main() -> int:
         output = build_target_truth_from_marketplace_context(context)
         _write_json(output, args.output)
         print(f"approved golden target truth -> {args.output}")
+        return 0
+
+    if args.command == "preflight":
+        cases = load_approved_cases(args.cases)
+        truth = (
+            json.loads(args.target_truth.read_text(encoding="utf-8"))
+            if args.target_truth
+            else None
+        )
+        output = build_preflight_contract(cases, target_truth=truth)
+        _write_json(output, args.output)
+        print(f"approved golden preflight {output['status']} -> {args.output}")
+        return 0 if output["status"] == "ready" else 1
+
+    if args.command == "decision":
+        report = json.loads(args.report.read_text(encoding="utf-8"))
+        previous = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in args.previous_report
+        ]
+        output = build_iteration_decision(
+            report,
+            previous_reports=previous,
+            max_same_failure_rounds=args.max_same_failure_rounds,
+        )
+        _write_json(output, args.output)
+        print(f"approved golden iteration {output['decision']} -> {args.output}")
+        return 1 if output["rerun_budget_exhausted"] else 0
+
+    if args.command == "closeout":
+        cases = load_approved_cases(args.cases)
+        preflight = json.loads(args.preflight.read_text(encoding="utf-8"))
+        baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+        report = json.loads(args.report.read_text(encoding="utf-8"))
+        output = build_closeout_report(cases, preflight, baseline, report)
+        _write_json(output, args.output)
+        print(f"approved golden closeout {output['status']} -> {args.output}")
         return 0
 
     cases = load_approved_cases(args.cases)

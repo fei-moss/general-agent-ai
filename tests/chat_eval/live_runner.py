@@ -11,6 +11,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -165,10 +166,15 @@ def replay_cases(
     agent_address: str | None = None,
     chain_id: int | None = None,
     drop_chain_id: bool = False,
+    suite_mode: str = "full_suite",
+    suite_id: str | None = None,
     post: TransportPost | None = None,
     get: TransportGet | None = None,
 ) -> dict[str, Any]:
     """Replay cases against a live API and return a sanitized report."""
+    if suite_mode not in {"full_suite", "targeted"}:
+        raise ValueError("suite_mode must be full_suite or targeted")
+    suite_id = suite_id or f"suite_{uuid.uuid4().hex}"
     contract = load_coverage_contract()
     post = post or _curl_post
     get = get or _curl_get
@@ -209,19 +215,20 @@ def replay_cases(
             stream_url = str(chat_body.get("stream_url") or f"/stream/{run_id}")
             stream = get(f"{base_url}{stream_url}", headers, timeout_s)
             events = parse_sse_events(stream.body)
-            results.append(
-                _case_result(
-                    case,
-                    chat_body=chat_body,
-                    events=events,
-                    stream_status=stream.status,
-                    latency_ms=round((time.monotonic() - case_started) * 1000, 2),
-                )
+            result = _case_result(
+                case,
+                chat_body=chat_body,
+                events=events,
+                stream_status=stream.status,
+                latency_ms=round((time.monotonic() - case_started) * 1000, 2),
             )
+            result["suite_id"] = suite_id
+            results.append(result)
         except Exception as exc:
             results.append(
                 {
                     "case_id": case.id,
+                    "suite_id": suite_id,
                     "status": "error",
                     "error": sanitize_text(str(exc)),
                     "latency_ms": round((time.monotonic() - case_started) * 1000, 2),
@@ -234,6 +241,8 @@ def replay_cases(
     )
     report = {
         "status": status,
+        "suite_id": suite_id,
+        "suite_mode": suite_mode,
         "base_url": base_url,
         "case_count": len(results),
         "duration_ms": round((time.monotonic() - started) * 1000, 2),
@@ -457,6 +466,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Replay an explicit normalized Golden Case JSONL file.",
     )
     parser.add_argument(
+        "--preflight",
+        type=Path,
+        help="Required frozen preflight artifact for approved case files.",
+    )
+    parser.add_argument(
+        "--target-truth",
+        type=Path,
+        help="Sanitized current-Agent truth frozen by approved preflight.",
+    )
+    parser.add_argument(
+        "--iteration-decision",
+        type=Path,
+        help="Required non-exhausted decision artifact for approved targeted reruns.",
+    )
+    parser.add_argument(
         "--marketplace-user-id",
         default=os.environ.get("CHAT_EVAL_MARKETPLACE_USER_ID"),
     )
@@ -488,12 +512,58 @@ def main() -> int:
             "missing Marketplace identity: set CHAT_EVAL_MARKETPLACE_USER_ID and "
             "CHAT_EVAL_MARKETPLACE_WALLET or pass both CLI options"
         )
+    loaded_cases = load_cases(args.case_file) if args.case_file else load_cases()
+    approved_cases: list[dict[str, Any]] = []
+    if args.case_file:
+        from tests.chat_eval.approved_case_workflow import (
+            load_approved_cases,
+            validate_live_preflight,
+        )
+
+        try:
+            approved_cases = load_approved_cases(args.case_file)
+        except ValueError as exc:
+            if '"approval"' in args.case_file.read_text(encoding="utf-8"):
+                raise SystemExit(f"invalid approved Golden case file: {exc}") from exc
+            approved_cases = []
+        if approved_cases:
+            if not args.preflight:
+                raise SystemExit("approved Golden case replay requires --preflight")
+            preflight = json.loads(args.preflight.read_text(encoding="utf-8"))
+            truth = (
+                json.loads(args.target_truth.read_text(encoding="utf-8"))
+                if args.target_truth
+                else None
+            )
+            try:
+                validate_live_preflight(
+                    preflight,
+                    approved_cases,
+                    target_truth=truth,
+                    require_target_truth=True,
+                )
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
+            active_ids = {str(value) for value in preflight.get("case_ids", [])}
+            loaded_cases = [case for case in loaded_cases if case.id in active_ids]
     cases = select_cases(
-        load_cases(args.case_file) if args.case_file else load_cases(),
+        loaded_cases,
         case_ids=set(args.case_id) if args.case_id else None,
         tags=set(args.tag) if args.tag else None,
         exclude_tags=set(args.exclude_tag) if args.exclude_tag else None,
     )
+    targeted = bool(args.case_id or args.tag or args.exclude_tag)
+    if approved_cases and targeted:
+        if not args.iteration_decision:
+            raise SystemExit(
+                "approved targeted rerun requires --iteration-decision"
+            )
+        decision = json.loads(args.iteration_decision.read_text(encoding="utf-8"))
+        if (
+            decision.get("decision") != "fix_batches"
+            or decision.get("rerun_budget_exhausted") is not False
+        ):
+            raise SystemExit("approved targeted rerun budget is not available")
     report = replay_cases(
         cases,
         base_url=args.base_url,
@@ -503,6 +573,7 @@ def main() -> int:
         agent_address=args.agent_address,
         chain_id=args.chain_id,
         drop_chain_id=args.drop_chain_id,
+        suite_mode="targeted" if targeted else "full_suite",
     )
     write_report(report, args.output)
     print(f"chat eval live replay {report['status']} -> {args.output}")

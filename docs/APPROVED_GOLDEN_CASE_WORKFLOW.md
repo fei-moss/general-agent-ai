@@ -90,7 +90,9 @@ Ballot 动态规则若未出现在当前 `ai-context`，目标真值会显式标
 
 ## 标准执行
 
-先将本批输入固化成正式 cases：
+固定顺序是：结构化 → 冻结契约 → 一次 baseline → 批量归因 → 本地修复 → 一次完整回归 → 单体 closeout。不得从逐题 live 结果直接追加问题字符串、Agent ID、示例答案或模型措辞规则。
+
+先固化正式 cases，再冻结适用类型、稳定事实和当前动态真值：
 
 ```bash
 .venv/bin/python -m tests.chat_eval.approved_case_workflow ingest \
@@ -98,20 +100,29 @@ Ballot 动态规则若未出现在当前 `ai-context`，目标真值会显式标
   --output /path/to/approved-cases.jsonl \
   --approved-by marketplace-product-owner \
   --source-version ops-golden-v1
+
+.venv/bin/python -m tests.chat_eval.approved_case_workflow preflight \
+  --cases /path/to/approved-cases.jsonl \
+  --target-truth /path/to/current-agent-target-truth.json \
+  --output /path/to/approved-golden-preflight.json
 ```
 
-再对目标 API 生成 baseline：
+`preflight` 输出事实矩阵与 case/target-truth 哈希。适用类型、动态规则或当前真值未冻结时状态为 `blocked`，approved case live runner 会拒绝启动。
+
+只运行一次完整 baseline：
 
 ```bash
 .venv/bin/python -m tests.chat_eval.live_runner \
   --case-file /path/to/approved-cases.jsonl \
+  --preflight /path/to/approved-golden-preflight.json \
+  --target-truth /path/to/current-agent-target-truth.json \
   --base-url "$CHAT_EVAL_BASE_URL" \
   --marketplace-user-id "$CHAT_EVAL_MARKETPLACE_USER_ID" \
   --marketplace-wallet "$CHAT_EVAL_MARKETPLACE_WALLET" \
   --output /path/to/approved-golden-live.json
 ```
 
-最后生成差距和语义评审包：
+生成差距、语义评审包和批量修复清单：
 
 ```bash
 .venv/bin/python -m tests.chat_eval.approved_case_workflow report \
@@ -122,15 +133,35 @@ Ballot 动态规则若未出现在当前 `ai-context`，目标真值会显式标
   --strict-hard
 ```
 
-三个阶段分别完成：
+`report.attribution_summary` 与 `repair_batches` 按 Prompt/答案组织、RAG、工具、数据、Guardrail、运行时、产品行为或评估器聚合失败。语义缺失和普通事实遗漏的 `runtime_retry_guard_allowed` 恒为 `false`；只有高风险禁止断言才允许进入运行时 guard。
 
-1. `ingest`：校验确认信息，标准化并增量合并正式 cases。
-2. `live_runner --case-file`：使用正式 cases 回放目标 API。
-3. `report`：按目标 Agent 类型筛选案例，并结合静态事实与当前配置真值检查关键事实和禁止内容，输出归因建议及待语义评审包。
+同一失败批次再次出现时，先生成迭代决策：
 
-产物路径由执行者显式指定。覆盖摘要只显示当前 `area`、风险等级和标签数量，不产生业务完整度 blocker。
+```bash
+.venv/bin/python -m tests.chat_eval.approved_case_workflow decision \
+  --report /path/to/current-report.json \
+  --previous-report /path/to/previous-report.json \
+  --output /path/to/iteration-decision.json
+```
 
-后续批次通过 `--existing /path/to/current-approved-cases.jsonl` 读取现有正式集，并写入一个新的版本化输出文件。完全相同的案例会被忽略；相同 `id` 但业务内容不同会停止并要求人工解决，不会静默覆盖已确认事实。
+连续两轮签名相同会返回 `stop_and_redesign` 并以非零退出，禁止继续补措辞或重复部署；应回到对应根因批次做通用修复。
+
+Approved case 使用 `--case-id` 或 tag 做 targeted rerun 时必须同时传入最新的 `--iteration-decision`；预算已耗尽或尚未完成语义评审时，live runner 会拒绝请求。
+
+最终在最新提交上重新运行不带筛选参数的完整 suite，并生成单体 closeout：
+
+```bash
+.venv/bin/python -m tests.chat_eval.approved_case_workflow closeout \
+  --cases /path/to/approved-cases.jsonl \
+  --preflight /path/to/approved-golden-preflight.json \
+  --baseline /path/to/final-full-suite.json \
+  --report /path/to/final-report.json \
+  --output /path/to/final-closeout.json
+```
+
+`closeout` 要求所有适用案例来自同一个 `full_suite`，且 hard failure、semantic gap、pending review、release blocker 和 completion blocker 都为零。把 targeted retry 结果拼进完整报告会因 suite ID 不一致而失败。
+
+产物路径由执行者显式指定。覆盖摘要只显示当前 `area`、风险等级和标签数量，不产生业务完整度 blocker。后续批次使用 `--existing` 写入新的版本化输出；相同 ID 的内容冲突会停止，不会覆盖已确认事实。
 
 ## 语义评审与收敛
 
@@ -161,6 +192,6 @@ Ballot 动态规则若未出现在当前 `ai-context`，目标真值会显式标
 
 关键事实缺失、禁止内容、请求失败属于硬 blocker。LLM 语义评审当前是观察项；低风险 `gap` 进入优化清单，高风险或关键案例的 `gap` 同时进入完成 blocker。
 
-报告只建议归因到 Prompt/回答组织、RAG/检索、工具/数据、Guardrail/策略、运行时或产品行为。涉及 Prompt 核心语义、运行时、工具/API 和安全边界时，先确认修改清单，再实施和重新回放。
+完成语义评审后重新生成 `report`，但在本地测试和确定性 evaluator 未通过前不得启动下一次完整 live run。工具应该调用却没有调用归因到 `tool_behavior`；当前真值缺失归因到 `data_behavior`；工具已返回但答案遗漏归因到 Prompt/答案组织；评估规则本身错误归因到 `evaluator_behavior`。
 
 当已确认 Golden Case 补充的是稳定平台机制，而现有知识库没有覆盖时，应把事实合并到规范的 Marketplace QnA 来源，生成新的版本化 corpus 和知识库，验收后切换 `RAG_DEFAULT_KNOWLEDGE_BASE_ID`；旧知识库保留用于回滚。不要把新事实追加到旧知识库，也不要把动态 Agent 数值写进固定知识文档。
