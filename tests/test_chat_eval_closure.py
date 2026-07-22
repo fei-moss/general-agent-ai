@@ -139,7 +139,10 @@ def test_live_replay_uses_transport_and_redacts_sensitive_values():
     )
 
     assert report["status"] == "passed"
+    assert report["suite_mode"] == "full_suite"
+    assert report["suite_id"].startswith("suite_")
     result = report["results"][0]
+    assert result["suite_id"] == report["suite_id"]
     assert result["status"] == "completed"
     assert "<redacted-address>" in result["content"]
     assert "0x1234567890abcdef1234567890abcdef12345678" not in json.dumps(report)

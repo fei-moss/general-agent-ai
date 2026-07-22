@@ -8,10 +8,14 @@ from pathlib import Path
 import pytest
 
 from tests.chat_eval.approved_case_workflow import (
+    build_closeout_report,
+    build_iteration_decision,
     build_target_truth_from_marketplace_context,
+    build_preflight_contract,
     build_optimization_report,
     load_approved_cases,
     normalize_approved_cases,
+    validate_live_preflight,
     write_jsonl,
 )
 from tests.chat_eval.evaluator import load_cases
@@ -372,6 +376,219 @@ def test_report_blocks_missing_hard_fact_and_attributes_rag_gap():
         ["份额价值", "份额价格"],
     ]
     assert result["suggested_attribution"] == "rag_or_retrieval"
+
+
+def test_preflight_freezes_case_scope_and_current_truth_before_live_run():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                applicable_agent_types=["hyperliquid"],
+                dynamic_fact_variables=["fee_schedule"],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+
+    preflight = build_preflight_contract(cases, target_truth=_target_truth())
+
+    assert preflight["status"] == "ready"
+    assert preflight["live_run_allowed"] is True
+    assert preflight["target_agent_type"] == "hyperliquid"
+    assert preflight["case_contract_sha256"]
+    assert preflight["target_truth_sha256"]
+    assert preflight["fact_matrix"] == [
+        {
+            "case_id": "marketplace_mint_meaning_zh",
+            "applicable": True,
+            "applicable_agent_types": ["hyperliquid"],
+            "static_fact_group_count": 2,
+            "dynamic_fact_variables": ["fee_schedule"],
+            "dynamic_fact_rules": ["current_agent_fee_schedule"],
+            "dynamic_fact_availability": {
+                "current_agent_fee_schedule": "available"
+            },
+        }
+    ]
+    validate_live_preflight(preflight, cases)
+    validate_live_preflight(
+        preflight,
+        cases,
+        target_truth=_target_truth(),
+        require_target_truth=True,
+    )
+    with pytest.raises(ValueError, match="target truth changed"):
+        validate_live_preflight(
+            preflight,
+            cases,
+            target_truth=_target_truth(agent_type="ballot"),
+            require_target_truth=True,
+        )
+
+
+def test_preflight_blocks_unfrozen_dynamic_truth_and_tampered_cases():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                applicable_agent_types=["hyperliquid"],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    blocked = build_preflight_contract(cases, target_truth=None)
+
+    assert blocked["status"] == "blocked"
+    assert blocked["live_run_allowed"] is False
+    assert "target agent type missing" in blocked["blockers"]
+    assert "dynamic target truth missing" in blocked["blockers"]
+    with pytest.raises(ValueError, match="not ready"):
+        validate_live_preflight(blocked, cases)
+
+    ready = build_preflight_contract(cases, target_truth=_target_truth())
+    changed_cases = normalize_approved_cases(
+        [_source_case(applicable_agent_types=["hyperliquid"])],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    with pytest.raises(ValueError, match="case contract changed"):
+        validate_live_preflight(ready, changed_cases)
+
+
+def test_report_batches_root_causes_and_keeps_completeness_out_of_runtime_retry():
+    cases = normalize_approved_cases(
+        [_source_case()],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    report = build_optimization_report(
+        cases,
+        _live_report("Mint is a page action."),
+    )
+
+    assert report["attribution_summary"] == {
+        "rag_or_retrieval": {
+            "case_count": 1,
+            "case_ids": ["marketplace_mint_meaning_zh"],
+            "failure_modes": ["static_fact_missing"],
+        }
+    }
+    assert report["repair_batches"] == [
+        {
+            "attribution": "rag_or_retrieval",
+            "case_ids": ["marketplace_mint_meaning_zh"],
+            "failure_modes": ["static_fact_missing"],
+            "runtime_retry_guard_allowed": False,
+        }
+    ]
+
+
+def test_dynamic_failure_attribution_separates_tool_data_and_answer_composition():
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                requires_tool="marketplace_agent_context",
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    missing_truth = build_optimization_report(cases, _live_report("No fee details."))
+    assert missing_truth["case_results"][0]["suggested_attribution"] == (
+        "data_behavior"
+    )
+
+    no_tool = build_optimization_report(
+        cases,
+        _live_report("Mint 会获得 Agent 份额，份额价格随管理资产变化。"),
+        target_truth=_target_truth(),
+    )
+    assert no_tool["case_results"][0]["suggested_attribution"] == "tool_behavior"
+
+    tool_called = _live_report("Mint 会获得 Agent 份额，份额价格随管理资产变化。")
+    tool_called["results"][0]["tool_calls"] = ["marketplace_agent_context"]
+    incomplete_answer = build_optimization_report(
+        cases,
+        tool_called,
+        target_truth=_target_truth(),
+    )
+    assert incomplete_answer["case_results"][0]["suggested_attribution"] == (
+        "prompt_or_answer_composition"
+    )
+
+
+def test_iteration_budget_stops_repeating_the_same_live_failure_batch():
+    cases = normalize_approved_cases(
+        [_source_case()],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    report = build_optimization_report(cases, _live_report("Still incomplete."))
+
+    first = build_iteration_decision(report, previous_reports=[])
+    repeated = build_iteration_decision(report, previous_reports=[report])
+
+    assert first["decision"] == "fix_batches"
+    assert first["rerun_budget_exhausted"] is False
+    assert repeated["decision"] == "stop_and_redesign"
+    assert repeated["rerun_budget_exhausted"] is True
+    assert repeated["same_failure_rounds"] == 2
+
+
+def test_iteration_requires_semantic_review_before_another_live_run():
+    cases = normalize_approved_cases(
+        [_source_case()],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    report = build_optimization_report(
+        cases,
+        _live_report("Mint 会获得 Agent 份额，份额价格随管理资产变化。"),
+    )
+
+    decision = build_iteration_decision(report, previous_reports=[])
+
+    assert decision["decision"] == "complete_semantic_review"
+    assert decision["failure_signature"] is None
+
+
+def test_closeout_requires_one_full_suite_without_targeted_result_splicing():
+    cases = normalize_approved_cases(
+        [_source_case(risk_level="low")],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    preflight = build_preflight_contract(cases, target_truth=None)
+    preflight["status"] = "ready"
+    preflight["live_run_allowed"] = True
+    reviews = [
+        {
+            "case_id": "marketplace_mint_meaning_zh",
+            "verdict": "pass",
+            "reason": "complete",
+            "gaps": [],
+            "attribution": "none",
+            "dimension_scores": {"correctness": 2, "completeness": 2},
+        }
+    ]
+    baseline = {
+        **_live_report("Mint 会获得 Agent 份额，份额价格随管理资产变化。"),
+        "suite_id": "suite_full",
+        "suite_mode": "full_suite",
+    }
+    baseline["results"][0]["suite_id"] = "suite_full"
+    report = build_optimization_report(cases, baseline, semantic_reviews=reviews)
+
+    closeout = build_closeout_report(cases, preflight, baseline, report)
+    assert closeout["status"] == "passed"
+    assert closeout["single_shot_full_suite"] is True
+
+    baseline["results"][0]["suite_id"] = "suite_targeted_retry"
+    with pytest.raises(ValueError, match="mixed suite evidence"):
+        build_closeout_report(cases, preflight, baseline, report)
 
 
 def test_report_attributes_static_gap_to_rag_when_case_also_uses_dynamic_tool():
@@ -909,7 +1126,11 @@ def test_high_risk_semantic_gap_is_a_completion_blocker_not_release_blocker():
 def test_live_runner_accepts_an_explicit_case_file_contract():
     source = Path("tests/chat_eval/live_runner.py").read_text(encoding="utf-8")
     assert '"--case-file",' in source
+    assert '"--preflight",' in source
+    assert '"--target-truth",' in source
+    assert '"--iteration-decision",' in source
     assert "load_cases(args.case_file)" in source
+    assert "approved Golden case replay requires --preflight" in source
 
 
 def test_cli_round_trip_builds_reviewable_optimization_report(tmp_path):
@@ -972,6 +1193,88 @@ def test_cli_round_trip_builds_reviewable_optimization_report(tmp_path):
     )
 
 
+def test_live_runner_refuses_approved_cases_without_frozen_preflight(tmp_path):
+    cases = normalize_approved_cases(
+        [_source_case()],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    case_file = tmp_path / "approved.jsonl"
+    write_jsonl(cases, case_file)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tests.chat_eval.live_runner",
+            "--base-url",
+            "https://example.invalid",
+            "--case-file",
+            str(case_file),
+            "--marketplace-user-id",
+            "marketplace:user:7",
+            "--marketplace-wallet",
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "requires --preflight" in completed.stderr
+
+
+def test_live_runner_refuses_targeted_rerun_without_iteration_budget(tmp_path):
+    cases = normalize_approved_cases(
+        [
+            _source_case(
+                applicable_agent_types=["hyperliquid"],
+                dynamic_fact_rules=["current_agent_fee_schedule"],
+            )
+        ],
+        approved_by="product-owner",
+        source_version="ops-v1",
+    )
+    case_file = tmp_path / "approved.jsonl"
+    truth_file = tmp_path / "truth.json"
+    preflight_file = tmp_path / "preflight.json"
+    write_jsonl(cases, case_file)
+    truth_file.write_text(json.dumps(_target_truth()), encoding="utf-8")
+    preflight_file.write_text(
+        json.dumps(build_preflight_contract(cases, target_truth=_target_truth())),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tests.chat_eval.live_runner",
+            "--base-url",
+            "https://example.invalid",
+            "--case-file",
+            str(case_file),
+            "--preflight",
+            str(preflight_file),
+            "--target-truth",
+            str(truth_file),
+            "--case-id",
+            "marketplace_mint_meaning_zh",
+            "--marketplace-user-id",
+            "marketplace:user:7",
+            "--marketplace-wallet",
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "requires --iteration-decision" in completed.stderr
+
+
 def test_cli_derives_sanitized_target_truth_from_marketplace_context(tmp_path):
     context = tmp_path / "context.json"
     output = tmp_path / "target-truth.json"
@@ -1007,9 +1310,14 @@ def test_runbook_keeps_intake_incremental_and_code_changes_controlled():
     )
 
     assert "tests.chat_eval.approved_case_workflow ingest" in runbook
+    assert "tests.chat_eval.approved_case_workflow preflight" in runbook
     assert "tests.chat_eval.approved_case_workflow report" in runbook
+    assert "tests.chat_eval.approved_case_workflow decision" in runbook
+    assert "tests.chat_eval.approved_case_workflow closeout" in runbook
     assert "tests.chat_eval.live_runner" in runbook
     assert "产品负责人已确认" in runbook
     assert "不要求穷举完整业务覆盖" in runbook
     assert "不会自动修改 Prompt、运行时代码或生产配置" in runbook
     assert "accepted_variance" in runbook
+    assert "stop_and_redesign" in runbook
+    assert "suite ID 不一致" in runbook
