@@ -54,6 +54,8 @@ def test_deploy_dry_run_plans_ordered_release_steps_without_execution():
     assert deploy_step["command"][:2] == ["envctl", "up"]
     assert "--git-subdir" in deploy_step["command"]
     assert "dockerhost" in deploy_step["command"]
+    assert "--connectivity-group" in deploy_step["command"]
+    assert "internal-connect" in deploy_step["command"]
     assert "--secret-env" in deploy_step["command"]
     assert "ZAI_API_KEY" in deploy_step["command"]
     assert "GEMINI_API_KEY=<redacted-secret-file>" in deploy_step["command"]

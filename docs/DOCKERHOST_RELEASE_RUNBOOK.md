@@ -40,6 +40,7 @@ export PROJECT_DIR=/Users/chris/AiProject/general-agent-ai
 export ENV_NAME=<owner>-general-agent-ai-rag
 export GIT_URL=git@github.com:fei-moss/general-agent-ai.git
 export GIT_REF=<branch-or-sha>
+export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 
 git -C "$PROJECT_DIR" status --short
 git -C "$PROJECT_DIR" rev-parse HEAD
@@ -55,6 +56,7 @@ git ls-remote "$GIT_URL" "$GIT_REF"
 ```bash
 envctl check-project --dir /Users/chris/AiProject/general-agent-ai
 envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost
+envctl status --name "$ENV_NAME" # must report connectivity group internal-connect and stable internal endpoints
 ```
 
 可选本地结构检查:
@@ -74,6 +76,7 @@ dry-run deploy plan:
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
+  --connectivity-group internal-connect \
   --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file> \
@@ -87,6 +90,7 @@ dry-run deploy plan:
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
+  --connectivity-group internal-connect \
   --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
   --secret-env GEMINI_API_KEY \
@@ -121,6 +125,7 @@ dry-run deploy plan:
 CLI plan/execute 顺序:
 
 - deploy/redeploy/rollback: `git status --short`, `git rev-parse HEAD`, `git ls-remote`, `envctl check-project`, `envctl validate-template`, `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`, `envctl status`, `/healthz`, `/readyz`, `stream=false` 422, accepted chat, SSE smoke, `/runs/{agent_run_id}`, worker logs, reaper logs。
+- The release CLI defaults `--connectivity-group internal-connect`; status must retain that membership. Every deploy exports and passes `MARKETPLACE_AI_BASE_URL` with the internal Marketplace DNS. Public Marketplace URLs are forbidden for this setting.
 - rollback 使用 `--previous-sha` 作为 `envctl up --git-ref` 的目标,并复用同一环境和 secret 注入方式。
 - smoke 只执行状态、健康、ready、async chat、SSE 和 worker/reaper 检查,不改变 Git ref。
 - destroy 只规划或执行 `envctl unexpose --service db`, `envctl unexpose --service cache`, `envctl down --name "$ENV_NAME"`;只对 disposable environment 使用。
@@ -143,12 +148,14 @@ export RAG_ENABLED=true
 export RAG_VECTOR_STORE=pgvector
 export EMBEDDING_PROVIDER=gemini
 export EMBEDDING_MODEL=gemini-embedding-2
+export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 
 envctl up \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
+  --connectivity-group internal-connect \
   --secret-env ZAI_API_KEY \
   --secret-env GEMINI_API_KEY
 ```
@@ -161,6 +168,7 @@ envctl up \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
+  --connectivity-group internal-connect \
   --secret-file ZAI_API_KEY=<path-to-private-zai-key-file> \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
 ```

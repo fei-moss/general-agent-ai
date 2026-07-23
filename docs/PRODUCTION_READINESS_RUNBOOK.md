@@ -30,6 +30,10 @@
 - Set `MARKETPLACE_AI_BASE_URL` to the confirmed private Marketplace AI listener
   (`http://<private-marketplace-host>:8081`). The default is empty and fails closed;
   the public Marketplace URL must not be used for Chat-to-Marketplace tool calls.
+- On DockerHost, explicit `internal-connect` connectivity group membership is the accepted
+  private-network trust boundary and 组内服务均可信. Trust must not be inferred from an arbitrary
+  RFC1918 source address. Use the internal DNS contract
+  `http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081`, not the persisted IP.
 - Release evidence must include both a Marketplace-to-Chat 正向 smoke and an
   外部负向可达性 smoke proving the Chat endpoint cannot be reached outside the private path.
 
@@ -43,8 +47,7 @@ source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
 source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
 
 export LLM_PROVIDER=zai
-# Replace this placeholder with the confirmed private-network DNS name.
-export MARKETPLACE_AI_BASE_URL=http://marketplace-private-hostname:8081
+export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 export ZAI_MODEL=glm-5.2
 export ZAI_THINKING_TYPE=disabled
 export ZAI_REASONING_EFFORT=low
@@ -65,6 +68,7 @@ envctl up \
   --git-url git@github.com:fei-moss/general-agent-ai.git \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
+  --connectivity-group internal-connect \
   --secret-env ZAI_API_KEY \
   --secret-env GEMINI_API_KEY
 ```
