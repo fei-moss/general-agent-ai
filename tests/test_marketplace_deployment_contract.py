@@ -46,15 +46,18 @@ def test_marketplace_ai_base_url_fails_closed_without_private_override(monkeypat
     compose = _read("dockerhost/compose.yaml")
     runbook = _read("docs/PRODUCTION_READINESS_RUNBOOK.md")
     public_dev_url = "app-df-moss-site-agent-marketplace-dev.dkhost.vixmk-yo.org"
+    internal_dev_url = "http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081"
 
     assert settings.marketplace_ai_base_url == ""
     assert public_dev_url not in env_example
     assert public_dev_url not in compose
     assert "MARKETPLACE_AI_BASE_URL: ${MARKETPLACE_AI_BASE_URL:-}" in compose
-    assert "MARKETPLACE_AI_BASE_URL=" in env_example
+    assert f"MARKETPLACE_AI_BASE_URL={internal_dev_url}" in env_example
     assert "8081" in env_example
     assert "MARKETPLACE_AI_BASE_URL" in runbook
     assert "8081" in runbook
+    assert internal_dev_url in runbook
+    assert "internal-connect" in runbook
 
 
 def test_api_docs_define_one_mandatory_marketplace_identity_contract():
@@ -82,6 +85,9 @@ def test_production_runbook_requires_private_marketplace_only_chat_boundary():
         "Marketplace-to-Chat 正向 smoke",
         "外部负向可达性 smoke",
         "不引入服务凭证",
+        "connectivity group",
+        "组内服务均可信",
+        "app.df-moss-site-agent-marketplace-dev.dockerhost:8081",
     ):
         assert term in runbook, f"production runbook missing {term}"
     assert "MARKETPLACE_IDENTITY_MODE" not in runbook

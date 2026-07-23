@@ -67,6 +67,8 @@ def test_runbook_contains_release_and_rollback_gates():
             "--git-url",
             "--git-ref",
             "--git-subdir dockerhost",
+            "--connectivity-group internal-connect",
+            "MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081",
             "--secret-env",
             "--secret-file",
             "/healthz",

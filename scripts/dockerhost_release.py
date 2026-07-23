@@ -307,8 +307,7 @@ def _envctl_up_step(
         "--git-ref",
         git_ref,
         "--git-subdir",
-        args.git_subdir,
-    ]
+        args.git_subdir, "--connectivity-group", "internal-connect"]
     display_command = list(command)
     for secret in secrets:
         command.extend(secret.envctl_args())

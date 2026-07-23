@@ -74,10 +74,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   JWT forwarding, schema migration, or ownership change is introduced.
 - `MarketplaceAIClient` continues to send trusted Marketplace identity headers
   without `Authorization`; `MARKETPLACE_AI_SERVICE_TOKEN` is not reintroduced.
-- The Marketplace fix chain must expose the two existing AI paths on a private
-  address and accept the five trusted headers under network-policy isolation.
-  Cross-service/live acceptance remains blocked until that upstream change is
-  deployed.
+- Marketplace exposes the two AI paths only on private listener port 8081.
+  Explicit DockerHost connectivity-group members are trusted; arbitrary private
+  source addresses and public Marketplace ingress are not.
 
 ### Compatibility And Operations
 
@@ -85,9 +84,10 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Agent-context behavior. Wallet-scoped data and compute fail closed.
 - Existing routing, owner, idempotency, provider admission, streaming/replay,
   and tool-permission contracts remain unchanged.
-- `MARKETPLACE_AI_BASE_URL` selects the private Marketplace address and defaults
-  to empty so missing private-network configuration fails closed; public URL
-  fallbacks are forbidden and no new credential setting is added.
+- `MARKETPLACE_AI_BASE_URL` defaults empty/fail-closed. DockerHost release flows
+  preserve group `internal-connect` and DNS
+  `http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081`; public URL or
+  persisted-IP fallbacks and new credentials are forbidden.
 - Rollback is a code revert; no data rollback is needed.
 
 ## Implementation Plan
