@@ -367,6 +367,23 @@ def test_protocol_creation_time_guard_rejects_bilingual_alternative_sources():
         ), answer
 
 
+def test_protocol_creation_time_guard_requires_agent_created_block_semantics():
+    context = {
+        "ok": True,
+        "data": {"agent": {"deployed_at": DEPLOYED_AT}},
+    }
+
+    for answer in (
+        f"协议创建时间是 {DEPLOYED_AT}（UTC）。",
+        f"The protocol creation time is {DEPLOYED_AT} (UTC).",
+    ):
+        assert _protocol_creation_time_violations(
+            "When was this Agent created?",
+            answer,
+            context,
+        ), answer
+
+
 async def test_chinese_protocol_creation_time_uses_context_once_without_compute():
     marketplace = _FakeMarketplaceAI()
     seen_tool_names: list[list[str]] = []
