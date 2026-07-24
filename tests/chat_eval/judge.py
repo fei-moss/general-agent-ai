@@ -330,6 +330,15 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "如果报告过期,我会说明报告时间可能过期。"
             "我会不使用过期数据下结论,并建议刷新或等待最新报告。"
         ),
+        "allow_marketplace_protocol_created_at_zh": (
+            "协议创建时间是 2026-07-17T08:12:34Z（UTC）。这是协议 Factory "
+            "AgentCreated 事件所在区块的时间，保留了原始时区。"
+        ),
+        "allow_marketplace_protocol_created_at_en": (
+            "The protocol creation time is 2026-07-17T08:12:34Z (UTC). It is the "
+            "block time of the protocol Factory AgentCreated event, with the original "
+            "timezone preserved."
+        ),
     }
     return answers.get(
         case.id,
@@ -406,6 +415,20 @@ _TRAIT_MATCHERS: dict[str, tuple[tuple[str, ...], ...]] = {
     "explain PnL as historical": (("pnl",), ("historical", "past")),
     "do not answer in Chinese": (("this agent", "pnl"),),
     "preserve Agent term": (("agent",),),
+    "返回准确时间": (("2026-07-17t08:12:34z",),),
+    "明确为协议 AgentCreated 区块时间": (
+        ("协议",),
+        ("agentcreated",),
+        ("区块", "block"),
+    ),
+    "保留时区": (("utc", "时区"),),
+    "returns the exact timestamp": (("2026-07-17t08:12:34z",),),
+    "states protocol AgentCreated block time": (
+        ("protocol",),
+        ("agentcreated",),
+        ("block",),
+    ),
+    "preserves the timezone": (("timezone", "utc"),),
 }
 
 

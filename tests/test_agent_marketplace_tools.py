@@ -19,6 +19,7 @@ from app.runtime.agent_factory import (
     _knowledge_query_for_context,
     _is_correctable_compute_failure,
     _missing_approved_mechanism_facts,
+    _protocol_creation_time_violations,
     _safe_ballot_redeem_vote_unknown,
     _unsupported_dynamic_claims,
     _violation_feedback,
@@ -28,6 +29,7 @@ from app.runtime.marketplace_ai import MarketplaceViewerContext
 
 
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+DEPLOYED_AT = "2026-07-17T08:12:34Z"
 VIEWER = MarketplaceViewerContext(
     user_id="marketplace:user:7",
     wallet="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
@@ -323,6 +325,296 @@ async def test_agent_marketplace_context_tool_exposes_typed_dynamic_config():
     assert "claim_required" in rendered
     assert "management_fee" in rendered
     assert "rate_bps" in rendered
+
+
+def test_marketplace_context_tool_description_defines_protocol_creation_time():
+    agent = build_agent(_tool_calling_model(TOOL_MARKETPLACE_AGENT_CONTEXT, {}))
+    description = agent._function_toolset.tools[
+        TOOL_MARKETPLACE_AGENT_CONTEXT
+    ].description
+
+    assert "agent.deployed_at" in description
+    assert "AgentCreated" in description
+    assert "protocol creation time" in description
+    assert "Explorer" in description
+    assert "first transaction" in description
+    assert "协议创建时间暂未提供" in description
+
+
+def test_protocol_creation_time_guard_rejects_bilingual_alternative_sources():
+    context = {
+        "ok": True,
+        "data": {"agent": {"deployed_at": DEPLOYED_AT}},
+    }
+    wrong_answers = (
+        "Check the blockchain Explorer or first transaction.",
+        "Use the contract creation time.",
+        "This is the Marketplace listing time.",
+        "This is the Metadata time.",
+        "This is the Agent Tool creation time.",
+        "去区块浏览器查看第一笔交易。",
+        "这是合约创建时间。",
+        "这是 Marketplace 上架时间。",
+        "这是 Metadata 时间。",
+        "这是 Agent Tool 创建时间。",
+    )
+
+    for answer in wrong_answers:
+        assert _protocol_creation_time_violations(
+            "When was this Agent created?",
+            answer,
+            context,
+        ), answer
+
+
+async def test_chinese_protocol_creation_time_uses_context_once_without_compute():
+    marketplace = _FakeMarketplaceAI()
+    seen_tool_names: list[list[str]] = []
+
+    def function(messages, info):
+        seen_tool_names.append([tool.name for tool in info.function_tools])
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in returned_tools:
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            f"协议创建时间是 {DEPLOYED_AT}（UTC），即 Factory "
+                            "AgentCreated 事件所在区块的时间。"
+                        )
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="未读取当前 Agent 上下文。")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("这个 Agent 是什么时候创建的？", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert marketplace.compute_calls == []
+    assert seen_tool_names == [[TOOL_MARKETPLACE_AGENT_CONTEXT], []]
+    assert DEPLOYED_AT in result.output
+    assert "协议创建时间" in result.output
+    assert "UTC" in result.output
+
+
+async def test_english_protocol_creation_time_uses_deployed_at_semantics():
+    marketplace = _FakeMarketplaceAI()
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in returned_tools:
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            f"The protocol creation time is {DEPLOYED_AT} (UTC), the "
+                            "block time of the Factory AgentCreated event."
+                        )
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="Context was not used.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("This agent is created since when?", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert marketplace.compute_calls == []
+    assert result.output == (
+        f"The protocol creation time is {DEPLOYED_AT} (UTC), the block time of "
+        "the Factory AgentCreated event."
+    )
+
+
+async def test_protocol_creation_time_explorer_draft_is_rewritten_internally():
+    marketplace = _FakeMarketplaceAI()
+    retry_feedback: list[str] = []
+    calls = 0
+
+    def function(messages, _info):
+        nonlocal calls
+        calls += 1
+        returned_context = False
+        for message in messages:
+            if not isinstance(message, ModelRequest):
+                continue
+            for part in message.parts:
+                if isinstance(part, ToolReturnPart):
+                    returned_context = returned_context or (
+                        part.tool_name == TOOL_MARKETPLACE_AGENT_CONTEXT
+                    )
+                if isinstance(part, RetryPromptPart):
+                    retry_feedback.append(str(part.content))
+                    return ModelResponse(
+                        parts=[
+                            TextPart(
+                                content=(
+                                    f"The protocol creation time is {DEPLOYED_AT} "
+                                    "(UTC), the Factory AgentCreated event block time."
+                                )
+                            )
+                        ]
+                    )
+        if returned_context:
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "Check the blockchain Explorer's first transaction for the "
+                            "contract creation time."
+                        )
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="Answering without context.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("When was this Agent created?", deps=deps)
+
+    assert calls == 3
+    assert len(marketplace.context_calls) == 1
+    assert marketplace.compute_calls == []
+    assert retry_feedback
+    assert "first transaction" in retry_feedback[0]
+    assert DEPLOYED_AT in result.output
+    for forbidden in (
+        "Explorer",
+        "first transaction",
+        "contract creation time",
+        "tool",
+        "retry",
+        "correction",
+    ):
+        assert forbidden.casefold() not in result.output.casefold()
+
+
+async def test_missing_deployed_at_reports_protocol_time_unavailable_without_fallback():
+    marketplace = _FakeMarketplaceAI(deployed_at=None)
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in returned_tools:
+            return ModelResponse(parts=[TextPart(content="协议创建时间暂未提供。")])
+        return ModelResponse(parts=[TextPart(content="未读取当前 Agent 上下文。")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("Agent 创建时间是什么？", deps=deps)
+
+    assert len(marketplace.context_calls) == 1
+    assert marketplace.compute_calls == []
+    assert result.output == "协议创建时间暂未提供。"
+    assert DEPLOYED_AT not in result.output
+    assert "Explorer" not in result.output
+    assert "区块浏览器" not in result.output
+
+
+async def test_creation_time_validator_does_not_capture_contract_verification_question():
+    marketplace = _FakeMarketplaceAI()
+    answer = "You can check the blockchain Explorer for the contract creation time."
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_AGENT_CONTEXT in returned_tools:
+            return ModelResponse(parts=[TextPart(content=answer)])
+        return ModelResponse(parts=[TextPart(content="Context first.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {"contract_address": ADDRESS},
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("How can I verify a contract creation time?", deps=deps)
+
+    assert result.output == answer
 
 
 async def test_current_agent_output_retries_unsupported_dynamic_claim_once():
@@ -1051,9 +1343,10 @@ class _NoopToolRouter:
 
 
 class _FakeMarketplaceAI:
-    def __init__(self) -> None:
+    def __init__(self, *, deployed_at: str | None = DEPLOYED_AT) -> None:
         self.context_calls: list[dict[str, Any]] = []
         self.compute_calls: list[dict[str, Any]] = []
+        self.deployed_at = deployed_at
 
     async def get_agent_context(
         self,
@@ -1073,11 +1366,14 @@ class _FakeMarketplaceAI:
                 "viewer_context": viewer_context,
             }
         )
+        agent = {"name": "BTC Trend Agent"}
+        if self.deployed_at is not None:
+            agent["deployed_at"] = self.deployed_at
         return {
             "ok": True,
             "source": "marketplace_ai",
             "data": {
-                "agent": {"name": "BTC Trend Agent"},
+                "agent": agent,
                 "redemption_policy": {
                     "available": True,
                     "status": "ok",

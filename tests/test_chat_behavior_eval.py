@@ -76,6 +76,25 @@ def test_data_consistency_cases_define_sources_fields_and_synthetic_payloads(cas
         assert case.raw["expected_fields"], case.id
 
 
+def test_protocol_creation_time_golden_cases_are_bilingual_and_context_only(cases):
+    expected_ids = {
+        "allow_marketplace_protocol_created_at_zh",
+        "allow_marketplace_protocol_created_at_en",
+    }
+    selected = {case.id: case for case in cases if case.id in expected_ids}
+
+    assert set(selected) == expected_ids
+    assert {selected[case_id].raw["locale"] for case_id in expected_ids} == {
+        "zh",
+        "en",
+    }
+    for case in selected.values():
+        assert case.raw["requires_tool"] == "marketplace_agent_context"
+        assert case.raw["requires_rag"] is False
+        assert "deployed_at" in case.raw["expected_fields"]
+        assert "marketplace_agent_context" in case.raw["expected_sources"]
+
+
 @pytest.mark.parametrize("case", load_cases(), ids=lambda case: case.id)
 def test_input_guardrail_matches_golden_cases(case: ChatBehaviorCase):
     decision = evaluate_user_message(case.user_message)

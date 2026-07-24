@@ -4,6 +4,7 @@
     "specs/ballot_golden_answers/spec.md",
     "specs/chat_output_completion/spec.md",
     "specs/hyperliquid_golden_answers/spec.md",
+    "specs/marketplace_agent_protocol_created_at/spec.md",
     "specs/marketplace_viewer_context/spec.md"
   ]
 }

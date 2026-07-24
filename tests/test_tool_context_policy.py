@@ -290,6 +290,14 @@ async def test_agent_injects_current_agent_fact_precedence_instruction():
     assert "per annum" in serialized
     assert "unreturned fee type is zero or not configured" in serialized
     assert "settlement_required is only a boolean" in serialized
+    assert "agent.deployed_at" in serialized
+    assert "protocol creation time" in serialized
+    assert "AgentCreated" in serialized
+    assert "explicit timezone" in serialized
+    assert "Marketplace listing time" in serialized
+    assert "first transaction" in serialized
+    assert "blockchain Explorer" in serialized
+    assert "protocol creation time is not currently provided" in serialized
 
 
 async def test_agent_injects_compute_turn_policy_instruction():

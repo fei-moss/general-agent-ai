@@ -188,6 +188,56 @@ _UNSUPPORTED_AGENT_NARRATIVE_CLAIMS = (
     "platform regularly generates agent reports",
     "平台会定期生成 agent 运行报告",
 )
+_PROTOCOL_CREATION_TIME_QUESTION_PATTERNS = (
+    re.compile(
+        r"(?:这个|当前|本|该)\s*agent.{0,20}(?:什么时候|何时).{0,8}创建",
+        re.I,
+    ),
+    re.compile(
+        r"\bagent\b\s*(?:的)?\s*创建时间.{0,12}(?:是什么|为|多少|何时|什么时候|[?？])",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:when|since when)\b.{0,32}\b(?:this|current)\s+agent\b"
+        r".{0,24}\bcreated\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:this|current)\s+agent\b.{0,40}\b(?:created|creation time)\b",
+        re.I,
+    ),
+)
+_PROTOCOL_CREATION_TIME_FALLBACK_CLAIMS = (
+    "explorer",
+    "first transaction",
+    "first tx",
+    "contract creation time",
+    "contract deployment time",
+    "marketplace listing time",
+    "marketplace ingestion time",
+    "metadata time",
+    "agent tool creation time",
+    "days ago",
+    "weeks ago",
+    "months ago",
+    "区块浏览器",
+    "第一笔交易",
+    "首笔交易",
+    "合约创建时间",
+    "合约部署时间",
+    "marketplace 上架时间",
+    "marketplace 入库时间",
+    "metadata 时间",
+    "agent tool 创建时间",
+    "几天前",
+    "几周前",
+    "几个月前",
+)
+_RFC3339_TIMESTAMP_RE = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"(?:Z|[+-]\d{2}:\d{2})\b",
+    re.I,
+)
 _BALLOT_ABSENCE_INFERENCE_PATTERNS = (
     re.compile(
         r"(?:does not have|doesn't have|has no|no)\s+(?:a\s+)?(?:fixed apy|"
@@ -307,7 +357,18 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     " marketplace_agent_context before answering. Treat the returned"
                     " current Agent configuration as the source of truth for identity,"
                     " type, chain, creator, disclosed strategy, positions, activities,"
-                    " redemption lock and claim flow, and fee names and rates. Static"
+                    " redemption lock and claim flow, and fee names and rates. When the"
+                    " user explicitly asks when the current Agent was created, use"
+                    " agent.deployed_at as the protocol creation time: it is the block"
+                    " time of the Factory AgentCreated event. Preserve the exact returned"
+                    " RFC3339 value and state an explicit timezone. Do not call"
+                    " marketplace_agent_compute or search_knowledge for that question."
+                    " Never call it Marketplace listing time, Metadata time, Agent Tool"
+                    " creation time, contract creation time, or a first transaction; do"
+                    " not use or recommend a blockchain Explorer as a fallback. If"
+                    " agent.deployed_at is missing, empty, or Marketplace is unavailable,"
+                    " say that the protocol creation time is not currently provided and"
+                    " do not guess. Static"
                     " platform knowledge may explain mechanics but must not override"
                     " current-Agent values. Use lock_period_seconds as the exact duration;"
                     " convert rate_bps to percent by dividing by 100 and preserve the"
@@ -374,22 +435,33 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             and turn_policy.get("intent") == "current_agent_question"
         ):
             return output
+        prompt = _query_from_prompt(ctx.prompt)
+        creation_time_violations = _protocol_creation_time_violations(
+            prompt,
+            output,
+            ctx.deps.marketplace_context_result,
+        )
         violations = _unsupported_dynamic_claims(
             output,
             ctx.deps.marketplace_context_result,
         )
         missing_mechanism_facts = _missing_approved_mechanism_facts(
-            _query_from_prompt(ctx.prompt),
+            prompt,
             output,
             agent_type=_agent_type(ctx.deps.marketplace_context_result),
         )
-        if not violations and not missing_mechanism_facts:
+        if (
+            not violations
+            and not missing_mechanism_facts
+            and not creation_time_violations
+        ):
             return output
         if (
             violations == ["ballot_redeem_vote_rule_invented"]
             and not missing_mechanism_facts
+            and not creation_time_violations
         ):
-            return _safe_ballot_redeem_vote_unknown(_query_from_prompt(ctx.prompt))
+            return _safe_ballot_redeem_vote_unknown(prompt)
         raise ModelRetry(
             "Revise the final answer. Remove these claims because the typed "
             "current-Agent context does not support them: "
@@ -405,7 +477,16 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             "or unreturned fee types, say the source did not return that information. "
             "List settlement_required only as a boolean and do not order settlement "
             "before or after claim. "
-            "Return only the corrected user-facing answer and do not mention validation "
+            + (
+                "For this protocol creation-time question, "
+                + _protocol_creation_time_retry_guidance(
+                    ctx.deps.marketplace_context_result
+                )
+                + " "
+                if creation_time_violations
+                else ""
+            )
+            + "Return only the corrected user-facing answer and do not mention validation "
             "or retries."
         )
 
@@ -481,6 +562,12 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         include_raw: bool = False,
     ) -> dict[str, Any]:
         """获取当前 Agent 的 Marketplace 基础上下文、概览指标和最近报告。
+
+        返回的基础上下文包括 `agent.deployed_at`。该字段是协议 Factory
+        `AgentCreated` 事件所在区块的时间，即当前 Agent 的 protocol creation time。
+        创建时间问题必须使用该字段并保留其 RFC3339 时区。字段缺失、为空或
+        Marketplace unavailable 时，只能回答“协议创建时间暂未提供”。禁止回退到
+        Explorer、first transaction、contract creation time 或其他推算时间。
 
         当前 Agent 地址只能来自服务端 run_context,不能由用户或模型指定。
         """
@@ -639,6 +726,98 @@ def _unsupported_dynamic_claims(
             if claim in normalized
         )
     return violations
+
+
+def _is_current_agent_protocol_creation_time_question(prompt: str) -> bool:
+    """Return whether the user explicitly asks for this Agent's creation time."""
+    text = str(prompt or "").strip()
+    return bool(text) and any(
+        pattern.search(text) for pattern in _PROTOCOL_CREATION_TIME_QUESTION_PATTERNS
+    )
+
+
+def _protocol_creation_time_violations(
+    prompt: str,
+    output: str,
+    context_result: dict[str, Any] | None,
+) -> list[str]:
+    """Validate only explicit current-Agent protocol creation-time answers."""
+    if not _is_current_agent_protocol_creation_time_question(prompt):
+        return []
+    text = str(output or "")
+    normalized = " ".join(text.casefold().split())
+    violations = [
+        claim
+        for claim in _PROTOCOL_CREATION_TIME_FALLBACK_CLAIMS
+        if claim.casefold() in normalized
+    ]
+    deployed_at = _protocol_created_at(context_result)
+    if deployed_at is not None:
+        if deployed_at not in text:
+            violations.append("returned agent.deployed_at was omitted")
+        if not (
+            "协议创建时间" in text
+            or "protocol creation time" in normalized
+        ):
+            violations.append("protocol creation-time meaning was omitted")
+        return violations
+    if _RFC3339_TIMESTAMP_RE.search(text):
+        violations.append("a protocol creation timestamp was invented")
+    if not _states_protocol_creation_time_unavailable(text):
+        violations.append("missing protocol creation time was not disclosed")
+    return violations
+
+
+def _protocol_created_at(
+    context_result: dict[str, Any] | None,
+) -> str | None:
+    if not isinstance(context_result, dict) or context_result.get("ok") is False:
+        return None
+    payload = context_result.get("data")
+    if not isinstance(payload, dict):
+        payload = context_result
+    agent = payload.get("agent")
+    if not isinstance(agent, dict):
+        return None
+    value = str(agent.get("deployed_at") or "").strip()
+    return value or None
+
+
+def _states_protocol_creation_time_unavailable(output: str) -> bool:
+    text = " ".join(str(output or "").casefold().split())
+    zh_missing = "协议创建时间" in text and any(
+        marker in text for marker in ("暂未提供", "未提供", "暂不可用", "无法获取")
+    )
+    en_missing = "protocol creation time" in text and any(
+        marker in text
+        for marker in (
+            "not currently provided",
+            "not provided",
+            "currently unavailable",
+            "temporarily unavailable",
+            "unavailable",
+        )
+    )
+    return zh_missing or en_missing
+
+
+def _protocol_creation_time_retry_guidance(
+    context_result: dict[str, Any] | None,
+) -> str:
+    deployed_at = _protocol_created_at(context_result)
+    if deployed_at is None:
+        return (
+            "state only that the protocol creation time is not currently provided "
+            "(协议创建时间暂未提供). Do not invent a timestamp or use an Explorer, "
+            "first transaction, or contract creation time as a fallback."
+        )
+    return (
+        f"use agent.deployed_at exactly as returned: {deployed_at}. Describe it as "
+        "the protocol creation time and Factory AgentCreated event block time, with "
+        "its explicit timezone. Do not use or mention an Explorer, first transaction, "
+        "contract creation time, Marketplace listing time, Metadata time, or Agent "
+        "Tool creation time."
+    )
 
 
 def _unsupported_ballot_claims(
@@ -1089,6 +1268,26 @@ def _prepare_tools_for_turn(
         return [
             tool for tool in tool_defs if tool.name == TOOL_MARKETPLACE_AGENT_COMPUTE
         ]
+    if (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("intent") == "current_agent_question"
+        and _is_current_agent_protocol_creation_time_question(
+            _query_from_prompt(ctx.prompt)
+        )
+    ):
+        if (
+            ctx.deps.marketplace_context_result is None
+            and int(
+                ctx.deps.tool_call_counts.get(TOOL_MARKETPLACE_AGENT_CONTEXT, 0)
+            )
+            == 0
+        ):
+            return [
+                tool
+                for tool in tool_defs
+                if tool.name == TOOL_MARKETPLACE_AGENT_CONTEXT
+            ]
+        return []
     if (
         isinstance(turn_policy, dict)
         and turn_policy.get("tool_use") == "marketplace_context_first"
