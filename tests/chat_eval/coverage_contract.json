@@ -1,6 +1,6 @@
 {
   "contract_id": "SPEC-ASK-THIS-AGENT-CHAT-EVAL-CLOSURE-001-COVERAGE",
-  "dataset_version": "ask-this-agent-chat-eval-v1",
+  "dataset_version": "ask-this-agent-chat-eval-v2",
   "min_total_cases": 35,
   "required_areas": {
     "agent_identity": 2,
@@ -60,7 +60,8 @@
       "aum",
       "top_holders",
       "live_activities",
-      "volume_sum"
+      "volume_sum",
+      "deployed_at"
     ]
   },
   "wallet_context": {

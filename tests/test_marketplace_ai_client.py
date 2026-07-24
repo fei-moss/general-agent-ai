@@ -18,6 +18,7 @@ from app.runtime.marketplace_ai import (
 
 
 ADDRESS = "0x17B09FC949f031dbD540D4caDE59805A08Ee5043"
+DEPLOYED_AT = "2026-07-17T08:12:34Z"
 VIEWER = MarketplaceViewerContext(
     user_id="marketplace:user:7",
     wallet="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
@@ -94,7 +95,11 @@ async def test_marketplace_ai_context_builds_documented_get_request():
         return httpx.Response(
             200,
             json={
-                "agent": {"id": 1051, "contract_address": ADDRESS},
+                "agent": {
+                    "id": 1051,
+                    "contract_address": ADDRESS,
+                    "deployed_at": DEPLOYED_AT,
+                },
                 "metrics": {"volume_24h_usd": "0"},
                 "recent_reports": [],
                 "capabilities": {"computed_metrics": ["volume_sum"]},
@@ -117,6 +122,7 @@ async def test_marketplace_ai_context_builds_documented_get_request():
     assert result["ok"] is True
     assert result["source"] == "marketplace_ai"
     assert result["data"]["agent"]["id"] == 1051
+    assert result["data"]["agent"]["deployed_at"] == DEPLOYED_AT
     request = seen[0]
     assert request.method == "GET"
     assert request.url.path == f"/api/v1/agents/{ADDRESS}/ai-context"
@@ -129,6 +135,8 @@ async def test_marketplace_ai_context_builds_documented_get_request():
     assert request.headers["X-Conversation-ID"] == VIEWER.conversation_id
     assert request.headers["X-Trace-ID"] == VIEWER.trace_id
     assert "Authorization" not in request.headers
+    assert "Marketplace-AI-Service-Token" not in request.headers
+    assert "X-Marketplace-AI-Service-Token" not in request.headers
 
 
 async def test_marketplace_ai_compute_builds_documented_post_request():
