@@ -760,6 +760,11 @@ def _protocol_creation_time_violations(
             or "protocol creation time" in normalized
         ):
             violations.append("protocol creation-time meaning was omitted")
+        if not (
+            "agentcreated" in normalized
+            and ("区块" in text or re.search(r"\bblock\b", normalized))
+        ):
+            violations.append("AgentCreated event block-time meaning was omitted")
         return violations
     if _RFC3339_TIMESTAMP_RE.search(text):
         violations.append("a protocol creation timestamp was invented")

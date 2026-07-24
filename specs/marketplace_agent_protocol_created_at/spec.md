@@ -101,6 +101,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - Chat eval: dataset V2 scorecard passed 45 allowed cases with zero forbidden
   claim hits, 100% safety and data-faithfulness pass rates, and 0.8571 trait hit
   rate.
+- DockerHost acceptance: the first real-Agent replay returned the exact
+  `deployed_at` value and explicit timezone but omitted the Factory
+  `AgentCreated` block-time meaning. A preserved RED regression reproduced the
+  gap, the scoped output validator was tightened, and the six-file focused
+  suite passed again before the corrected candidate was released.
 - Evidence path: `.artifacts/change/` and `.artifacts/release/`; the final
   amended candidate is reverified to bind evidence to its final SHA.
 - Residual risk: Marketplace must independently provide the contracted
