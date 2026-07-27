@@ -50,5 +50,5 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - Compatibility: `git diff origin/Deploy -- dockerhost docker-compose.yml` is empty, proving the existing dev/test compose and DockerHost adapter were not modified.
 - Change gate: approved `VERIFY_COMPARE_REF=origin/Deploy make verify-change` passed; evidence is under `.artifacts/change/`.
 - Project release: `scripts/check_project_release.sh` passed DockerHost compatibility, production contract, observability, imports, chat eval, scorecard, full pytest, and gitleaks; evidence is `.artifacts/release/project_release_summary.json`.
-- Clean-candidate Harness release: deferred until these uncommitted changes become a reviewable commit; the project-native release gate itself is green.
+- Clean-candidate Harness release: `VERIFY_COMPARE_REF=origin/Deploy make verify-release` passed on implementation commit `566eab7` with `overall=passed`, `release_ready=true`, and a clean working tree before and after; the same gate is required again after this evidence-only closeout and on the `Deploy` integration commit.
 - Residual risk: operations must supply production endpoints, credentials, bind address, provider/model selection, backup policy, and rollback-compatible data infrastructure before deployment.
