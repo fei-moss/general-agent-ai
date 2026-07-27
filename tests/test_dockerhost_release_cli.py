@@ -159,7 +159,19 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
     assert audit["execute"] is True
     assert all(step["status"] == "passed" for step in audit["steps"])
 
-    deploy_call = next(command for command in calls if command[:2] == ["envctl", "up"])
+    switch_call = next(
+        command
+        for command in calls
+        if command[:3] == ["envctl", "branch-space", "switch"]
+    )
+    assert switch_call[switch_call.index("--git-ref") + 1] == "feature/dockerhost"
+    assert "--deploy=false" in switch_call
+
+    deploy_call = next(
+        command
+        for command in calls
+        if command[:3] == ["envctl", "branch-space", "deploy"]
+    )
     assert f"GEMINI_API_KEY={secret_file}" in deploy_call
     assert "do-not-read-this-secret" not in stdout
     assert str(secret_file) not in stdout
@@ -320,6 +332,45 @@ def test_documented_connectivity_group_option_is_accepted():
     assert command[command.index("--connectivity-group") + 1] == "internal-connect"
 
 
+def test_redeploy_switches_existing_branch_space_and_reinjects_runtime_config():
+    audit = _run_json(
+        [
+            "redeploy",
+            "--name",
+            "env",
+            "--git-url",
+            "git@example.test/repo.git",
+            "--git-ref",
+            "Deploy",
+            "--base-url",
+            "https://api.example.test",
+            "--secret-env",
+            "ZAI_API_KEY",
+        ]
+    )
+
+    switch = _step(audit, "switch branch-space redeploy ref")["command"]
+    assert switch == [
+        "envctl",
+        "branch-space",
+        "switch",
+        "--name",
+        "env",
+        "--git-ref",
+        "Deploy",
+        "--deploy=false",
+    ]
+
+    connectivity = _step(audit, "configure branch-space connectivity")["command"]
+    assert connectivity[-2:] == ["--connectivity-group", "internal-connect"]
+
+    deploy = _step(audit, "redeploy branch-space")["command"]
+    assert deploy[:5] == ["envctl", "branch-space", "deploy", "--name", "env"]
+    assert "ZAI_API_KEY" in deploy
+    assert "LLM_PROVIDER" in deploy
+    assert not any(step["command"][:2] == ["envctl", "up"] for step in audit["steps"])
+
+
 def test_readyz_smoke_rejects_mock_provider_without_explicit_override():
     step = dockerhost_release.Step(
         "readyz",
@@ -477,9 +528,11 @@ def test_rollback_and_destroy_default_to_safe_dry_run_plans():
     assert rollback["execute"] is False
     assert rollback["git_ref"] == "0123456789abcdef"
     assert rollback["previous_sha"] == "0123456789abcdef"
-    rollback_deploy = _step(rollback, "rollback previous SHA")
-    assert rollback_deploy["command"][:2] == ["envctl", "up"]
-    assert "0123456789abcdef" in rollback_deploy["command"]
+    rollback_switch = _step(rollback, "switch branch-space rollback ref")
+    assert rollback_switch["command"][:3] == ["envctl", "branch-space", "switch"]
+    assert "0123456789abcdef" in rollback_switch["command"]
+    rollback_deploy = _step(rollback, "rollback branch-space")
+    assert rollback_deploy["command"][:3] == ["envctl", "branch-space", "deploy"]
 
     destroy = _run_json(["destroy", "--name", "env"])
     assert destroy["action"] == "destroy"

@@ -434,7 +434,12 @@ def _build_steps(args: argparse.Namespace, secrets: list[Secret]) -> list[Step]:
         return _smoke_steps(args)
 
     git_ref = args.previous_sha if action == "rollback" else args.git_ref
-    up_label = "rollback previous SHA" if action == "rollback" else f"envctl git pull {action}"
+    if action == "deploy":
+        deploy_steps = [
+            _envctl_up_step(args, git_ref, secrets, "envctl git pull deploy")
+        ]
+    else:
+        deploy_steps = _envctl_branch_space_steps(args, git_ref, secrets, action)
     return [
         *_git_preflight_steps(args, git_ref),
         Step(
@@ -450,7 +455,7 @@ def _build_steps(args: argparse.Namespace, secrets: list[Secret]) -> list[Step]:
                 str(Path(args.project_dir) / args.git_subdir),
             ],
         ),
-        _envctl_up_step(args, git_ref, secrets, up_label),
+        *deploy_steps,
         *_smoke_steps(args),
     ]
 
@@ -488,6 +493,55 @@ def _envctl_up_step(
         command.extend(secret.envctl_args())
         display_command.extend(secret.display_envctl_args())
     return Step(label, command, display_command)
+
+
+def _envctl_branch_space_steps(
+    args: argparse.Namespace,
+    git_ref: str,
+    secrets: list[Secret],
+    action: str,
+) -> list[Step]:
+    switch_label = f"switch branch-space {action} ref"
+    deploy_label = f"{action} branch-space"
+    deploy_command = [
+        args.envctl_bin,
+        "branch-space",
+        "deploy",
+        "--name",
+        args.name,
+    ]
+    display_command = list(deploy_command)
+    for secret in secrets:
+        deploy_command.extend(secret.envctl_args())
+        display_command.extend(secret.display_envctl_args())
+    return [
+        Step(
+            "configure branch-space connectivity",
+            [
+                args.envctl_bin,
+                "branch-space",
+                "update",
+                "--name",
+                args.name,
+                "--connectivity-group",
+                args.connectivity_group,
+            ],
+        ),
+        Step(
+            switch_label,
+            [
+                args.envctl_bin,
+                "branch-space",
+                "switch",
+                "--name",
+                args.name,
+                "--git-ref",
+                git_ref,
+                "--deploy=false",
+            ],
+        ),
+        Step(deploy_label, deploy_command, display_command),
+    ]
 
 
 def _smoke_steps(args: argparse.Namespace) -> list[Step]:

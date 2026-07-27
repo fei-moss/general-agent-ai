@@ -86,13 +86,13 @@
 - Behavior change:
   - 新增零外部 Python 依赖的 DockerHost release helper。
   - 默认 dry-run 输出有序 plan 和脱敏 audit JSON,不调用 `git`, `envctl` 或 `curl`。
-  - 显式 `--execute` 后按顺序执行 git status/ref preflight、`envctl check-project`、`envctl validate-template`、`envctl up --git-url --git-ref --git-subdir dockerhost`、`/healthz`、`/readyz`、`stream=false` 422、accepted chat、SSE smoke、worker/reaper logs。
+  - 显式 `--execute` 后按顺序执行 git status/ref preflight、`envctl check-project`、`envctl validate-template`；初次 deploy 使用 `envctl up`，已有 branch-space 的 redeploy/rollback 使用 switch ref（`--deploy=false`）后再 deploy；随后执行 `/healthz`、`/readyz`、`stream=false` 422、accepted chat、SSE smoke、worker/reaper logs。
   - 支持 `deploy`, `redeploy`, `rollback --previous-sha`, `destroy`, `smoke`。
   - `--secret-env` 只接受 secret 名称并拒绝 inline `KEY=value`;`--secret-file KEY=PATH` 可传给真实 envctl 命令,但 stdout/audit 只保留 secret 名称和 redacted placeholder。
 - Data contract impact:
   - None. 仅新增本地运维辅助脚本,不改变 API、DB、DockerHost adapter 或 release gate。
 - Tests to add/update:
-  - `tests/test_dockerhost_release_cli.py` 覆盖 dry-run plan、execute runner 参数、secret hygiene、rollback/destroy 计划。
+  - `tests/test_dockerhost_release_cli.py` 覆盖 dry-run plan、execute runner 参数、secret hygiene、branch-space redeploy/rollback 与 destroy 计划。
 - Verification command:
   - `.venv/bin/python -m pytest tests/test_dockerhost_release_cli.py -q`
 - Rollback or compatibility note:
@@ -105,7 +105,7 @@
 - Behavior change:
   - 新增 pytest 覆盖 CLI 行为,使用注入 runner 和本地 stdout/stderr 捕获。
   - 测试不访问 DockerHost、网络、真实 `envctl`、真实 `curl`、secret 文件内容或 provider 服务。
-  - 测试确保 dry-run 不执行外部命令、execute 模式向 runner 传入真实 secret-file 路径但 audit/stdout 脱敏、rollback 使用上一 SHA、destroy 只规划 unexpose/down。
+  - 测试确保 dry-run 不执行外部命令、execute 模式向 branch-space deploy runner 传入真实 secret-file 路径但 audit/stdout 脱敏、redeploy/rollback 先 switch 到目标 ref、destroy 只规划 unexpose/down。
 - Data contract impact:
   - None.
 - Tests to add/update:
