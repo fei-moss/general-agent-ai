@@ -78,7 +78,8 @@
     - `envctl version`
     - `envctl check-project --dir /Users/chris/AiProject/general-agent-ai`
     - `envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost`
-    - `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`
+    - initial deploy: `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`
+    - existing branch-space redeploy/rollback: `envctl branch-space switch --git-ref ... --deploy=false` followed by `envctl branch-space deploy`
     - `.venv/bin/python scripts/dockerhost_release.py deploy`
     - `.venv/bin/python scripts/dockerhost_release.py redeploy`
     - `.venv/bin/python scripts/dockerhost_release.py rollback --previous-sha`
@@ -181,7 +182,7 @@
   - `scripts/dockerhost_release.py` uses only the Python standard library and supports `deploy`, `redeploy`, `rollback`, `destroy`, and `smoke`。
   - CLI defaults to dry-run plan/audit mode; true `git`/`envctl`/`curl` execution requires `--execute`。
   - CLI passes `--secret-env` and `--secret-file` names to `envctl`, rejects inline `--secret-env KEY=value`, and never prints or audits secret values or secret file contents。
-  - CLI plan/execute order includes git status/ref preflight, `envctl check-project`, `envctl validate-template`, `envctl up --git-url --git-ref --git-subdir dockerhost`, health/readiness, `stream=false` 422, accepted chat, SSE smoke, worker/reaper logs, rollback previous SHA, and destroy cleanup steps where applicable。
+  - CLI plan/execute order includes git status/ref preflight, `envctl check-project`, `envctl validate-template`, initial `envctl up` or existing branch-space switch/deploy as appropriate, health/readiness, `stream=false` 422, accepted chat, SSE smoke, worker/reaper logs, rollback previous SHA, and destroy cleanup steps where applicable。
   - Runbook is Chinese, operator-oriented and includes Git pull deployment, CLI dry-run/`--execute`, `--secret-env`, `--secret-file`, health/readiness checks, `stream=false` 422, SSE/WebSocket smoke, worker/reaper checks, same-environment redeploy, rollback to previous SHA, disposable cleanup and audit record。
   - Pytest contracts read the docs and CLI behavior and fail if required deployment gates, dry-run boundaries, action coverage, or secret-hygiene terms are removed。
 - Edge cases:
@@ -211,6 +212,7 @@
   - Future schema migrations may require rollback-specific migration policy beyond "redeploy previous SHA"; this runbook flags the compatibility check but does not design migration tooling。
 - Accepted assumptions:
   - DockerHost Git pull deployment from pushed Git refs is the current self-service deployment model。
+  - Current `envctl up` creates a new environment and rejects an existing name; same-environment redeploy/rollback therefore operates on a registered branch-space。
   - `envctl` one-shot secret injection can require passing secret arguments again during redeploy/rollback。
   - Dedicated smoke identity is sufficient for release validation until formal auth is added。
 - Rejected alternatives:

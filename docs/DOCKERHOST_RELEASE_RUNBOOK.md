@@ -102,8 +102,10 @@ docker compose -f /Users/chris/AiProject/general-agent-ai/dockerhost/compose.yam
 
 `scripts/dockerhost_release.py` 是本 runbook 的辅助 CLI。默认只生成有序 plan 和脱敏 audit JSON,不会调用真实 `git`, `envctl` 或 `curl`。只有显式加入 `--execute` 时,CLI 才会执行外部命令。
 
-deploy/redeploy/rollback 会把脚本声明的生产运行配置名自动转换为
-`envctl up --secret-env <NAME>`。`--execute` 会在调用 DockerHost 前拒绝任何缺失或
+deploy/redeploy/rollback 会把脚本声明的生产运行配置名自动转换为 DockerHost 的
+`--secret-env <NAME>` 参数。初次 deploy 使用 `envctl up`；已有长驻环境的 redeploy
+和 rollback 使用 `envctl branch-space switch --deploy=false` 后再执行
+`envctl branch-space deploy`。`--execute` 会在调用 DockerHost 前拒绝任何缺失或
 空值；默认也拒绝 mock provider，只有明确的非生产/紧急回滚才可使用
 `--allow-mock`。因此不要绕过此 CLI 直接依赖 Compose 默认值。
 
@@ -162,9 +164,11 @@ dry-run deploy plan:
 
 CLI plan/execute 顺序:
 
-- deploy/redeploy/rollback: `git status --short`, `git rev-parse HEAD`, `git ls-remote`, `envctl check-project`, `envctl validate-template`, `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`, `envctl status`, `/healthz`, `/readyz`, `stream=false` 422, accepted chat, SSE smoke, `/runs/{agent_run_id}`, worker logs, reaper logs。
+- deploy: `git status --short`, `git rev-parse HEAD`, `git ls-remote`, `envctl check-project`, `envctl validate-template`, `envctl up --git-url ... --git-ref ... --git-subdir dockerhost`,然后执行统一 smoke。
+- redeploy/rollback: 相同 preflight 后先更新 branch-space connectivity，再用 `envctl branch-space switch --name ... --git-ref ... --deploy=false` 选择目标 ref，最后运行带完整一次性配置的 `envctl branch-space deploy --name ...`，然后执行统一 smoke。
+- 统一 smoke: `envctl status`, `/healthz`, `/readyz`, `stream=false` 422, accepted chat, SSE smoke, `/runs/{agent_run_id}`, worker logs, reaper logs。
 - The release CLI defaults `--connectivity-group internal-connect`; status must retain that membership. Every deploy exports and passes `MARKETPLACE_AI_BASE_URL` with the internal Marketplace DNS. Public Marketplace URLs are forbidden for this setting.
-- rollback 使用 `--previous-sha` 作为 `envctl up --git-ref` 的目标,并复用同一环境和 secret 注入方式。
+- rollback 使用 `--previous-sha` 作为 branch-space switch 的目标,并复用同一环境和 secret 注入方式。
 - smoke 只执行状态、健康、ready、async chat、SSE 和 worker/reaper 检查,不改变 Git ref。
 - destroy 只规划或执行 `envctl unexpose --service db`, `envctl unexpose --service cache`, `envctl down --name "$ENV_NAME"`;只对 disposable environment 使用。
 
@@ -240,7 +244,9 @@ export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.doc
 
 ## 5. Git Ref Deploy
 
-初次部署或普通 redeploy 都使用相同形态。CLI 最终调用 `envctl up`，发布记录中保留环境名、Git URL、Git ref 和解析后的 commit SHA。
+初次部署由 CLI 调用 `envctl up`。同环境 redeploy/rollback 只支持已登记的
+branch-space，由 CLI 切换其 Git ref 后调用 branch-space deploy。发布记录中保留
+环境名、Git URL、Git ref 和解析后的 commit SHA。
 
 ```bash
 .venv/bin/python scripts/dockerhost_release.py deploy \
@@ -255,9 +261,10 @@ export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.doc
 envctl status --name "$ENV_NAME"
 ```
 
-长驻 branch-space 使用同一 Git ref 概念:
+长驻 branch-space 的底层命令形态如下；生产操作仍应通过 release CLI 生成完整参数:
 
 ```bash
+envctl branch-space switch --name "$ENV_NAME" --git-ref "$GIT_REF" --deploy=false
 envctl branch-space deploy --name "$ENV_NAME"
 envctl branch-space status --name "$ENV_NAME"
 ```
@@ -374,7 +381,10 @@ envctl logs --name "$ENV_NAME" --service api --tail 200
 
 ## 11. 同环境 Redeploy
 
-同一个 `ENV_NAME` 可以 redeploy 到新的 branch 或 SHA。redeploy 之前重新跑发布前门禁,并确认该 ref 已推送。
+同一个 branch-space `ENV_NAME` 可以 redeploy 到新的 branch 或 SHA。redeploy 之前
+重新跑发布前门禁并确认该 ref 已推送。CLI 不会再次调用只允许创建新环境的
+`envctl up`;它会先 switch ref（不隐式 deploy），再以完整一次性配置执行
+branch-space deploy。
 
 ```bash
 export GIT_REF=<new-branch-or-sha>
@@ -410,7 +420,8 @@ redeploy 后重复:
 export PREVIOUS_SHA=<previous-known-good-sha>
 ```
 
-如果候选发布失败,用同一环境回滚到上一 SHA。不要只切换本地分支;DockerHost 必须 redeploy 目标 SHA。
+如果候选发布失败,用同一 branch-space 回滚到上一 SHA。不要只切换本地分支;
+CLI 必须执行 branch-space switch 与 deploy，使 DockerHost 实际运行目标 SHA。
 
 ```bash
 .venv/bin/python scripts/dockerhost_release.py rollback \
