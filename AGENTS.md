@@ -56,9 +56,9 @@ scripts/check_project_release.sh
 - Use `HARNESS-MAINTENANCE` for Harness, skill, eval, template, or process maintenance; do not create self-referential product specs.
 - Harness maintenance must be net-zero or net-negative across the maintained Harness surface.
 
-## DockerHost
+## Mandatory Ops Reference
 
-`docs/DOCKERHOST_RELEASE_RUNBOOK.md` owns project deployment, redeploy, rollback, smoke, cleanup, and secret-injection procedure. `dockerhost/` owns the adapter. Keep private machine paths and credentials outside the repository, deploy only pushed refs, and never print or inline secrets.
+Before modifying Dockerfile, docker-compose files, `.env.example`, Jenkinsfile, deploy scripts, or production deployment behavior, read and follow `docs/ops/production-deployment-contract.md`. `docs/DOCKERHOST_RELEASE_RUNBOOK.md` remains the dev/test DockerHost procedure; keep private paths and credentials out of the repository.
 
 ## AI Boundaries
 

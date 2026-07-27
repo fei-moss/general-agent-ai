@@ -2,6 +2,8 @@
 
 Spec: `SPEC-DOCKERHOST-RELEASE-RUNBOOK-001`
 
+正式生产由 Jenkins / `docker-compose-prd.yml` 管理并遵循 `docs/ops/production-deployment-contract.md`；本 runbook 只管理现有 dev/test/临时 DockerHost 环境。
+
 本 runbook 面向内部运维和授权 Agent,用于在 DockerHost 上执行 `general-agent-ai` 的 Git pull deployment、同环境 redeploy、回滚、清理和审计。这里不包含任何真实 secret。
 
 ## 0. 安全边界

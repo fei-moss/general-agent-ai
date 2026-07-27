@@ -1,0 +1,116 @@
+name: general-agent-ai
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+services:
+  api:
+    image: "general-agent-ai:${APP_IMAGE_TAG:-latest}"
+    build:
+      context: .
+      dockerfile: dockerhost/Dockerfile
+    command:
+      [
+        "/usr/local/bin/python",
+        "-m",
+        "uvicorn",
+        "app.api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+      ]
+    env_file:
+      - .env
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8080"
+    init: true
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_BIND_ADDR:?APP_BIND_ADDR is required}:${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+    stop_grace_period: 30s
+
+  worker:
+    image: "general-agent-ai:${APP_IMAGE_TAG:-latest}"
+    build:
+      context: .
+      dockerfile: dockerhost/Dockerfile
+    command:
+      [
+        "/usr/local/bin/python",
+        "-m",
+        "celery",
+        "-A",
+        "app.tasks.celery_app:celery_app",
+        "worker",
+        "-l",
+        "info",
+        "--pool",
+        "${WORKER_POOL:-prefork}",
+        "--concurrency",
+        "${WORKER_CONCURRENCY:-2}",
+        "-Q",
+        "q.run,q.intent,q.rag,q.tool,q.llm,q.compose",
+      ]
+    env_file:
+      - .env
+    init: true
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging: *default-logging
+    stop_grace_period: 60s
+
+  reaper:
+    image: "general-agent-ai:${APP_IMAGE_TAG:-latest}"
+    build:
+      context: .
+      dockerfile: dockerhost/Dockerfile
+    command:
+      [
+        "/usr/local/bin/python",
+        "-m",
+        "app.tasks.reaper",
+        "--interval-s",
+        "${REAPER_INTERVAL_S:-30}",
+        "--stale-after-s",
+        "${REAPER_STALE_AFTER_S:-300}",
+        "--max-attempts",
+        "${REAPER_MAX_ATTEMPTS:-3}",
+      ]
+    env_file:
+      - .env
+    init: true
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging: *default-logging
+    stop_grace_period: 30s
+
+  migrate:
+    image: "general-agent-ai:${APP_IMAGE_TAG:-latest}"
+    build:
+      context: .
+      dockerfile: dockerhost/Dockerfile
+    command: ["/usr/local/bin/python", "-m", "app.db.migrate"]
+    env_file:
+      - .env
+    init: true
+    restart: "no"
+    logging: *default-logging

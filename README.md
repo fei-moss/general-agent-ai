@@ -8,15 +8,16 @@
 
 生产运维文档:
 
+- [生产部署契约](docs/ops/production-deployment-contract.md)
 - [生产就绪总 runbook](docs/PRODUCTION_READINESS_RUNBOOK.md)
 - [生产观测与告警 runbook](docs/OBSERVABILITY_AND_ALERTING_RUNBOOK.md)
-- [DockerHost 发布与回滚 runbook](docs/DOCKERHOST_RELEASE_RUNBOOK.md)
+- [dev/test DockerHost 发布与回滚 runbook](docs/DOCKERHOST_RELEASE_RUNBOOK.md)
 
 ## 快速启动(5 步)
 
 ```bash
 # 1. 准备环境变量(默认 LLM_PROVIDER=mock,零外部依赖)
-cp .env.example .env
+cp env.local.example .env
 
 # 2. 安装依赖
 make install
