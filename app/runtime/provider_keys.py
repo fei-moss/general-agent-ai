@@ -148,11 +148,17 @@ def build_provider_key_pool(
 
     pool_file = (getattr(settings, "provider_key_pool_file", "") or "").strip()
     if pool_file:
-        return _from_provider_pool_file(settings, provider, model, Path(pool_file))
+        pool = _from_provider_pool_file(settings, provider, model, Path(pool_file))
+        _register_pool_secrets(secret_provider, pool)
+        return pool
 
     provider_file = _provider_specific_key_file(settings, provider)
     if provider_file:
-        return _from_provider_specific_file(settings, provider, model, Path(provider_file))
+        pool = _from_provider_specific_file(
+            settings, provider, model, Path(provider_file)
+        )
+        _register_pool_secrets(secret_provider, pool)
+        return pool
 
     secret_name = required_secret_name(provider)
     secret = secret_provider.get_secret(secret_name) if secret_name else None
@@ -181,6 +187,17 @@ def build_provider_key_pool(
         scope="account",
         status="single",
     )
+
+
+def _register_pool_secrets(
+    secret_provider: SecretProvider,
+    pool: ProviderKeyPool,
+) -> None:
+    register = getattr(secret_provider, "register_secret", None)
+    if not callable(register):
+        return
+    for slot in pool.slots:
+        register(slot.secret)
 
 
 def _provider_specific_key_file(settings: Settings, provider: str) -> str:

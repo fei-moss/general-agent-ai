@@ -78,20 +78,38 @@ async def test_realtime_runner_returns_success_and_releases_leases():
     assert conversation_lease.released is True
 
 
-async def test_realtime_runner_failure_releases_leases_and_returns_failed():
+async def test_realtime_runner_failure_releases_leases_and_returns_failed(monkeypatch):
     from app.core.enums import RunStatus
+    from app.core.events import EventType
     from app.runtime.runner import RealtimeRunRequest, RealtimeRunner
+    from app.tasks import run_store
 
     class _Orchestrator:
         async def run(self, **kwargs):
             raise RuntimeError("boom")
 
+    failed_runs: list[tuple[str, str]] = []
+
+    async def _mark_failed(run_id: str, error: str) -> None:
+        failed_runs.append((run_id, error))
+
+    class _EventBus:
+        def __init__(self) -> None:
+            self.events = []
+
+        async def publish(self, channel, event):
+            self.events.append((channel, event))
+            return event
+
+    monkeypatch.setattr(run_store, "mark_run_failed", _mark_failed)
     conversation_lease = FakeLockLease("conv-1")
+    event_bus = _EventBus()
     runner = RealtimeRunner(
         orchestrator_factory=lambda: _Orchestrator(),
         run_lease=FakeRunLease(),
         runner_id="runner-test",
         heartbeat_interval_s=0,
+        event_bus=event_bus,
     )
 
     result = await runner.run_chat(
@@ -109,6 +127,10 @@ async def test_realtime_runner_failure_releases_leases_and_returns_failed():
 
     assert result.status is RunStatus.FAILED
     assert "boom" in (result.error or "")
+    assert failed_runs == [("run-1", "RuntimeError: boom")]
+    assert event_bus.events[0][1].type is EventType.ERROR
+    assert event_bus.events[0][1].data["error"] == "RuntimeError: boom"
+    assert event_bus.events[-1][1].type is EventType.RUN_COMPLETED
     assert conversation_lease.released is True
 
 

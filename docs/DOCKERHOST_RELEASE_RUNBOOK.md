@@ -40,6 +40,39 @@ export PROJECT_DIR=/Users/chris/AiProject/general-agent-ai
 export ENV_NAME=<owner>-general-agent-ai-rag
 export GIT_URL=git@github.com:fei-moss/general-agent-ai.git
 export GIT_REF=<branch-or-sha>
+export BASE_URL=https://<api-domain>
+export PRODUCTION_MODE=true
+export ALLOW_MOCK_PROVIDER=false
+export CHAT_RUNTIME_MODE=auto
+export LLM_PROVIDER=zai
+export PRODUCTION_MODE=true
+export ALLOW_MOCK_PROVIDER=false
+export ZAI_MODEL=glm-5.2
+export ZAI_THINKING_TYPE=disabled
+export ZAI_REASONING_EFFORT=low
+export ZAI_TOOL_STREAM=true
+export RAG_ENABLED=true
+export RAG_VECTOR_STORE=pgvector
+export RAG_ADMIN_USER_IDS=<rag-admin-user-id>
+export RAG_DEFAULT_KNOWLEDGE_BASE_ID=<default-kb-id>
+export RAG_INTERNAL_OWNER_USER_ID=<rag-owner-user-id>
+export RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID=false
+export EMBEDDING_PROVIDER=gemini
+export EMBEDDING_MODEL=gemini-embedding-2
+export EMBEDDING_DIM=256
+export PROVIDER_DEFAULT_RPM=60
+export PROVIDER_DEFAULT_TPM=60000
+export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=4096
+export RUN_MAX_RUNTIME_S=300
+export STREAM_MAXLEN=1000
+export STREAM_TTL_S=86400
+export METRICS_ENABLED=true
+export REAPER_ENABLED=true
+export REAPER_INTERVAL_S=30
+export REAPER_STALE_AFTER_S=300
+export REAPER_MAX_ATTEMPTS=3
+export WORKER_POOL=prefork
+export WORKER_CONCURRENCY=2
 export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 
 git -C "$PROJECT_DIR" status --short
@@ -68,6 +101,11 @@ docker compose -f /Users/chris/AiProject/general-agent-ai/dockerhost/compose.yam
 ## DockerHost Release CLI（默认 dry-run）
 
 `scripts/dockerhost_release.py` 是本 runbook 的辅助 CLI。默认只生成有序 plan 和脱敏 audit JSON,不会调用真实 `git`, `envctl` 或 `curl`。只有显式加入 `--execute` 时,CLI 才会执行外部命令。
+
+deploy/redeploy/rollback 会把脚本声明的生产运行配置名自动转换为
+`envctl up --secret-env <NAME>`。`--execute` 会在调用 DockerHost 前拒绝任何缺失或
+空值；默认也拒绝 mock provider，只有明确的非生产/紧急回滚才可使用
+`--allow-mock`。因此不要绕过此 CLI 直接依赖 Compose 默认值。
 
 dry-run deploy plan:
 
@@ -144,49 +182,75 @@ Secret hygiene:
 
 ```bash
 export LLM_PROVIDER=zai
+export ZAI_MODEL=glm-5.2
+export ZAI_THINKING_TYPE=disabled
+export ZAI_REASONING_EFFORT=low
+export ZAI_TOOL_STREAM=true
+export CHAT_RUNTIME_MODE=auto
 export RAG_ENABLED=true
 export RAG_VECTOR_STORE=pgvector
+export RAG_ADMIN_USER_IDS=<rag-admin-user-id>
+export RAG_DEFAULT_KNOWLEDGE_BASE_ID=<default-kb-id>
+export RAG_INTERNAL_OWNER_USER_ID=<rag-owner-user-id>
+export RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID=false
 export EMBEDDING_PROVIDER=gemini
 export EMBEDDING_MODEL=gemini-embedding-2
+export EMBEDDING_DIM=256
+export PROVIDER_DEFAULT_RPM=60
+export PROVIDER_DEFAULT_TPM=60000
+export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=4096
+export RUN_MAX_RUNTIME_S=300
+export STREAM_MAXLEN=1000
+export STREAM_TTL_S=86400
+export METRICS_ENABLED=true
+export REAPER_ENABLED=true
+export REAPER_INTERVAL_S=30
+export REAPER_STALE_AFTER_S=300
+export REAPER_MAX_ATTEMPTS=3
+export WORKER_POOL=prefork
+export WORKER_CONCURRENCY=2
 export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 
-envctl up \
+.venv/bin/python scripts/dockerhost_release.py deploy \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
   --connectivity-group internal-connect \
+  --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --execute
 ```
 
 当平台或操作习惯要求文件注入时,使用 `--secret-file KEY=PATH` 指向仓库外的私有文件。路径可以进入命令记录,文件内容不可以。
 
 ```bash
-envctl up \
+.venv/bin/python scripts/dockerhost_release.py deploy \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
   --connectivity-group internal-connect \
+  --base-url "$BASE_URL" \
   --secret-file ZAI_API_KEY=<path-to-private-zai-key-file> \
-  --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
+  --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file> \
+  --execute
 ```
 
 如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。
 
 ## 5. Git Ref Deploy
 
-初次部署或普通 redeploy 都使用相同形态。发布记录中保留环境名、Git URL、Git ref 和解析后的 commit SHA。
+初次部署或普通 redeploy 都使用相同形态。CLI 最终调用 `envctl up`，发布记录中保留环境名、Git URL、Git ref 和解析后的 commit SHA。
 
 ```bash
-envctl up \
+.venv/bin/python scripts/dockerhost_release.py deploy \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
+  --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --execute
 
 envctl status --name "$ENV_NAME"
 ```
@@ -198,11 +262,10 @@ envctl branch-space deploy --name "$ENV_NAME"
 envctl branch-space status --name "$ENV_NAME"
 ```
 
-`branch-space deploy` 的 `.env.generated` 只包含本次显式传入的值。除了 provider
-key 等 secret，本次运行依赖的 `LLM_PROVIDER`、RAG/embedding 配置和
-`MARKETPLACE_AI_BASE_URL` 也必须先导出并通过 `--secret-env <KEY>` 传入；遗漏时
-Compose 会回落到默认值。发布后必须以 `/readyz` 的真实 provider 状态验收，不能
-只看容器 health。
+`branch-space deploy` 的 `.env.generated` 只包含本次显式传入的值。生产发布必须
+通过 release CLI 自动传入运行配置；不要直接运行不带完整 `--secret-env` 集合的
+branch-space deploy。发布后必须以 `/readyz` 的真实 provider 状态验收，不能只看
+容器 health。
 
 ## 6. 健康检查
 
@@ -221,6 +284,9 @@ curl -fsS "$BASE_URL/readyz"
 - `/readyz` 返回 2xx。
 - `/readyz` 不包含 provider key、`ENVCTL_TOKEN` 或任何 secret 值。
 - `/readyz` 表示 DB、Redis、event bus、provider secret、provider limiter 均 ready。
+- `/readyz` 的 `provider_secret` 必须为 `configured`；生产验收不得为 `mock`。
+- 启用 RAG 时，`rag_vector_store` 必须为 `pgvector`，`embedding_provider` 必须为真实 provider；`memory/hash` 仅允许本地测试。
+- API/worker/reaper 必须在一次性 `app.db.migrate` 服务成功后启动；迁移失败即停止发布。
 
 可选支持证据:
 
@@ -316,13 +382,14 @@ export GIT_REF=<new-branch-or-sha>
 envctl check-project --dir /Users/chris/AiProject/general-agent-ai
 envctl validate-template --dir /Users/chris/AiProject/general-agent-ai/dockerhost
 
-envctl up \
+.venv/bin/python scripts/dockerhost_release.py redeploy \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
+  --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --execute
 ```
 
 redeploy 后重复:
@@ -346,13 +413,14 @@ export PREVIOUS_SHA=<previous-known-good-sha>
 如果候选发布失败,用同一环境回滚到上一 SHA。不要只切换本地分支;DockerHost 必须 redeploy 目标 SHA。
 
 ```bash
-envctl up \
+.venv/bin/python scripts/dockerhost_release.py rollback \
+  --previous-sha "$PREVIOUS_SHA" \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
-  --git-ref "$PREVIOUS_SHA" \
-  --git-subdir dockerhost \
+  --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --execute
 
 envctl status --name "$ENV_NAME"
 ```

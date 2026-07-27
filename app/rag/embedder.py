@@ -13,17 +13,13 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 
 import numpy as np
 
 from app.core.config import Settings, get_settings
 from app.core.interfaces import Embedder
-from app.core.logging import get_logger, log_with_fields
 from app.core.secrets import build_secret_provider
-
-logger = get_logger(__name__)
 
 # 分词:抓取连续的字母数字,或单个非空白字符(覆盖中文按字切)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[^\sA-Za-z0-9]")
@@ -241,27 +237,7 @@ def get_embedder(settings: Settings | None = None) -> Embedder:
     settings = settings or get_settings()
     provider = (settings.embedding_provider or "hash").strip().lower()
     if provider == "openai":
-        try:
-            return OpenAIEmbedder(settings)
-        except Exception as exc:  # noqa: BLE001 — 降级保证可用性
-            if not _secret_value(settings, "embedding_api_key", "openai_api_key"):
-                raise
-            log_with_fields(
-                logger,
-                logging.WARNING,
-                "OpenAIEmbedder 初始化失败,降级到 HashEmbedder",
-                error=str(exc),
-            )
+        return OpenAIEmbedder(settings)
     if provider == "gemini":
-        try:
-            return GeminiEmbedder(settings)
-        except Exception as exc:  # noqa: BLE001 — 降级保证可用性
-            if not _secret_value(settings, "embedding_api_key", "gemini_api_key"):
-                raise
-            log_with_fields(
-                logger,
-                logging.WARNING,
-                "GeminiEmbedder 初始化失败,降级到 HashEmbedder",
-                error=str(exc),
-            )
+        return GeminiEmbedder(settings)
     return HashEmbedder(dim=settings.embedding_dim)

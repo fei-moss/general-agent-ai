@@ -21,12 +21,7 @@ approval_required:
   - harness/
   - production-deployment-contract.md
   - scripts/
-  - app/api/
-  - app/runtime/
-  - app/bus/
-  - app/tasks/
-  - app/db/
-  - app/core/
+  - app/
   - dockerhost/
   - requirements.txt
   - docker-compose.yml

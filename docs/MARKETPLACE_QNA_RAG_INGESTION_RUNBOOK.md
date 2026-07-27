@@ -93,6 +93,12 @@ The file hashes must match
 Repeating the same payload is an idempotency check. It must not create a second
 logical document or duplicate chunks.
 
+Intermediate worker failures return the document and job to `PENDING` for the
+next bounded Celery attempt; only the exhausted attempt becomes `FAILED`. The
+reaper also redispatches stale `PENDING` jobs and stale `RUNNING` jobs left by a
+lost worker. Treat a job that remains non-terminal beyond the configured stale
+window as a worker/reaper incident rather than submitting a different document.
+
 ## Local Semantic Evaluation
 
 Run Gemini preflight and the 150-case Promptfoo suite with production embedding
@@ -108,28 +114,25 @@ English documents do not compete with each other.
 
 ## Server Default Knowledge Base
 
-Deploy through the existing branch space after pushing the Git ref. Re-pass all
-one-shot secrets on every deployment:
+Deploy through the repository release wrapper after pushing the Git ref. It
+automatically forwards the complete required runtime environment and rejects
+missing values or an accidental mock provider:
 
 ```bash
 source /Users/chris/.codex-local/dockerhost/envctl_env.sh
-envctl branch-space deploy --name <environment> \
-  --secret-env LLM_PROVIDER \
-  --secret-env RAG_ENABLED \
-  --secret-env RAG_VECTOR_STORE \
-  --secret-env EMBEDDING_PROVIDER \
-  --secret-env EMBEDDING_MODEL \
-  --secret-env EMBEDDING_DIM \
-  --secret-env MARKETPLACE_AI_BASE_URL \
-  --secret-env RAG_ADMIN_USER_IDS \
-  --secret-env RAG_INTERNAL_OWNER_USER_ID \
-  --secret-env RAG_DEFAULT_KNOWLEDGE_BASE_ID
+.venv/bin/python scripts/dockerhost_release.py deploy \
+  --name <environment> \
+  --git-url <git-url> \
+  --git-ref <pushed-ref> \
+  --base-url <api-base-url> \
+  --secret-env ZAI_API_KEY \
+  --secret-env GEMINI_API_KEY \
+  --execute
 envctl branch-space status --name <environment>
 ```
 
-Use the repository release wrapper instead when it is the current documented
-deployment authority. Do not run `down`, recreate the environment, or remove
-the managed PostgreSQL volume for a normal corpus refresh.
+Do not run `down`, recreate the environment, or remove the managed PostgreSQL
+volume for a normal corpus refresh.
 
 `branch-space deploy` regenerates the deployment environment from the values
 passed to that invocation. Export and pass required non-secret Compose inputs

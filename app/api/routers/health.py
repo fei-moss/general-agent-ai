@@ -15,6 +15,7 @@ from app.core.logging import get_logger
 from app.core.metrics import Metrics
 from app.core.secrets import ProviderSecretMissingError, build_secret_provider
 from app.db.session import async_session_factory
+from app.rag.embedder import get_embedder
 from app.runtime.provider_keys import build_provider_key_pool
 from app.runtime.provider_limits import provider_identity_from_settings
 
@@ -39,8 +40,17 @@ async def readyz(request: Request) -> JSONResponse:
     secret_ok = _check_provider_secret(request, checks)
     key_pool_ok = _check_provider_key_pool(request, checks)
     limiter_ok = _check_provider_limiter(request, checks)
+    rag_ok = _check_rag_config(checks)
     _check_reaper(checks)
-    ready = db_ok and redis_ok and bus_ok and secret_ok and key_pool_ok and limiter_ok
+    ready = (
+        db_ok
+        and redis_ok
+        and bus_ok
+        and secret_ok
+        and key_pool_ok
+        and limiter_ok
+        and rag_ok
+    )
     code = status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(
         status_code=code,
@@ -103,7 +113,7 @@ def _check_provider_secret(request: Request, checks: dict[str, str]) -> bool:
     identity = provider_identity_from_settings(settings)
     if identity.mock:
         checks["provider_secret"] = "mock"
-        return True
+        return not settings.production_mode or settings.allow_mock_provider
     provider = getattr(request.app.state, "secret_provider", None)
     if provider is None:
         provider = build_secret_provider(settings)
@@ -127,7 +137,7 @@ def _check_provider_key_pool(request: Request, checks: dict[str, str]) -> bool:
     identity = provider_identity_from_settings(settings)
     if identity.mock:
         checks["provider_key_pool"] = "mock"
-        return True
+        return not settings.production_mode or settings.allow_mock_provider
     provider = getattr(request.app.state, "secret_provider", None)
     if provider is None:
         provider = build_secret_provider(settings)
@@ -161,3 +171,29 @@ def _check_provider_limiter(request: Request, checks: dict[str, str]) -> bool:
 def _check_reaper(checks: dict[str, str]) -> None:
     settings = get_settings()
     checks["reaper"] = "configured" if settings.reaper_enabled else "disabled"
+
+
+def _check_rag_config(checks: dict[str, str]) -> bool:
+    settings = get_settings()
+    if not settings.rag_enabled:
+        checks["rag"] = "disabled"
+        return True
+
+    vector_store = settings.rag_vector_store.strip().lower()
+    embedding_provider = settings.embedding_provider.strip().lower()
+    checks["rag_vector_store"] = vector_store or "missing"
+    checks["embedding_provider"] = embedding_provider or "missing"
+    if vector_store not in {"memory", "pgvector"}:
+        return False
+    if embedding_provider not in {"hash", "openai", "gemini"}:
+        return False
+    if settings.production_mode and (
+        vector_store != "pgvector" or embedding_provider == "hash"
+    ):
+        return False
+    try:
+        get_embedder(settings)
+    except Exception:
+        checks["embedding_provider"] = "error"
+        return False
+    return True

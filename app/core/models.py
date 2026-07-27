@@ -128,6 +128,9 @@ class AgentRun(Base):
     intent: Mapped[IntentType | None] = mapped_column(String(32), nullable=True)
     plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -343,7 +346,15 @@ class RAGIngestionJob(Base):
     """RAG 文档摄取任务状态。"""
 
     __tablename__ = "rag_ingestion_job"
-    __table_args__ = (Index("ix_rag_ingestion_status_created", "status", "created_at"),)
+    __table_args__ = (
+        Index("ix_rag_ingestion_status_created", "status", "created_at"),
+        Index(
+            "ix_rag_ingestion_dispatch",
+            "status",
+            "last_dispatched_at",
+            "created_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     document_id: Mapped[str] = mapped_column(
@@ -355,12 +366,16 @@ class RAGIngestionJob(Base):
         String(16), default=RAGIngestionJobStatus.PENDING, nullable=False
     )
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    dispatch_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_dispatched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

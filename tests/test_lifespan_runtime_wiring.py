@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from fastapi import FastAPI
+import pytest
 
 
 async def test_lifespan_wires_shared_redis_runtime_resources(monkeypatch):
@@ -57,3 +58,19 @@ async def test_lifespan_wires_shared_redis_runtime_resources(monkeypatch):
         assert orchestrator._deps.metrics is app.state.metrics
 
     assert redis.closed is True
+
+
+def test_event_bus_wiring_fails_closed_when_stream_bus_is_unavailable(monkeypatch):
+    from app.api import lifespan as lifespan_module
+    import app.bus
+
+    monkeypatch.setattr(
+        app.bus,
+        "create_event_bus",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("stream bus unavailable")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="stream bus unavailable"):
+        lifespan_module._build_event_bus("redis://test/0")

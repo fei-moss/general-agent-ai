@@ -13,6 +13,7 @@ from app.core.config import Settings, get_settings
 from app.core.enums import (
     KnowledgeBaseStatus,
     RAGDocumentStatus,
+    RAGIngestionJobStatus,
 )
 from app.core.ids import _new_id
 from app.core.logging import get_logger, log_with_fields
@@ -118,8 +119,9 @@ async def create_document(
             owner_user_id=user,
             payload={"source_type": body.source_type},
         )
-    if created:
+    if _status_value(job.status) == RAGIngestionJobStatus.PENDING.value:
         _enqueue_ingestion(job.id, document.id)
+        await job_repo.mark_dispatched(job.id)
     return RAGDocumentAccepted(
         document_id=document.id,
         job_id=job.id,

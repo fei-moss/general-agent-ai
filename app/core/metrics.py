@@ -27,6 +27,8 @@ class _HistogramSample:
 
 @dataclass
 class MetricsRegistry:
+    max_series: int = 10000
+    dropped_series: int = 0
     counters: dict[tuple[str, tuple[tuple[str, str], ...]], float] = field(
         default_factory=lambda: defaultdict(float)
     )
@@ -40,17 +42,25 @@ class MetricsRegistry:
     def inc_counter(
         self, name: str, labels: dict[str, str] | None = None, value: float = 1.0
     ) -> None:
-        self.counters[(_sanitize_metric_name(name), _labels(labels))] += float(value)
+        key = (_sanitize_metric_name(name), _labels(labels))
+        if not self._accept_series(self.counters, key):
+            return
+        self.counters[key] += float(value)
 
     def set_gauge(
         self, name: str, value: float, labels: dict[str, str] | None = None
     ) -> None:
-        self.gauges[(_sanitize_metric_name(name), _labels(labels))] = float(value)
+        key = (_sanitize_metric_name(name), _labels(labels))
+        if not self._accept_series(self.gauges, key):
+            return
+        self.gauges[key] = float(value)
 
     def observe_histogram(
         self, name: str, value: float, labels: dict[str, str] | None = None
     ) -> None:
         key = (_sanitize_metric_name(name), _labels(labels))
+        if not self._accept_series(self.histograms, key):
+            return
         sample = self.histograms.setdefault(key, _HistogramSample())
         sample.count += 1
         sample.total += float(value)
@@ -66,7 +76,23 @@ class MetricsRegistry:
             lines.append(_sample_line(f"{name}_count", labels, sample.count))
             lines.append(_sample_line(f"{name}_sum", labels, sample.total))
             lines.append(_sample_line(f"{name}_last", labels, sample.last))
+        if self.dropped_series:
+            lines.append(
+                _sample_line("metrics_dropped_series_total", (), self.dropped_series)
+            )
         return "\n".join(lines) + ("\n" if lines else "")
+
+    @property
+    def series_count(self) -> int:
+        return len(self.counters) + len(self.gauges) + len(self.histograms)
+
+    def _accept_series(self, collection: dict[Any, Any], key: Any) -> bool:
+        if key in collection or self.max_series <= 0:
+            return True
+        if self.series_count < self.max_series:
+            return True
+        self.dropped_series += 1
+        return False
 
 
 _DEFAULT_REGISTRY = MetricsRegistry()
@@ -80,6 +106,7 @@ def reset_default_metrics_registry() -> None:
     _DEFAULT_REGISTRY.counters.clear()
     _DEFAULT_REGISTRY.gauges.clear()
     _DEFAULT_REGISTRY.histograms.clear()
+    _DEFAULT_REGISTRY.dropped_series = 0
 
 
 class Metrics:

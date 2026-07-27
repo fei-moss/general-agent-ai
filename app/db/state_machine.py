@@ -25,7 +25,9 @@ _RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
 # TaskState 合法流转:QUEUED -> RUNNING -> (DONE|ERROR);ERROR 可回到 QUEUED 以支持重试。
 _TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.QUEUED: frozenset({TaskStatus.RUNNING, TaskStatus.ERROR}),
-    TaskStatus.RUNNING: frozenset({TaskStatus.DONE, TaskStatus.ERROR}),
+    TaskStatus.RUNNING: frozenset(
+        {TaskStatus.QUEUED, TaskStatus.DONE, TaskStatus.ERROR}
+    ),
     TaskStatus.DONE: frozenset(),
     TaskStatus.ERROR: frozenset({TaskStatus.QUEUED, TaskStatus.RUNNING}),
 }

@@ -249,14 +249,18 @@ class RunRepoAdapter(_SessionScopedRepo):
         self, agent_run_id: str, intent: Any | None, plan: dict[str, Any]
     ) -> None:
         """置运行中并写计划,用一个短事务完成。"""
-        from app.core.models import AgentRun
+        from sqlalchemy import select
+
+        from app.core.enums import TaskStatus
+        from app.core.models import AgentRun, TaskState
+        from app.db.errors import EntityNotFoundError
         from app.db.repositories import _utcnow
         from app.db.state_machine import assert_run_transition
 
         async with self._session_ctx() as session:
             entity = await session.get(AgentRun, agent_run_id)
             if entity is None:
-                return
+                raise EntityNotFoundError("AgentRun", agent_run_id)
             assert_run_transition(entity.status, RunStatus.RUNNING)
             entity.status = RunStatus.RUNNING
             if entity.started_at is None:
@@ -264,6 +268,17 @@ class RunRepoAdapter(_SessionScopedRepo):
             if intent is not None:
                 entity.intent = intent
             entity.plan = plan
+            tasks = (
+                await session.scalars(
+                    select(TaskState).where(
+                        TaskState.agent_run_id == agent_run_id,
+                        TaskState.status == TaskStatus.QUEUED,
+                    )
+                )
+            ).all()
+            for task in tasks:
+                task.status = TaskStatus.RUNNING
+                task.updated_at = _utcnow()
             await session.commit()
 
     async def set_plan(self, agent_run_id: str, plan: dict[str, Any]) -> None:
@@ -276,11 +291,33 @@ class RunRepoAdapter(_SessionScopedRepo):
 
     async def mark_succeeded(self, agent_run_id: str) -> None:
         """置成功。"""
-        from app.db.repositories import AgentRunRepository
+        from sqlalchemy import select
+
+        from app.core.enums import TaskStatus
+        from app.core.models import AgentRun, TaskState
+        from app.db.errors import EntityNotFoundError
+        from app.db.repositories import _utcnow
+        from app.db.state_machine import assert_run_transition
 
         async with self._session_ctx() as session:
-            repo = AgentRunRepository(session)
-            await repo.update_status(agent_run_id, RunStatus.SUCCEEDED)
+            run = await session.get(AgentRun, agent_run_id)
+            if run is None:
+                raise EntityNotFoundError("AgentRun", agent_run_id)
+            assert_run_transition(run.status, RunStatus.SUCCEEDED)
+            run.status = RunStatus.SUCCEEDED
+            run.finished_at = _utcnow()
+            tasks = (
+                await session.scalars(
+                    select(TaskState).where(
+                        TaskState.agent_run_id == agent_run_id,
+                        TaskState.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
+                    )
+                )
+            ).all()
+            for task in tasks:
+                task.status = TaskStatus.DONE
+                task.updated_at = _utcnow()
+            await session.commit()
 
     async def mark_succeeded_with_answer(
         self,
@@ -290,11 +327,19 @@ class RunRepoAdapter(_SessionScopedRepo):
         token_count: int,
     ) -> None:
         """写 assistant 最终消息并置成功,用一个短事务完成。"""
-        from app.core.models import AgentRun, Message
+        from sqlalchemy import select
+
+        from app.core.enums import TaskStatus
+        from app.core.models import AgentRun, Message, TaskState
+        from app.db.errors import EntityNotFoundError
         from app.db.repositories import _utcnow
         from app.db.state_machine import assert_run_transition
 
         async with self._session_ctx() as session:
+            run = await session.get(AgentRun, agent_run_id)
+            if run is None:
+                raise EntityNotFoundError("AgentRun", agent_run_id)
+            assert_run_transition(run.status, RunStatus.SUCCEEDED)
             message = Message(
                 id=_new_id("msg_"),
                 conversation_id=conversation_id,
@@ -305,19 +350,51 @@ class RunRepoAdapter(_SessionScopedRepo):
                 meta={},
             )
             session.add(message)
-            run = await session.get(AgentRun, agent_run_id)
-            if run is not None:
-                assert_run_transition(run.status, RunStatus.SUCCEEDED)
-                run.status = RunStatus.SUCCEEDED
-                run.finished_at = _utcnow()
+            run.status = RunStatus.SUCCEEDED
+            run.finished_at = _utcnow()
+            tasks = (
+                await session.scalars(
+                    select(TaskState).where(
+                        TaskState.agent_run_id == agent_run_id,
+                        TaskState.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
+                    )
+                )
+            ).all()
+            for task in tasks:
+                task.status = TaskStatus.DONE
+                task.updated_at = _utcnow()
             await session.commit()
 
     async def mark_failed(self, agent_run_id: str, error: str) -> None:
         """置失败并记录错误。"""
-        from app.db.repositories import AgentRunRepository
+        from sqlalchemy import select
+
+        from app.core.enums import TaskStatus
+        from app.core.models import AgentRun, TaskState
+        from app.db.errors import EntityNotFoundError
+        from app.db.repositories import _utcnow
+        from app.db.state_machine import assert_run_transition, is_terminal_run_status
 
         async with self._session_ctx() as session:
-            repo = AgentRunRepository(session)
-            await repo.update_status(
-                agent_run_id, RunStatus.FAILED, error=error
-            )
+            run = await session.get(AgentRun, agent_run_id)
+            if run is None:
+                raise EntityNotFoundError("AgentRun", agent_run_id)
+            if is_terminal_run_status(run.status) and run.status != RunStatus.FAILED:
+                return
+            assert_run_transition(run.status, RunStatus.FAILED)
+            run.status = RunStatus.FAILED
+            run.error = error[:2000]
+            run.finished_at = _utcnow()
+            tasks = (
+                await session.scalars(
+                    select(TaskState).where(
+                        TaskState.agent_run_id == agent_run_id,
+                        TaskState.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
+                    )
+                )
+            ).all()
+            for task in tasks:
+                task.status = TaskStatus.ERROR
+                task.result = {"error": error[:2000]}
+                task.updated_at = _utcnow()
+            await session.commit()

@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -606,6 +606,43 @@ class RAGIngestionJobRepository(_BaseRepository):
             entity.finished_at = _utcnow()
         entity.error_message = error_message
         return await self._commit_refresh(entity, "RAGIngestionJob")
+
+    async def mark_dispatched(self, job_id: str) -> RAGIngestionJob:
+        """Record a successful broker dispatch while the job stays PENDING."""
+        entity = await self.get(job_id)
+        if entity is None:
+            raise EntityNotFoundError("RAGIngestionJob", job_id)
+        if entity.status != RAGIngestionJobStatus.PENDING:
+            return entity
+        entity.dispatch_attempts = (entity.dispatch_attempts or 0) + 1
+        entity.last_dispatched_at = _utcnow()
+        return await self._commit_refresh(entity, "RAGIngestionJob")
+
+    async def claim_running(self, job_id: str) -> bool:
+        """Atomically let only one delivered Celery message start ingestion."""
+        try:
+            result = await self._session.execute(
+                update(RAGIngestionJob)
+                .where(
+                    RAGIngestionJob.id == job_id,
+                    RAGIngestionJob.status == RAGIngestionJobStatus.PENDING,
+                )
+                .values(
+                    status=RAGIngestionJobStatus.RUNNING,
+                    started_at=_utcnow(),
+                    attempts=RAGIngestionJob.attempts + 1,
+                    error_message=None,
+                )
+                .returning(RAGIngestionJob.id)
+            )
+            claimed = result.scalar_one_or_none() is not None
+            await self._session.commit()
+            return claimed
+        except SQLAlchemyError as exc:
+            await self._session.rollback()
+            raise PersistenceError(
+                f"claim RAGIngestionJob failed: {exc}"
+            ) from exc
 
 
 class RAGChunkRepository(_BaseRepository):

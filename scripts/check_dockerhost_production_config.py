@@ -34,9 +34,21 @@ def main() -> int:
         "reaper healthcheck must run a bounded dry-run scan",
         errors,
     )
+    _require("  migrate:" in compose, "dockerhost compose must run DB migrations", errors)
+    _require(
+        "condition: service_completed_successfully" in compose,
+        "runtime services must wait for successful DB migration",
+        errors,
+    )
+    _require(
+        "http://localhost:8080/readyz" in compose,
+        "api healthcheck must use readiness rather than liveness",
+        errors,
+    )
     for name in (
         "RUN_MAX_RUNTIME_S",
         "STREAM_MAXLEN",
+        "STREAM_TTL_S",
         "METRICS_ENABLED",
         "REAPER_ENABLED",
         "REAPER_INTERVAL_S",

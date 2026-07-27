@@ -84,6 +84,8 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.litellm_fallbacks.split(",") if m.strip()]
 
     # --- 运行参数 ---
+    production_mode: bool = False
+    allow_mock_provider: bool = False
     rate_limit_per_min: int = 60
     max_turns: int = 10
     retrieval_top_k: int = 5
@@ -106,6 +108,7 @@ class Settings(BaseSettings):
     provider_realtime_degrade_to_batch: bool = True
     run_max_runtime_s: float = 300.0
     stream_maxlen: int = 1000
+    stream_ttl_s: int = 86400
     metrics_enabled: bool = True
     reaper_enabled: bool = True
     reaper_interval_s: float = 30.0

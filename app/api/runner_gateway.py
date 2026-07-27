@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from app.core.logging import get_logger, log_with_fields
+from app.core.secrets import redact_runtime_error
 
 logger = get_logger(__name__)
 
@@ -46,17 +47,19 @@ def enqueue_run(payload: dict) -> None:
             conversation_id=payload["conversation_id"],
             trace_id=payload["trace_id"],
             user_message=payload["message"],
+            task_id=payload.get("task_id"),
             user_id=payload.get("user_id"),
             metadata=payload.get("metadata") or {},
             run_context=payload.get("run_context") or {},
             marketplace_viewer_context=payload.get("marketplace_viewer_context"),
         )
     except Exception as exc:
+        error = redact_runtime_error(f"{type(exc).__name__}: {exc}")
         log_with_fields(
             logger,
             logging.ERROR,
             "投递 run_agent_task 失败",
             agent_run_id=payload.get("agent_run_id"),
-            error=str(exc),
+            error=error,
         )
-        raise RunnerUnavailableError(f"投递任务失败: {exc}") from exc
+        raise RunnerUnavailableError(f"投递任务失败: {error}") from exc

@@ -12,6 +12,20 @@ CREATE TABLE IF NOT EXISTS conversation (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS conversation_anchor (
+    id              VARCHAR(64) PRIMARY KEY,
+    conversation_id VARCHAR(64) NOT NULL
+        REFERENCES conversation(id) ON DELETE CASCADE,
+    user_id         VARCHAR(64) NOT NULL,
+    anchor_type     VARCHAR(64) NOT NULL,
+    anchor_key      VARCHAR(256) NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_conversation_anchor_user_type_key
+        UNIQUE (user_id, anchor_type, anchor_key)
+);
+CREATE INDEX IF NOT EXISTS ix_conversation_anchor_conversation_id
+    ON conversation_anchor (conversation_id);
+
 CREATE TABLE IF NOT EXISTS message (
     id              VARCHAR(64) PRIMARY KEY,
     conversation_id VARCHAR(64) NOT NULL
@@ -40,6 +54,7 @@ CREATE TABLE IF NOT EXISTS agent_run (
     intent          VARCHAR(32),
     plan            JSONB,
     error           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     started_at      TIMESTAMPTZ,
     finished_at     TIMESTAMPTZ
 );
@@ -195,10 +210,12 @@ CREATE TABLE IF NOT EXISTS rag_ingestion_job (
     owner_user_id     VARCHAR(64) NOT NULL,
     status            VARCHAR(16) NOT NULL DEFAULT 'PENDING',
     attempts          INTEGER NOT NULL DEFAULT 0,
+    dispatch_attempts INTEGER NOT NULL DEFAULT 0,
     payload           JSONB,
     error_message     TEXT,
     started_at        TIMESTAMPTZ,
     finished_at       TIMESTAMPTZ,
+    last_dispatched_at TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_rag_ingestion_status_created

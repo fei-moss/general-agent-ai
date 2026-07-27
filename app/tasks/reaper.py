@@ -10,15 +10,22 @@ import logging
 import time
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.api.runner_gateway import enqueue_run
 from app.core.config import get_settings
-from app.core.enums import RunStatus, TaskStatus
+from app.core.enums import (
+    RAGDocumentStatus,
+    RAGIngestionJobStatus,
+    RunStatus,
+    TaskStatus,
+)
+from app.core.events import AgentEvent, EventType
 from app.core.logging import configure_logging, get_logger, log_with_fields
 from app.core.metrics import Metrics
-from app.core.models import AgentRun, TaskState
+from app.core.models import AgentRun, RAGDocument, RAGIngestionJob, TaskState
 from app.db.session import async_session_factory
+from app.db.state_machine import is_terminal_run_status
 from app.runtime.locks import RunLease
 
 logger = get_logger(__name__)
@@ -30,6 +37,8 @@ class ReaperResult:
     requeued: int = 0
     failed: int = 0
     ignored: int = 0
+    rag_requeued: int = 0
+    rag_failed: int = 0
 
 
 class PendingRunReaper:
@@ -57,9 +66,16 @@ class PendingRunReaper:
         result = ReaperResult()
         for run in await self._store.list_stale_runs():
             result.inspected += 1
+            run_status = getattr(run, "run_status", getattr(run, "status", None))
+            if _is_terminal_run_status(run_status):
+                result.ignored += 1
+                continue
             status = _status_value(getattr(run, "status", None))
             route_type = _route_type(run)
-            if status == RunStatus.RUNNING.value and route_type == "realtime":
+            if (
+                status in {RunStatus.PENDING.value, RunStatus.RUNNING.value}
+                and route_type == "realtime"
+            ):
                 if await self._run_lease.is_alive(run.id):
                     result.ignored += 1
                     continue
@@ -67,7 +83,11 @@ class PendingRunReaper:
                     await self._store.mark_failed(run, "orphan realtime run lease expired")
                 result.failed += 1
                 continue
-            if status in {RunStatus.PENDING.value, "QUEUED"}:
+            if status in {
+                RunStatus.PENDING.value,
+                TaskStatus.QUEUED.value,
+                TaskStatus.RUNNING.value,
+            }:
                 attempt = int(getattr(run, "attempt", 0) or 0)
                 if attempt >= self._max_attempts:
                     if not dry_run:
@@ -79,6 +99,20 @@ class PendingRunReaper:
                 result.requeued += 1
                 continue
             result.ignored += 1
+        list_rag_jobs = getattr(self._store, "list_stale_rag_jobs", None)
+        if callable(list_rag_jobs):
+            for job in await list_rag_jobs():
+                if int(getattr(job, "dispatch_attempts", 0) or 0) >= self._max_attempts:
+                    if not dry_run:
+                        await self._store.mark_rag_failed(
+                            job,
+                            "RAG dispatch attempt budget exhausted",
+                        )
+                    result.rag_failed += 1
+                    continue
+                if not dry_run:
+                    await self._store.reenqueue_rag(job)
+                result.rag_requeued += 1
         self._observe_result(result, dry_run=dry_run, elapsed_s=time.perf_counter() - started)
         return result
 
@@ -90,11 +124,22 @@ class PendingRunReaper:
         self._metrics.inc_counter("reaper_inspected_total", labels, result.inspected)
         self._metrics.inc_counter("reaper_requeued_total", labels, result.requeued)
         self._metrics.inc_counter("reaper_failed_total", labels, result.failed)
+        self._metrics.inc_counter(
+            "reaper_rag_requeued_total", labels, result.rag_requeued
+        )
+        self._metrics.inc_counter("reaper_rag_failed_total", labels, result.rag_failed)
         self._metrics.observe_histogram("reaper_run_seconds", elapsed_s, labels)
 
 
 def _status_value(status: Any) -> str:
     return status.value if hasattr(status, "value") else str(status)
+
+
+def _is_terminal_run_status(status: Any) -> bool:
+    try:
+        return is_terminal_run_status(RunStatus(_status_value(status)))
+    except ValueError:
+        return False
 
 
 def _route_type(run: Any) -> str:
@@ -115,14 +160,30 @@ class ReaperItem:
     attempt: int = 0
     payload: dict[str, Any] | None = None
     task_id: str | None = None
+    run_status: Any | None = None
+    trace_id: str = ""
+
+
+@dataclass
+class RAGReaperItem:
+    id: str
+    document_id: str
+    dispatch_attempts: int = 0
 
 
 class DbPendingRunStore:
     """DB-backed stale run/task store for PendingRunReaper."""
 
-    def __init__(self, *, stale_after_s: int = 300, max_attempts: int = 3) -> None:
+    def __init__(
+        self,
+        *,
+        stale_after_s: int = 300,
+        max_attempts: int = 3,
+        event_bus: Any | None = None,
+    ) -> None:
         self._stale_after_s = stale_after_s
         self._max_attempts = max_attempts
+        self._event_bus = event_bus
 
     async def list_stale_runs(self) -> list[ReaperItem]:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._stale_after_s)
@@ -132,6 +193,7 @@ class DbPendingRunStore:
                 select(TaskState, AgentRun)
                 .join(AgentRun, AgentRun.id == TaskState.agent_run_id)
                 .where(TaskState.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]))
+                .where(AgentRun.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
                 .where(TaskState.updated_at < cutoff)
             )
             task_result = await session.execute(task_stmt)
@@ -144,13 +206,23 @@ class DbPendingRunStore:
                         attempt=task.attempt or 0,
                         payload=task.payload,
                         task_id=task.id,
+                        run_status=run.status,
+                        trace_id=run.trace_id,
                     )
                 )
 
             run_stmt = select(AgentRun).where(
-                AgentRun.status == RunStatus.RUNNING,
-                AgentRun.started_at.is_not(None),
-                AgentRun.started_at < cutoff,
+                or_(
+                    and_(
+                        AgentRun.status == RunStatus.RUNNING,
+                        AgentRun.started_at.is_not(None),
+                        AgentRun.started_at < cutoff,
+                    ),
+                    and_(
+                        AgentRun.status == RunStatus.PENDING,
+                        AgentRun.created_at < cutoff,
+                    ),
+                )
             )
             run_result = await session.execute(run_stmt)
             for run in run_result.scalars().all():
@@ -161,39 +233,172 @@ class DbPendingRunStore:
                             status=run.status,
                             route_type="realtime",
                             attempt=0,
+                            run_status=run.status,
+                            trace_id=run.trace_id,
                         )
                     )
         return items
+
+    async def list_stale_rag_jobs(self) -> list[RAGReaperItem]:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._stale_after_s)
+        async with async_session_factory() as session:
+            stmt = select(RAGIngestionJob).where(
+                or_(
+                    and_(
+                        RAGIngestionJob.status == RAGIngestionJobStatus.PENDING,
+                        RAGIngestionJob.last_dispatched_at.is_(None),
+                        RAGIngestionJob.created_at < cutoff,
+                    ),
+                    and_(
+                        RAGIngestionJob.status == RAGIngestionJobStatus.PENDING,
+                        RAGIngestionJob.last_dispatched_at < cutoff,
+                    ),
+                    and_(
+                        RAGIngestionJob.status == RAGIngestionJobStatus.RUNNING,
+                        RAGIngestionJob.started_at.is_not(None),
+                        RAGIngestionJob.started_at < cutoff,
+                    ),
+                ),
+            )
+            jobs = (await session.scalars(stmt)).all()
+            return [
+                RAGReaperItem(
+                    id=job.id,
+                    document_id=job.document_id,
+                    dispatch_attempts=job.dispatch_attempts or 0,
+                )
+                for job in jobs
+            ]
+
+    async def reenqueue_rag(self, job: RAGReaperItem) -> None:
+        from app.tasks.agent_tasks import rag_ingest_document
+
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=self._stale_after_s)
+        async with async_session_factory() as session:
+            db_job = await session.get(RAGIngestionJob, job.id, with_for_update=True)
+            if db_job is None or db_job.status not in {
+                RAGIngestionJobStatus.PENDING,
+                RAGIngestionJobStatus.RUNNING,
+            }:
+                return
+            if db_job.status == RAGIngestionJobStatus.PENDING:
+                dispatched_at = db_job.last_dispatched_at
+                created_at = getattr(db_job, "created_at", None)
+                if dispatched_at is not None and dispatched_at >= cutoff:
+                    return
+                if dispatched_at is None and created_at is not None and created_at >= cutoff:
+                    return
+            elif db_job.started_at is None or db_job.started_at >= cutoff:
+                return
+            db_job.status = RAGIngestionJobStatus.PENDING
+            db_job.dispatch_attempts = (db_job.dispatch_attempts or 0) + 1
+            db_job.last_dispatched_at = now
+            db_job.started_at = None
+            db_job.error_message = None
+            document = await session.get(RAGDocument, job.document_id)
+            if document is not None and document.status not in {
+                RAGDocumentStatus.EMBEDDED,
+                RAGDocumentStatus.DELETED,
+            }:
+                document.status = RAGDocumentStatus.PENDING
+                document.error_message = None
+            await session.commit()
+        rag_ingest_document.delay(job_id=job.id, document_id=job.document_id)
+
+    async def mark_rag_failed(self, job: RAGReaperItem, reason: str) -> None:
+        async with async_session_factory() as session:
+            db_job = await session.get(RAGIngestionJob, job.id)
+            if db_job is None or db_job.status not in {
+                RAGIngestionJobStatus.PENDING,
+                RAGIngestionJobStatus.RUNNING,
+            }:
+                return
+            db_job.status = RAGIngestionJobStatus.FAILED
+            db_job.error_message = reason
+            db_job.finished_at = datetime.now(timezone.utc)
+            document = await session.get(RAGDocument, job.document_id)
+            if document is not None and document.status not in {
+                RAGDocumentStatus.EMBEDDED,
+                RAGDocumentStatus.DELETED,
+            }:
+                document.status = RAGDocumentStatus.FAILED
+                document.error_message = reason
+            await session.commit()
 
     async def reenqueue(self, run: ReaperItem) -> None:
         if not run.payload:
             await self.mark_failed(run, "missing task payload for requeue")
             return
-        enqueue_run(run.payload)
-        if run.task_id is None:
-            return
-        async with async_session_factory() as session:
-            task = await session.get(TaskState, run.task_id)
-            if task is not None:
+        if run.task_id is not None:
+            async with async_session_factory() as session:
+                task = await session.get(TaskState, run.task_id)
+                db_run = await session.get(AgentRun, run.id)
+                if (
+                    task is None
+                    or db_run is None
+                    or is_terminal_run_status(db_run.status)
+                ):
+                    return
                 task.attempt = (task.attempt or 0) + 1
                 task.status = TaskStatus.QUEUED
                 task.updated_at = datetime.now(timezone.utc)
                 await session.commit()
+        enqueue_run(run.payload)
 
     async def mark_failed(self, run: ReaperItem, reason: str) -> None:
+        trace_id = run.trace_id
+        changed = False
         async with async_session_factory() as session:
             db_run = await session.get(AgentRun, run.id)
-            if db_run is not None:
+            if db_run is not None and not is_terminal_run_status(db_run.status):
                 db_run.status = RunStatus.FAILED
                 db_run.error = reason
                 db_run.finished_at = datetime.now(timezone.utc)
+                trace_id = db_run.trace_id
+                changed = True
             if run.task_id is not None:
                 task = await session.get(TaskState, run.task_id)
-                if task is not None:
+                if task is not None and changed:
                     task.status = TaskStatus.ERROR
                     task.result = {"error": reason}
                     task.updated_at = datetime.now(timezone.utc)
             await session.commit()
+        if changed:
+            await self._publish_terminal_failure(run.id, trace_id, reason)
+
+    async def _publish_terminal_failure(
+        self, run_id: str, trace_id: str, reason: str
+    ) -> None:
+        if self._event_bus is None:
+            from app.bus.stream_bus import StreamBus
+
+            self._event_bus = StreamBus()
+        error_event = AgentEvent(
+            agent_run_id=run_id,
+            trace_id=trace_id,
+            type=EventType.ERROR,
+            seq=0,
+            data={"stage": "reaper", "error": reason},
+        )
+        completed_event = AgentEvent(
+            agent_run_id=run_id,
+            trace_id=trace_id,
+            type=EventType.RUN_COMPLETED,
+            seq=1,
+            data={"status": RunStatus.FAILED.value},
+        )
+        try:
+            await self._event_bus.publish(run_id, error_event)
+            await self._event_bus.publish(run_id, completed_event)
+        except Exception as exc:  # noqa: BLE001 database terminal state remains authoritative
+            log_with_fields(
+                logger,
+                logging.ERROR,
+                "reaper_terminal_event_failed",
+                agent_run_id=run_id,
+                error=type(exc).__name__,
+            )
 
 
 async def run_reaper_loop(
@@ -202,12 +407,18 @@ async def run_reaper_loop(
     interval_s: float,
     dry_run: bool = False,
     stop_after: int | None = None,
+    enabled: bool = True,
     sleep: Any = asyncio.sleep,
 ) -> None:
     """Run the pending-run reaper on a fixed interval."""
     iteration = 0
     while True:
         iteration += 1
+        if not enabled:
+            if stop_after is not None and iteration >= stop_after:
+                return
+            await sleep(interval_s)
+            continue
         try:
             result = await reaper.run_once(dry_run=dry_run)
             log_with_fields(
@@ -218,6 +429,8 @@ async def run_reaper_loop(
                 requeued=result.requeued,
                 failed=result.failed,
                 ignored=result.ignored,
+                rag_requeued=result.rag_requeued,
+                rag_failed=result.rag_failed,
                 dry_run=dry_run,
             )
         except Exception as exc:  # noqa: BLE001 daemon must keep trying
@@ -268,12 +481,14 @@ async def _amain() -> None:
         max_attempts=args.max_attempts,
     )
     if args.once:
-        await reaper.run_once(dry_run=args.dry_run)
+        if settings.reaper_enabled:
+            await reaper.run_once(dry_run=args.dry_run)
         return
     await run_reaper_loop(
         reaper,
         interval_s=max(1.0, args.interval_s),
         dry_run=args.dry_run,
+        enabled=settings.reaper_enabled,
     )
 
 
