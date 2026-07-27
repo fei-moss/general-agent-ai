@@ -420,12 +420,16 @@ async def test_length_finish_reason_fails_without_persisting_partial_answer(deps
     collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
     await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
 
-    answer = await orchestrator.run(
-        agent_run_id=agent_run_id,
-        conversation_id="conv-output-truncated",
-        trace_id="trace-output-truncated",
-        user_message="Give me the complete risk table",
-    )
+    from app.runtime.orchestrator import RunExecutionError
+
+    with pytest.raises(RunExecutionError) as exc:
+        await orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id="conv-output-truncated",
+            trace_id="trace-output-truncated",
+            user_message="Give me the complete risk table",
+        )
+    answer = exc.value.safe_answer
     events = await collector
 
     assert "输出上限" in answer
@@ -1134,8 +1138,8 @@ async def test_tool_use_run_maps_tool_events_and_executes_real_tool(deps):
     assert started[0].data.get("tool_name") == "calculator"
 
 
-async def test_run_returns_answer_even_when_run_repo_fails(deps):
-    # Arrange:run_repo 全部抛错,验证 orchestrator 仍能收敛并返回答案
+async def test_run_fails_closed_when_run_repo_fails(deps):
+    # Arrange:run_repo 全部抛错,成功事件不得越过持久化故障
     runtime, _bus, message_repo, _ = deps
 
     class _BrokenRunRepo(_FakeRunRepo):
@@ -1159,17 +1163,17 @@ async def test_run_returns_answer_even_when_run_repo_fails(deps):
         runtime, agent=build_agent(build_mock_model())
     )
 
-    # Act
-    answer = await orchestrator.run(
-        agent_run_id="run-e2e-2",
-        conversation_id="conv-2",
-        trace_id="trace-2",
-        user_message="什么是检索增强生成",
-    )
+    from app.runtime.orchestrator import RunExecutionError
 
-    # Assert:仓储故障被隔离,仍返回有效答案且消息落库
-    assert isinstance(answer, str) and answer.strip()
-    assert len(message_repo.added) == 1
+    with pytest.raises(RunExecutionError):
+        await orchestrator.run(
+            agent_run_id="run-e2e-2",
+            conversation_id="conv-2",
+            trace_id="trace-2",
+            user_message="什么是检索增强生成",
+        )
+
+    assert message_repo.added == []
 
 
 async def test_orchestrator_records_ttft_on_first_token(deps):

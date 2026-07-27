@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.enums import RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.metrics import Metrics
+from app.core.secrets import redact_runtime_error
 from app.runtime.locks import RunLease
 from app.runtime.marketplace_ai import MarketplaceViewerContext
 
@@ -68,6 +69,7 @@ class RealtimeRunner:
         max_concurrency: int | None = None,
         max_runtime_s: float | None = None,
         event_bus: Any | None = None,
+        secret_provider: Any | None = None,
     ) -> None:
         self._orchestrator_factory = orchestrator_factory or self._default_orchestrator
         self._run_lease = run_lease or RunLease()
@@ -76,6 +78,7 @@ class RealtimeRunner:
         self._heartbeat_interval_s = heartbeat_interval_s
         self._metrics = metrics or Metrics()
         self._event_bus = event_bus
+        self._secret_provider = secret_provider
         self._max_runtime_s = (
             max_runtime_s if max_runtime_s is not None else get_settings().run_max_runtime_s
         )
@@ -158,17 +161,30 @@ class RealtimeRunner:
                 "runner_timeouts_total",
                 {"runner_id": self._runner_id},
             )
-            await self._finalize_timeout(request)
+            await self._finalize_failure(request, "RUN_TIMEOUT")
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.FAILED,
                 error="RUN_TIMEOUT",
             )
         except Exception as exc:  # noqa: BLE001 runner must converge to terminal result
+            error = self._sanitize_error(exc)
+            already_emitted = False
+            try:
+                from app.runtime.orchestrator import RunExecutionError
+
+                already_emitted = isinstance(exc, RunExecutionError)
+            except ImportError:
+                pass
+            await self._finalize_failure(
+                request,
+                error,
+                publish_event=not already_emitted,
+            )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.FAILED,
-                error=str(exc),
+                error=error,
             )
         finally:
             if heartbeat is not None:
@@ -222,15 +238,21 @@ class RealtimeRunner:
 
         return AgentOrchestrator(build_deps())
 
-    async def _finalize_timeout(self, request: RealtimeRunRequest) -> None:
-        """Best-effort terminal state/event for runner-level timeout."""
+    async def _finalize_failure(
+        self,
+        request: RealtimeRunRequest,
+        error: str,
+        *,
+        publish_event: bool = True,
+    ) -> None:
+        """Best-effort terminal state/event for a runner-level failure."""
         try:
             from app.tasks import run_store
 
-            await run_store.mark_run_failed(request.agent_run_id, "RUN_TIMEOUT")
+            await run_store.mark_run_failed(request.agent_run_id, error)
         except Exception:
             pass
-        if self._event_bus is None:
+        if self._event_bus is None or not publish_event:
             return
         try:
             await self._event_bus.publish(
@@ -240,11 +262,27 @@ class RealtimeRunner:
                     trace_id=request.trace_id,
                     type=EventType.ERROR,
                     seq=0,
-                    data={"stage": "runner", "error": "RUN_TIMEOUT"},
+                    data={"stage": "runner", "error": error},
+                ),
+            )
+            await self._event_bus.publish(
+                f"run:{request.agent_run_id}",
+                AgentEvent(
+                    agent_run_id=request.agent_run_id,
+                    trace_id=request.trace_id,
+                    type=EventType.RUN_COMPLETED,
+                    seq=1,
+                    data={"status": RunStatus.FAILED.value},
                 ),
             )
         except Exception:
             pass
+
+    def _sanitize_error(self, exc: Exception) -> str:
+        return redact_runtime_error(
+            f"{type(exc).__name__}: {exc}",
+            provider=self._secret_provider,
+        )[:2000]
 
 
 def now_seconds() -> float:

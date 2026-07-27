@@ -43,6 +43,25 @@ class _SlowEmbedder(_FakeEmbedder):
         return await super().embed(texts)
 
 
+class _FailOnceEmbedder(_FakeEmbedder):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("temporary embedding outage")
+        return await super().embed(texts)
+
+
+class _SecretFailingEmbedder(_FakeEmbedder):
+    def __init__(self, secret: str) -> None:
+        self.secret = secret
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError(f"embedding rejected key {self.secret}")
+
+
 class _FakeVectorStore:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -244,3 +263,71 @@ async def test_ingestion_preserves_source_doc_id_in_chunk_metadata():
     assert metadata["doc_id"] == "moss_product_safety"
     assert metadata["db_document_id"] == "doc_db_1"
     assert metadata["source_uri"] == "https://moss-5.gitbook.io/moss/moss-agent-handbook"
+
+
+async def test_ingestion_releases_intermediate_failure_for_celery_retry():
+    from app.rag.service import RAGIngestionService
+
+    document_repo = _FakeDocumentRepo()
+    job_repo = _FakeIngestionJobRepo()
+    embedder = _FailOnceEmbedder()
+    service = RAGIngestionService(
+        document_repo=document_repo,
+        job_repo=job_repo,
+        embedder=embedder,
+        vector_store=_CapturingVectorStore(),
+        settings=Settings(_env_file=None, embedding_dim=2),
+    )
+
+    try:
+        await service.ingest_document(
+            job_id="ragjob_retry",
+            document_id="doc_retry",
+            final_attempt=False,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "temporary embedding outage"
+    else:
+        raise AssertionError("the first attempt must fail")
+
+    assert job_repo.statuses[-1][1] == "PENDING"
+    assert document_repo.statuses[-1][1] == "PENDING"
+
+    chunk_count = await service.ingest_document(
+        job_id="ragjob_retry",
+        document_id="doc_retry",
+        final_attempt=True,
+    )
+
+    assert chunk_count == 1
+    assert job_repo.statuses[-1][1] == "SUCCEEDED"
+    assert document_repo.statuses[-1][1] == "EMBEDDED"
+
+
+async def test_ingestion_never_persists_embedding_secret_in_failure_reason():
+    from app.rag.service import RAGIngestionService
+
+    secret = "gemini-secret-value"
+    document_repo = _FakeDocumentRepo()
+    job_repo = _FakeIngestionJobRepo()
+    service = RAGIngestionService(
+        document_repo=document_repo,
+        job_repo=job_repo,
+        embedder=_SecretFailingEmbedder(secret),
+        vector_store=_CapturingVectorStore(),
+        settings=Settings(
+            _env_file=None,
+            embedding_dim=2,
+            gemini_api_key=secret,
+        ),
+    )
+
+    try:
+        await service.ingest_document(job_id="ragjob_secret", document_id="doc_secret")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("ingestion must fail")
+
+    persisted = f"{document_repo.statuses[-1][2]} {job_repo.statuses[-1][2]}"
+    assert secret not in persisted

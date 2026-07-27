@@ -34,6 +34,29 @@ async def test_stream_router_iter_events_uses_last_event_id_cursor():
     assert [event.type for event in replayed] == ["RUN_COMPLETED"]
 
 
+async def test_stream_router_accepts_legacy_numeric_last_event_id():
+    from app.api.routers.stream import _iter_events
+
+    bus = FakeStreamBus()
+    await bus.publish(
+        "run-legacy",
+        HarnessEvent("run-legacy", "TOKEN", {"token": "A"}, seq=1),
+    )
+    await bus.publish(
+        "run-legacy",
+        HarnessEvent(
+            "run-legacy",
+            "RUN_COMPLETED",
+            {"status": "SUCCEEDED"},
+            seq=2,
+        ),
+    )
+
+    replayed = [event async for event in _iter_events(bus, "run-legacy", "1")]
+
+    assert [event.type for event in replayed] == ["RUN_COMPLETED"]
+
+
 async def test_stream_router_converts_retention_gap_to_stable_error():
     from app.api.routers.stream import _iter_events
     from app.core.events import EventType
@@ -97,4 +120,3 @@ async def test_stream_owner_check_fails_closed_for_missing_null_or_other_owner(
         await _assert_run_owner("run-1", "caller", _Repos())
 
     assert exc.value.status_code == status_code
-

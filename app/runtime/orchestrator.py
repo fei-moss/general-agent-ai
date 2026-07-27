@@ -39,6 +39,7 @@ from pydantic_ai.usage import UsageLimits
 from app.core.enums import MessageRole, RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.logging import get_logger, log_with_fields, set_trace_id
+from app.core.secrets import redact_runtime_error
 from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
@@ -103,6 +104,15 @@ class _OutputTruncatedError(RuntimeError):
     pass
 
 
+class RunExecutionError(RuntimeError):
+    """Raised after a run has been converged to FAILED."""
+
+    def __init__(self, reason: str, *, safe_answer: str = _FATAL_ANSWER) -> None:
+        self.reason = reason
+        self.safe_answer = safe_answer
+        super().__init__(reason)
+
+
 class _EventEmitter:
     """单次运行内的事件发射器,负责 seq 自增与 channel 拼装。"""
 
@@ -147,17 +157,16 @@ class _EventEmitter:
                 logging.WARNING,
                 "event publish failed",
                 event_type=type_.value,
-                error=str(exc),
+                error=type(exc).__name__,
             )
 
     def _observe_event(self, type_: EventType, data: dict[str, Any]) -> None:
         if self._metrics is None:
             return
-        labels = {"agent_run_id": self._agent_run_id}
         if type_ is EventType.TOKEN and not self._first_token_observed:
             self._first_token_observed = True
             if self._accepted_at is not None:
-                self._metrics.observe_ttft(time.time() - self._accepted_at, labels)
+                self._metrics.observe_ttft(time.time() - self._accepted_at, {})
         if type_ is EventType.ERROR:
             stage = str(data.get("stage", "unknown"))
             if stage == "output_guardrail":
@@ -200,23 +209,24 @@ async def run_orchestration(
         trace_id=trace_id,
     ):
         viewer_context = None
-    answer = await orchestrator.run(
-        agent_run_id=agent_run_id,
-        conversation_id=conversation_id,
-        trace_id=trace_id,
-        user_message=user_message,
-        route_type="batch",
-        user_id=user_id,
-        metadata=metadata,
-        run_context=run_context,
-        marketplace_viewer_context=viewer_context,
-    )
-    if answer in {_FATAL_ANSWER, _OUTPUT_TRUNCATED_ANSWER}:
+    try:
+        answer = await orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id=conversation_id,
+            trace_id=trace_id,
+            user_message=user_message,
+            route_type="batch",
+            user_id=user_id,
+            metadata=metadata,
+            run_context=run_context,
+            marketplace_viewer_context=viewer_context,
+        )
+    except RunExecutionError as exc:
         return {
-            "content": answer,
+            "content": exc.safe_answer,
             "intent": None,
             "status": RunStatus.FAILED.value,
-            "error": "ORCHESTRATION_FAILED",
+            "error": exc.reason,
         }
     return {
         "content": answer,
@@ -310,12 +320,19 @@ class AgentOrchestrator:
                 marketplace_viewer_context,
             )
         except ProviderRateLimitError as exc:
-            await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
+            if route_type != "batch":
+                await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
             raise
         except _OutputTruncatedError:
-            return await self._handle_output_truncated(agent_run_id, emitter)
+            await self._handle_output_truncated(agent_run_id, emitter)
+            raise RunExecutionError(
+                "OUTPUT_TRUNCATED",
+                safe_answer=_OUTPUT_TRUNCATED_ANSWER,
+            )
         except Exception as exc:  # 顶层兜底,保证状态收敛为 FAILED
-            return await self._handle_fatal(agent_run_id, emitter, exc)
+            reason = self._sanitize_error(exc)
+            await self._handle_fatal(agent_run_id, emitter, exc)
+            raise RunExecutionError(reason) from exc
 
     async def _execute(
         self,
@@ -339,8 +356,7 @@ class AgentOrchestrator:
             target_language=target_language,
             run_context=run_context,
         )
-        await self._safe_run_repo(
-            "mark_running_with_plan",
+        await self._deps.run_repo.mark_running_with_plan(
             agent_run_id,
             None,
             plan,
@@ -362,22 +378,18 @@ class AgentOrchestrator:
         )
         if output.finish_reason is not None:
             plan = {**plan, "finish_reason": output.finish_reason}
-            await self._safe_run_repo("set_plan", agent_run_id, plan)
+            await self._deps.run_repo.set_plan(agent_run_id, plan)
         if output.finish_reason == "length":
             raise _OutputTruncatedError("OUTPUT_TRUNCATED")
         answer = output.answer
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
-        completed = await self._try_run_repo(
-            "mark_succeeded_with_answer",
+        await self._deps.run_repo.mark_succeeded_with_answer(
             agent_run_id,
             conversation_id,
             answer,
             len(answer),
         )
-        if not completed:
-            await self._persist_answer(conversation_id, agent_run_id, answer)
-            await self._safe_run_repo("mark_succeeded", agent_run_id)
         # 终止事件携带 status 与答案内容,供流式消费者和恢复接口兜底校验。
         await emitter.emit(
             EventType.RUN_COMPLETED,
@@ -489,12 +501,7 @@ class AgentOrchestrator:
                 raise ProviderRateLimitError(
                     reason, retry_after_ms=provider_error.retry_after_ms
                 ) from exc
-            await self._emit_error(emitter, "agent", exc)
-            answer = "".join(emitted_chunks)
-            return _AgentOutput(
-                answer=answer if answer.strip() else self._empty_answer(user_message),
-                finish_reason=None,
-            )
+            raise
 
     async def _acquire_provider_quota(
         self,
@@ -556,7 +563,7 @@ class AgentOrchestrator:
         identity = provider_identity_from_settings(self._deps.settings)
         usage = _extract_usage(run)
         try:
-            await self._deps.provider_limiter.settle_usage(
+            settlement = await self._deps.provider_limiter.settle_usage(
                 ProviderUsageSettlement(
                     provider=identity.provider,
                     model=identity.model,
@@ -567,6 +574,8 @@ class AgentOrchestrator:
                     provider_key_id=decision.provider_key_id,
                 )
             )
+            if getattr(settlement, "settled", False) is not True:
+                raise RuntimeError("provider usage settlement was not recorded")
         except Exception as exc:
             raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
 
@@ -760,7 +769,7 @@ class AgentOrchestrator:
                 logging.WARNING,
                 "load history failed",
                 conversation_id=conversation_id,
-                error=str(exc),
+                error=self._sanitize_error(exc),
             )
             return []
         return [self._row_to_msg(r) for r in rows]
@@ -843,8 +852,7 @@ class AgentOrchestrator:
             run_context=run_context,
         )
         plan["guardrail"] = decision.as_plan_metadata()
-        await self._safe_run_repo(
-            "mark_running_with_plan",
+        await self._deps.run_repo.mark_running_with_plan(
             agent_run_id,
             None,
             plan,
@@ -852,16 +860,12 @@ class AgentOrchestrator:
         await emitter.emit(EventType.PLANNING_STARTED, {})
         answer = decision.safe_response
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
-        completed = await self._try_run_repo(
-            "mark_succeeded_with_answer",
+        await self._deps.run_repo.mark_succeeded_with_answer(
             agent_run_id,
             conversation_id,
             answer,
             len(answer),
         )
-        if not completed:
-            await self._persist_answer(conversation_id, agent_run_id, answer)
-            await self._safe_run_repo("mark_succeeded", agent_run_id)
         await emitter.emit(
             EventType.RUN_COMPLETED,
             {"status": RunStatus.SUCCEEDED.value, "content": answer},
@@ -913,41 +917,23 @@ class AgentOrchestrator:
             await emitter.emit(EventType.TOKEN, {"token": chunk})
             emitted_chunks.append(chunk)
 
-    async def _persist_answer(
-        self, conversation_id: str, agent_run_id: str, answer: str
-    ) -> None:
-        """把 assistant 回答落库(失败仅记录,不影响返回)。"""
-        try:
-            await self._deps.message_repo.add(
-                conversation_id=conversation_id,
-                role=MessageRole.ASSISTANT,
-                content=answer,
-                token_count=len(answer),
-                agent_run_id=agent_run_id,
-            )
-        except Exception as exc:
-            log_with_fields(
-                logger,
-                logging.ERROR,
-                "persist answer failed",
-                conversation_id=conversation_id,
-                error=str(exc),
-            )
-
     async def _handle_fatal(
         self, agent_run_id: str, emitter: _EventEmitter, exc: Exception
-    ) -> str:
-        """顶层异常处理:发 ERROR、置 FAILED,返回兜底文案。"""
+    ) -> None:
+        """顶层异常处理:发 ERROR 并尽力置 FAILED。"""
         await self._emit_error(emitter, "fatal", exc)
-        await self._safe_run_repo("mark_failed", agent_run_id, str(exc))
+        await self._safe_run_repo(
+            "mark_failed",
+            agent_run_id,
+            self._sanitize_error(exc),
+        )
         await emitter.emit(
             EventType.RUN_COMPLETED, {"status": RunStatus.FAILED.value}
         )
-        return _FATAL_ANSWER
 
     async def _handle_output_truncated(
         self, agent_run_id: str, emitter: _EventEmitter
-    ) -> str:
+    ) -> None:
         data = {
             "stage": "model_output",
             "error": "OUTPUT_TRUNCATED",
@@ -965,7 +951,6 @@ class AgentOrchestrator:
         await emitter.emit(
             EventType.RUN_COMPLETED, {"status": RunStatus.FAILED.value}
         )
-        return _OUTPUT_TRUNCATED_ANSWER
 
     async def _handle_provider_rate_limit(
         self,
@@ -986,15 +971,15 @@ class AgentOrchestrator:
             EventType.RUN_COMPLETED, {"status": RunStatus.FAILED.value}
         )
 
-    @staticmethod
     async def _emit_error(
-        emitter: _EventEmitter, stage: str, exc: Exception
+        self, emitter: _EventEmitter, stage: str, exc: Exception
     ) -> None:
         """发布一条 ERROR 事件并记录日志。"""
+        error = self._sanitize_error(exc)
         log_with_fields(
-            logger, logging.ERROR, "stage error", stage=stage, error=str(exc)
+            logger, logging.ERROR, "stage error", stage=stage, error=error
         )
-        await emitter.emit(EventType.ERROR, {"stage": stage, "error": str(exc)})
+        await emitter.emit(EventType.ERROR, {"stage": stage, "error": error})
 
     async def _safe_run_repo(self, method: str, *args: Any) -> None:
         """安全调用 run_repo 的状态更新方法,异常仅记录不抛出。"""
@@ -1011,9 +996,17 @@ class AgentOrchestrator:
                 logging.WARNING,
                 "run_repo call failed",
                 method=method,
-                error=str(exc),
+                error=self._sanitize_error(exc),
             )
             return False
+
+    def _sanitize_error(self, exc: Exception | str) -> str:
+        text = str(exc)
+        return redact_runtime_error(
+            text,
+            provider=self._deps.secret_provider,
+            settings=self._deps.settings,
+        )[:2000]
 
 def _to_message_history(
     history: list[dict[str, Any]],

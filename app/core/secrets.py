@@ -4,9 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Protocol
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+
+
+_CREDENTIAL_URL_RE = re.compile(
+    r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.-]*://[^:/\s]+:)[^@\s/]+@"
+)
+_BEARER_RE = re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/-]+=*")
+_OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{6,}\b")
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD)[A-Z0-9_]*)"
+    r"\s*[:=]\s*([^\s,\"']+)"
+)
 
 
 class ProviderSecretMissingError(RuntimeError):
@@ -41,6 +53,10 @@ class SecretProvider(Protocol):
         """Raise a sanitized error if provider needs a missing secret."""
         ...
 
+    def redact(self, text: str) -> str:
+        """Redact every provider secret observed by this process."""
+        ...
+
 
 def is_mock_provider(provider: str | None) -> bool:
     """Return whether a provider name should bypass real-provider guardrails."""
@@ -64,6 +80,7 @@ class SettingsSecretProvider:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._known_secrets: list[SecretValue] = []
 
     def get_secret(self, name: str) -> SecretValue | None:
         normalized = name.strip().lower()
@@ -72,7 +89,33 @@ class SettingsSecretProvider:
             value = getattr(self._settings, normalized, "")
         if not value:
             return None
-        return SecretValue(str(value).strip())
+        secret = SecretValue(str(value).strip())
+        self.register_secret(secret)
+        return secret
+
+    def register_secret(self, secret: SecretValue | str | None) -> None:
+        if secret is None:
+            return
+        value = secret if isinstance(secret, SecretValue) else SecretValue(str(secret))
+        if not value.reveal() or any(
+            known.reveal() == value.reveal() for known in self._known_secrets
+        ):
+            return
+        self._known_secrets.append(value)
+
+    def redact(self, text: str) -> str:
+        direct = [
+            getattr(self._settings, name, "")
+            for name in (
+                "openai_api_key",
+                "anthropic_api_key",
+                "gemini_api_key",
+                "dashscope_api_key",
+                "zai_api_key",
+                "embedding_api_key",
+            )
+        ]
+        return redact_secret(text, [*self._known_secrets, *direct])
 
     def validate_required(self, provider: str, model: str | None = None) -> None:
         if is_mock_provider(provider):
@@ -113,3 +156,22 @@ def redact_secret(text: str, secrets: list[SecretValue | str | None]) -> str:
         if value:
             redacted = redacted.replace(value, "********")
     return redacted
+
+
+def redact_runtime_error(
+    text: str,
+    provider: SecretProvider | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Sanitize an exception before it reaches logs, storage, or event streams."""
+    try:
+        active = provider or build_secret_provider(settings or get_settings())
+        redact = getattr(active, "redact", None)
+        redacted = redact(text) if callable(redact) else text
+        redacted = _CREDENTIAL_URL_RE.sub(r"\g<prefix>********@", redacted)
+        redacted = _BEARER_RE.sub("Bearer ********", redacted)
+        redacted = _OPENAI_KEY_RE.sub("sk-********", redacted)
+        redacted = _SENSITIVE_ASSIGNMENT_RE.sub(r"\1=********", redacted)
+        return redacted
+    except Exception:
+        return "internal error"

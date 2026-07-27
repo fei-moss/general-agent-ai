@@ -67,6 +67,79 @@ def test_secret_values_are_redacted_from_application_errors():
     )
 
 
+def test_settings_secret_provider_redacts_registered_pool_secret():
+    provider = build_secret_provider(Settings(_env_file=None, llm_provider="mock"))
+    provider.register_secret(SecretValue("pool-secret-value"))
+
+    assert provider.redact("failed pool-secret-value") == "failed ********"
+
+
+async def test_orchestrator_never_emits_or_persists_provider_secret():
+    import json
+    import pytest
+
+    from app.core.events import AgentEvent
+    from app.runtime.agent_factory import build_agent, build_mock_model
+    from app.runtime.deps import RuntimeDeps
+    from app.runtime.orchestrator import AgentOrchestrator, RunExecutionError
+    from tests.test_orchestrator import (
+        _FakeMessageRepo,
+        _FakeRetriever,
+        _FakeRunRepo,
+        _FakeToolRouter,
+    )
+
+    secret = "provider-secret-value"
+    settings = Settings(
+        _env_file=None,
+        llm_provider="mock",
+        openai_api_key=secret,
+    )
+    provider = build_secret_provider(settings)
+
+    class _Bus:
+        def __init__(self) -> None:
+            self.events: list[AgentEvent] = []
+
+        async def publish(self, channel, event):
+            self.events.append(event)
+
+    class _BrokenRunRepo(_FakeRunRepo):
+        async def mark_running_with_plan(self, *args, **kwargs):
+            raise RuntimeError(f"database rejected {secret}")
+
+    bus = _Bus()
+    run_repo = _BrokenRunRepo()
+    deps = RuntimeDeps(
+        retriever=_FakeRetriever([]),
+        tool_router=_FakeToolRouter(),
+        event_bus=bus,
+        message_repo=_FakeMessageRepo(),
+        run_repo=run_repo,
+        settings=settings,
+        secret_provider=provider,
+    )
+    orchestrator = AgentOrchestrator(
+        deps,
+        agent=build_agent(build_mock_model()),
+    )
+
+    with pytest.raises(RunExecutionError):
+        await orchestrator.run(
+            agent_run_id="run-secret",
+            conversation_id="conv-secret",
+            trace_id="trace-secret",
+            user_message="hello",
+        )
+
+    serialized = json.dumps(
+        [event.model_dump(mode="json") for event in bus.events],
+        ensure_ascii=False,
+    ) + repr(run_repo.calls)
+    assert secret not in serialized
+    assert "********" in serialized
+
+
 def test_agent_factory_does_not_use_not_set_api_key_for_real_provider():
     try:
         build_model(Settings(_env_file=None, llm_provider="openai", openai_api_key=""))

@@ -93,11 +93,13 @@ def test_enqueue_run_forwards_viewer_context_to_celery(monkeypatch):
             "conversation_id": "conv-1",
             "trace_id": "trace-1",
             "message": "hello",
+            "task_id": "task-1",
             "marketplace_viewer_context": viewer_payload,
         }
     )
 
     assert captured["marketplace_viewer_context"] == viewer_payload
+    assert captured["task_id"] == "task-1"
 
 
 async def test_realtime_runner_forwards_typed_viewer_context_to_orchestrator():

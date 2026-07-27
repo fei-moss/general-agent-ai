@@ -100,6 +100,28 @@ async def test_provider_usage_settlement_does_not_refund_over_reserved_tokens():
     assert denied.allowed is False
 
 
+async def test_missing_provider_usage_retains_reservation_as_settled():
+    limiter = InMemoryProviderRateLimiter(
+        default_config=ProviderLimitConfig(rpm=100, tpm=100),
+        now_ms=lambda: 0,
+    )
+    decision = await limiter.acquire(_request(tokens=20))
+
+    settlement = await limiter.settle_usage(
+        ProviderUsageSettlement(
+            provider="openai",
+            model="gpt-test",
+            reserved_tokens=decision.reserved_tokens,
+            actual_input_tokens=None,
+            actual_output_tokens=None,
+            route_type="realtime",
+        )
+    )
+
+    assert settlement.settled is True
+    assert settlement.usage_missing is True
+
+
 async def test_realtime_accepted_gate_waits_once_when_retry_after_within_budget(monkeypatch):
     from app.bus.event_bus import InMemoryEventBus
     from app.runtime.deps import RuntimeDeps
@@ -230,6 +252,48 @@ async def test_provider_usage_settlement_failure_fails_closed():
     )
     orchestrator = AgentOrchestrator(deps)
     decision = type("Decision", (), {"reserved_tokens": 10})()
+
+    with pytest.raises(ProviderRateLimitError) as exc:
+        await orchestrator._settle_provider_usage(decision, object(), "realtime")
+
+    assert exc.value.reason == "UNAVAILABLE"
+
+
+async def test_provider_usage_unsettled_decision_fails_closed():
+    from app.bus.event_bus import InMemoryEventBus
+    from app.runtime.deps import RuntimeDeps
+    from app.runtime.orchestrator import AgentOrchestrator
+    from app.runtime.provider_limits import ProviderUsageDecision
+    from tests.test_orchestrator import (
+        _FakeMessageRepo,
+        _FakeRetriever,
+        _FakeRunRepo,
+        _FakeToolRouter,
+    )
+
+    class _Limiter:
+        async def settle_usage(self, settlement):
+            return ProviderUsageDecision(settled=False)
+
+    deps = RuntimeDeps(
+        retriever=_FakeRetriever([]),
+        tool_router=_FakeToolRouter(),
+        event_bus=InMemoryEventBus(),
+        message_repo=_FakeMessageRepo(),
+        run_repo=_FakeRunRepo(),
+        settings=Settings(
+            _env_file=None,
+            llm_provider="openai",
+            openai_api_key="sk-test",
+        ),
+        provider_limiter=_Limiter(),
+    )
+    orchestrator = AgentOrchestrator(deps)
+    decision = type(
+        "Decision",
+        (),
+        {"reserved_tokens": 10, "provider_key_id": None},
+    )()
 
     with pytest.raises(ProviderRateLimitError) as exc:
         await orchestrator._settle_provider_usage(decision, object(), "realtime")

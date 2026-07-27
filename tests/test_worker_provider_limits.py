@@ -8,6 +8,24 @@ from celery.exceptions import Retry
 from app.runtime.provider_limits import ProviderRateLimitError
 
 
+def test_worker_fails_closed_when_orchestrator_import_is_unavailable(monkeypatch):
+    import builtins
+
+    from app.tasks import agent_tasks
+
+    original_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "app.runtime.orchestrator":
+            raise ImportError("orchestrator unavailable")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _import)
+
+    with pytest.raises(ImportError, match="orchestrator unavailable"):
+        agent_tasks._resolve_orchestrator()
+
+
 def test_celery_worker_retries_after_provider_limit(monkeypatch):
     from app.tasks import agent_tasks
 
@@ -24,6 +42,31 @@ def test_celery_worker_retries_after_provider_limit(monkeypatch):
 
     with pytest.raises(Retry):
         agent_tasks.run_agent_task.run("run-1", "conv-1", "trace-1", "hello")
+
+
+def test_celery_worker_does_not_publish_terminal_error_before_retry(monkeypatch):
+    from app.tasks import agent_tasks
+
+    published: list[tuple] = []
+
+    async def _raise_transient(*args, **kwargs):
+        raise RuntimeError("transient")
+
+    async def _publish(*args, **kwargs):
+        published.append(args)
+
+    def _retry(*, exc, **kwargs):
+        assert isinstance(exc, RuntimeError)
+        raise Retry()
+
+    monkeypatch.setattr(agent_tasks, "_execute", _raise_transient)
+    monkeypatch.setattr(agent_tasks, "_publish_error", _publish)
+    monkeypatch.setattr(agent_tasks.run_agent_task, "retry", _retry)
+
+    with pytest.raises(Retry):
+        agent_tasks.run_agent_task.run("run-1", "conv-1", "trace-1", "hello")
+
+    assert published == []
 
 
 def test_celery_worker_process_init_disposes_inherited_db_pool(monkeypatch):

@@ -46,7 +46,11 @@ source /Users/chris/.codex-local/dockerhost/envctl_env.sh
 source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
 source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
 
+export BASE_URL=https://<api-domain>
+export PRODUCTION_MODE=true
+export ALLOW_MOCK_PROVIDER=false
 export LLM_PROVIDER=zai
+export CHAT_RUNTIME_MODE=auto
 export MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081
 export ZAI_MODEL=glm-5.2
 export ZAI_THINKING_TYPE=disabled
@@ -59,18 +63,30 @@ export EMBEDDING_MODEL=gemini-embedding-2
 export EMBEDDING_DIM=256
 export PROVIDER_DEFAULT_RPM=60
 export PROVIDER_DEFAULT_TPM=60000
-export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=1024
+export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=4096
+export RUN_MAX_RUNTIME_S=300
+export STREAM_MAXLEN=1000
+export STREAM_TTL_S=86400
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
-envctl up \
+export REAPER_INTERVAL_S=30
+export REAPER_STALE_AFTER_S=300
+export REAPER_MAX_ATTEMPTS=3
+export RAG_ADMIN_USER_IDS=<rag-admin-user-id>
+export RAG_DEFAULT_KNOWLEDGE_BASE_ID=<default-kb-id>
+export RAG_INTERNAL_OWNER_USER_ID=<rag-owner-user-id>
+export RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID=false
+export METRICS_ENABLED=true
+.venv/bin/python scripts/dockerhost_release.py deploy \
   --name chris-general-agent-ai-chat \
   --git-url git@github.com:fei-moss/general-agent-ai.git \
   --git-ref <branch-or-sha> \
-  --git-subdir dockerhost \
   --connectivity-group internal-connect \
+  --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --execute
 ```
 
 For correctness-first smoke fallback:
@@ -90,6 +106,10 @@ curl -fsS "$BASE_URL/metrics" | head
 ```
 
 `/readyz` must report DB, Redis, event bus, provider secret, and provider limiter as ready before routing traffic.
+Production release evidence must show `provider_secret=configured`, never `mock`, and the
+one-shot DB migration service must complete before API, worker, or reaper starts.
+When RAG is enabled, readiness must also show `rag_vector_store=pgvector` and a real
+embedding provider; `memory/hash` is a local-only configuration.
 
 ## Smoke Checks
 
@@ -161,9 +181,12 @@ Record p95 TTFT, error rate, and `/metrics` output in release notes.
 3. If provider is the issue:
    ```bash
    export LLM_PROVIDER=mock
+   export ALLOW_MOCK_PROVIDER=true
    export RAG_ENABLED=false
    ```
-4. Redeploy a previous known-good Git sha through DockerHost.
+4. Redeploy a previous known-good Git sha through the release CLI. Mock rollback requires the
+   explicit `--allow-mock` flag; the CLI still forwards `CHAT_RUNTIME_MODE=celery` and every
+   other required runtime setting.
 
 ## Backups And Data Safety
 

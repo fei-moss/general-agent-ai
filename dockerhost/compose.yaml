@@ -10,6 +10,9 @@ services:
       REDIS_URL: redis://cache:6379/0
       CELERY_BROKER_URL: redis://cache:6379/1
       CELERY_RESULT_BACKEND: redis://cache:6379/2
+      PRODUCTION_MODE: ${PRODUCTION_MODE:-true}
+      ALLOW_MOCK_PROVIDER: ${ALLOW_MOCK_PROVIDER:-false}
+      CHAT_RUNTIME_MODE: ${CHAT_RUNTIME_MODE:-auto}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
@@ -50,6 +53,7 @@ services:
       PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-4096}
       RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
       STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      STREAM_TTL_S: ${STREAM_TTL_S:-86400}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       REAPER_ENABLED: ${REAPER_ENABLED:-true}
       REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
@@ -60,6 +64,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       cache:
         condition: service_healthy
     expose:
@@ -68,7 +74,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2).read()\"",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/readyz', timeout=2).read()\"",
         ]
       interval: 10s
       timeout: 3s
@@ -102,6 +108,7 @@ services:
       REDIS_URL: redis://cache:6379/0
       CELERY_BROKER_URL: redis://cache:6379/1
       CELERY_RESULT_BACKEND: redis://cache:6379/2
+      CHAT_RUNTIME_MODE: ${CHAT_RUNTIME_MODE:-auto}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
@@ -142,6 +149,7 @@ services:
       PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-4096}
       RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
       STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      STREAM_TTL_S: ${STREAM_TTL_S:-86400}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       REAPER_ENABLED: ${REAPER_ENABLED:-true}
       REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
@@ -154,6 +162,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       cache:
         condition: service_healthy
     healthcheck:
@@ -189,6 +199,7 @@ services:
       REDIS_URL: redis://cache:6379/0
       CELERY_BROKER_URL: redis://cache:6379/1
       CELERY_RESULT_BACKEND: redis://cache:6379/2
+      CHAT_RUNTIME_MODE: ${CHAT_RUNTIME_MODE:-auto}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       ZAI_MODEL: ${ZAI_MODEL:-glm-5.2}
       ZAI_API_KEY: ${ZAI_API_KEY:-}
@@ -200,6 +211,7 @@ services:
       PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: ${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-4096}
       RUN_MAX_RUNTIME_S: ${RUN_MAX_RUNTIME_S:-300}
       STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+      STREAM_TTL_S: ${STREAM_TTL_S:-86400}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       REAPER_ENABLED: ${REAPER_ENABLED:-true}
       REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-30}
@@ -208,6 +220,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       cache:
         condition: service_healthy
     healthcheck:
@@ -220,6 +234,19 @@ services:
       timeout: 12s
       retries: 4
       start_period: 30s
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: dockerhost/Dockerfile
+    command: ["python", "-m", "app.db.migrate"]
+    environment:
+      LOG_LEVEL: INFO
+      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/agent
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   db:
     image: pgvector/pgvector:pg16

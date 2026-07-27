@@ -2,20 +2,17 @@
 
 在 FastAPI lifespan 中初始化与释放共享单例:
 - redis 客户端(限流 + 事件总线后端)
-- event_bus(优先使用 bus 作者提供的 Redis 实现,缺失则降级)
+- event_bus(必须使用可回放 Redis Stream 实现)
 - rate_limiter(基于上面的 redis)
 
 所有单例挂在 app.state,供依赖与中间件读取,保证 API 层无状态。
-依赖的外部符号(由 bus 作者提供,二选一即可):
-- app.bus.create_event_bus(redis_url: str) -> EventBus,或
-- app.bus.RedisEventBus(redis_url: str)
-缺失时退回 _NullEventBus,使 API 可独立启动(流式端点将无事件)。
+依赖的外部符号:app.bus.create_event_bus(redis_url: str) -> EventBus。
+构造失败时启动失败,避免生产静默退回不可回放的 Pub/Sub 或空总线。
 """
 
 from __future__ import annotations
 
 import contextlib
-import logging
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -23,9 +20,8 @@ from redis.asyncio import Redis
 
 from app.api.ratelimit import RateLimiter
 from app.core.config import get_settings
-from app.core.events import AgentEvent
 from app.core.interfaces import EventBus
-from app.core.logging import configure_logging, get_logger, log_with_fields
+from app.core.logging import configure_logging, get_logger
 from app.core.metrics import Metrics
 from app.core.secrets import build_secret_provider
 from app.runtime.locks import ConversationLock, RunLease
@@ -39,40 +35,14 @@ from app.runtime.runner import RealtimeRunner
 logger = get_logger(__name__)
 
 
-class _NullEventBus:
-    """降级事件总线:bus 实现缺失时占位,publish 丢弃、subscribe 立即结束。"""
-
-    async def publish(self, channel: str, event: AgentEvent) -> None:
-        """丢弃事件(仅记录 debug)。"""
-        logger.debug("NullEventBus 丢弃事件 channel=%s", channel)
-
-    async def subscribe(self, channel: str) -> AsyncIterator[AgentEvent]:
-        """空订阅:不产出任何事件即结束。"""
-        if False:  # pragma: no cover - 保持异步生成器语义
-            yield  # type: ignore[unreachable]
-        return
-
-
 def _build_event_bus(redis_url: str, redis_client=None, metrics: Metrics | None = None) -> EventBus:
-    """构造事件总线,优先复用 bus 作者实现,缺失时降级。"""
-    try:
-        from app.bus import create_event_bus  # type: ignore
+    """构造唯一受支持的 Redis Stream 事件总线。"""
+    from app.bus import create_event_bus
 
-        return create_event_bus(redis_url, redis_client=redis_client, metrics=metrics)
-    except Exception:
-        pass
-    try:
-        from app.bus import RedisEventBus  # type: ignore
-
-        return RedisEventBus(redis_url)
-    except Exception as exc:
-        log_with_fields(
-            logger,
-            logging.WARNING,
-            "事件总线实现缺失,降级为 NullEventBus",
-            error=str(exc),
-        )
-        return _NullEventBus()  # type: ignore[return-value]
+    bus = create_event_bus(redis_url, redis_client=redis_client, metrics=metrics)
+    if not hasattr(bus, "replay"):
+        raise RuntimeError("event bus must support Redis Stream replay")
+    return bus
 
 
 @contextlib.asynccontextmanager
@@ -154,4 +124,5 @@ def _build_realtime_runner(
         max_runtime_s=settings.run_max_runtime_s,
         metrics=metrics,
         event_bus=event_bus,
+        secret_provider=secret_provider,
     )

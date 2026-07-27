@@ -32,6 +32,7 @@ from app.core.ids import new_trace_id
 from app.core.interfaces import EventBus
 from app.core.logging import get_logger, log_with_fields, set_trace_id
 from app.core.metrics import Metrics
+from app.core.secrets import redact_runtime_error
 from app.db.session import async_session_factory
 
 logger = get_logger(__name__)
@@ -66,14 +67,18 @@ async def stream_sse(
                     break
                 yield event.to_sse()
         except Exception as exc:  # 订阅异常:发一条 error 事件后收尾
+            error = redact_runtime_error(
+                f"{type(exc).__name__}: {exc}",
+                provider=getattr(request.app.state, "secret_provider", None),
+            )
             log_with_fields(
                 logger,
                 logging.ERROR,
                 "SSE 订阅异常",
                 agent_run_id=agent_run_id,
-                error=str(exc),
+                error=error,
             )
-            yield {"event": EventType.ERROR.value, "data": str(exc)}
+            yield {"event": EventType.ERROR.value, "data": error}
 
     return EventSourceResponse(event_generator())
 
@@ -127,12 +132,16 @@ async def _pump_ws(
             logger, logging.INFO, "WS 客户端断开", agent_run_id=agent_run_id
         )
     except Exception as exc:
+        error = redact_runtime_error(
+            f"{type(exc).__name__}: {exc}",
+            provider=getattr(websocket.app.state, "secret_provider", None),
+        )
         log_with_fields(
             logger,
             logging.ERROR,
             "WS 推送异常",
             agent_run_id=agent_run_id,
-            error=str(exc),
+            error=error,
         )
     finally:
         set_trace_id(None)
@@ -159,8 +168,12 @@ async def _iter_events(
 ) -> AsyncIterator[AgentEvent]:
     """Iterate events from StreamBus with replay, or fallback to old EventBus."""
     if hasattr(bus, "replay"):
+        legacy_last_seq = _parse_legacy_seq(last_event_id)
+        stream_cursor = None if legacy_last_seq is not None else last_event_id
         try:
-            async for event in bus.subscribe(agent_run_id, last_event_id):  # type: ignore[call-arg]
+            async for event in bus.subscribe(agent_run_id, stream_cursor):  # type: ignore[call-arg]
+                if legacy_last_seq is not None and event.seq <= legacy_last_seq:
+                    continue
                 yield event
                 if _is_terminal(event):
                     break

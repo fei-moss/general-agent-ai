@@ -7,6 +7,8 @@ entry id is injected into AgentEvent.stream_id after XADD and after replay reads
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
+import itertools
 from typing import Any, AsyncIterator
 
 from app.core.config import get_settings
@@ -34,6 +36,7 @@ class StreamBus:
         redis_client: Any | None = None,
         *,
         maxlen: int | None = None,
+        ttl_s: int | None = None,
         block_ms: int = DEFAULT_BLOCK_MS,
         metrics: Metrics | None = None,
     ) -> None:
@@ -41,8 +44,16 @@ class StreamBus:
         self._redis_url = redis_url or settings.redis_url
         self._client = redis_client
         self._maxlen = maxlen if maxlen is not None else settings.stream_maxlen
+        self._ttl_s = ttl_s if ttl_s is not None else settings.stream_ttl_s
         self._block_ms = block_ms
         self._metrics = metrics or Metrics()
+        self._seq_counters: dict[str, itertools.count] = defaultdict(
+            lambda: itertools.count(0)
+        )
+
+    def next_seq(self, agent_run_id: str) -> int:
+        """Allocate a process-local sequence for legacy task emitters."""
+        return next(self._seq_counters[_normalize_run_id(agent_run_id)])
 
     def _get_client(self) -> Any:
         if self._client is None:
@@ -58,13 +69,16 @@ class StreamBus:
     async def publish(self, run_id: str, event: AgentEvent) -> AgentEvent:
         client = self._get_client()
         run_id = _normalize_run_id(run_id)
+        key = stream_key_for(run_id)
         stream_id = await client.xadd(
-            stream_key_for(run_id),
+            key,
             {"event": event.to_json()},
             maxlen=self._maxlen,
             approximate=True,
         )
-        self._metrics.inc_counter("redis_stream_events_total", {"run_id": run_id})
+        if self._ttl_s > 0:
+            await client.expire(key, self._ttl_s)
+        self._metrics.inc_counter("redis_stream_events_total")
         return event.model_copy(update={"stream_id": _decode(stream_id)})
 
     async def replay(
@@ -79,7 +93,6 @@ class StreamBus:
         self._metrics.set_gauge(
             "redis_stream_lag_events",
             0,
-            {"run_id": run_id},
         )
         for stream_id, fields in entries:
             yield self._decode_entry(stream_id, fields)
@@ -88,16 +101,10 @@ class StreamBus:
         self, run_id: str, after_id: str | None = None
     ) -> AsyncIterator[AgentEvent]:
         run_id = _normalize_run_id(run_id)
-        cursor = after_id
-        async for event in self.replay(run_id, after_id):
-            cursor = event.stream_id
-            yield event
-
-        if cursor is None:
-            cursor = "$"
-
         client = self._get_client()
         key = stream_key_for(run_id)
+        await self._ensure_cursor_retained(client, key, after_id)
+        cursor = after_id or "0-0"
         while True:
             response = await client.xread(
                 {key: cursor},

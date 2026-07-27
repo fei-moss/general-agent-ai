@@ -14,6 +14,7 @@ from app.core.enums import (
     RAGIngestionJobStatus,
 )
 from app.core.ids import _new_id
+from app.core.secrets import redact_runtime_error
 from app.core.schemas import (
     CitationOut,
     KnowledgeSearchResult,
@@ -90,7 +91,14 @@ class RAGQueryService:
         except asyncio.TimeoutError:
             result = self._response([], True, "timeout", started)
         except Exception as exc:  # noqa: BLE001 - Agent path must degrade.
-            result = self._response([], True, _sanitize_reason(str(exc)), started)
+            result = self._response(
+                [],
+                True,
+                _sanitize_reason(
+                    redact_runtime_error(str(exc), settings=self._settings)
+                ),
+                started,
+            )
 
         result = await self._write_log(
             result,
@@ -280,10 +288,23 @@ class RAGIngestionService:
         self._embedder = embedder or get_embedder(self._settings)
         self._metrics = metrics
 
-    async def ingest_document(self, *, job_id: str, document_id: str) -> int:
+    async def ingest_document(
+        self,
+        *,
+        job_id: str,
+        document_id: str,
+        final_attempt: bool = True,
+    ) -> int:
         started = time.perf_counter()
         try:
-            await self._job_repo.update_status(job_id, RAGIngestionJobStatus.RUNNING)
+            claim = getattr(self._job_repo, "claim_running", None)
+            if callable(claim):
+                if not await claim(job_id):
+                    return 0
+            else:
+                await self._job_repo.update_status(
+                    job_id, RAGIngestionJobStatus.RUNNING
+                )
             await self._document_repo.update_status(
                 document_id, RAGDocumentStatus.PARSING
             )
@@ -350,14 +371,30 @@ class RAGIngestionService:
             self._observe_ingestion("SUCCEEDED", started)
             return len(records)
         except Exception as exc:
-            reason = _sanitize_reason(str(exc))
+            reason = _sanitize_reason(
+                redact_runtime_error(str(exc), settings=self._settings)
+            )
+            document_status = (
+                RAGDocumentStatus.FAILED
+                if final_attempt
+                else RAGDocumentStatus.PENDING
+            )
+            job_status = (
+                RAGIngestionJobStatus.FAILED
+                if final_attempt
+                else RAGIngestionJobStatus.PENDING
+            )
             await self._document_repo.update_status(
-                document_id, RAGDocumentStatus.FAILED, error_message=reason
+                document_id, document_status, error_message=reason
             )
             await self._job_repo.update_status(
-                job_id, RAGIngestionJobStatus.FAILED, error_message=reason
+                job_id, job_status, error_message=reason
             )
-            self._observe_ingestion("FAILED", started, reason=reason)
+            self._observe_ingestion(
+                "FAILED" if final_attempt else "RETRYING",
+                started,
+                reason=reason,
+            )
             raise
 
     def _observe_ingestion(
@@ -442,6 +479,13 @@ class _ScopedDocumentRepo:
 
 
 class _ScopedIngestionJobRepo:
+    async def claim_running(self, job_id: str) -> bool:
+        from app.db.repositories import RAGIngestionJobRepository
+        from app.db.session import async_session_factory
+
+        async with async_session_factory() as session:
+            return await RAGIngestionJobRepository(session).claim_running(job_id)
+
     async def update_status(
         self,
         job_id: str,

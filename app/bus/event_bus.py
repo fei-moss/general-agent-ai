@@ -16,7 +16,7 @@ import asyncio
 import itertools
 import logging
 from collections import defaultdict
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from app.core.config import get_settings
 from app.core.events import AgentEvent
@@ -200,21 +200,23 @@ class InMemoryEventBus:
 
 
 # 进程内单例缓存
-_bus_singleton: RedisEventBus | InMemoryEventBus | None = None
+_bus_singleton: Any | None = None
 
 
-def get_event_bus() -> RedisEventBus | InMemoryEventBus:
+def get_event_bus() -> Any:
     """返回进程内事件总线单例。
 
-    默认使用 RedisEventBus;测试可通过 :func:`set_event_bus` 注入内存实现。
+    默认使用可回放 Redis Stream;测试可通过 :func:`set_event_bus` 注入内存实现。
     """
     global _bus_singleton
     if _bus_singleton is None:
-        _bus_singleton = RedisEventBus()
+        from app.bus.stream_bus import StreamBus
+
+        _bus_singleton = StreamBus()
     return _bus_singleton
 
 
-def set_event_bus(bus: RedisEventBus | InMemoryEventBus | None) -> None:
+def set_event_bus(bus: Any | None) -> None:
     """覆盖/重置进程内事件总线单例(主要供测试使用)。"""
     global _bus_singleton
     _bus_singleton = bus

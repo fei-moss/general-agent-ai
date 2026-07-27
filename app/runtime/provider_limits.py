@@ -267,7 +267,7 @@ class InMemoryProviderRateLimiter:
         if actual is None:
             self._metrics.inc_counter("provider_usage_missing_total", labels)
             return ProviderUsageDecision(
-                settled=False,
+                settled=True,
                 usage_missing=True,
                 provider_key_id=settlement.provider_key_id,
             )
@@ -792,7 +792,7 @@ return {debit, tpm_tokens}
         if actual is None:
             self._metrics.inc_counter("provider_usage_missing_total", labels)
             return ProviderUsageDecision(
-                settled=False,
+                settled=True,
                 usage_missing=True,
                 provider_key_id=settlement.provider_key_id,
             )

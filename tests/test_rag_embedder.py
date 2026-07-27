@@ -48,6 +48,29 @@ def test_get_embedder_builds_gemini_from_gemini_api_key():
     assert embedder.dim == 3
 
 
+def test_explicit_real_embedder_never_silently_falls_back_to_hash(monkeypatch):
+    from app.rag import embedder as embedder_module
+
+    class _BrokenGeminiEmbedder:
+        def __init__(self, settings):
+            raise RuntimeError("invalid real-provider configuration")
+
+    monkeypatch.setattr(
+        embedder_module,
+        "GeminiEmbedder",
+        _BrokenGeminiEmbedder,
+    )
+
+    with pytest.raises(RuntimeError, match="invalid real-provider configuration"):
+        embedder_module.get_embedder(
+            Settings(
+                _env_file=None,
+                embedding_provider="gemini",
+                gemini_api_key="local-test-key",
+            )
+        )
+
+
 async def test_gemini_embedder_uses_batch_endpoint_and_parses_vectors(monkeypatch):
     from app.rag.embedder import GeminiEmbedder
 

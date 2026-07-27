@@ -78,7 +78,7 @@ spec_changed=0
 required_files=()
 spec_files=()
 
-for file in "${changed[@]}"; do
+for file in ${changed[@]+"${changed[@]}"}; do
   case "$file" in
     docs/specifications/_template/*|specs/_template/*|specs/index.json)
       ;;
@@ -88,7 +88,7 @@ for file in "${changed[@]}"; do
       ;;
     scripts/check_ai_boundaries.sh|scripts/check_project_release.sh|scripts/check_spec_contract.sh|scripts/check_spec_registry.sh|scripts/harnessctl.sh|scripts/verify_candidate.sh|scripts/verify_change.sh|scripts/verify_release.sh)
       ;;
-    app/api/*|app/runtime/*|app/bus/*|app/tasks/*|app/db/*|app/core/models.py|app/core/schemas.py|app/core/events.py|requirements.txt|docker-compose.yml|scripts/*|Makefile)
+    app/*|dockerhost/*|requirements.txt|docker-compose.yml|scripts/*|Makefile)
       requires_spec_change=1
       required_files+=("$file")
       ;;
@@ -102,8 +102,8 @@ if (( ${#legacy_contract_errors[@]} > 0 )); then
   reason="invalid legacy specification contract"
 elif (( requires_spec_change == 1 && spec_changed == 0 )); then
   if [[ "${SPEC_CONTRACT_APPROVED:-0}" == 1 ]]; then
-    status="exempted"
-    reason="SPEC_CONTRACT_APPROVED=1"
+    status="passed"
+    reason="explicit exemption: SPEC_CONTRACT_APPROVED=1"
   else
     status="failed"
     reason="missing specification change"

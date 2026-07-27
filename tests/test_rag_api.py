@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
+from types import SimpleNamespace
 
 from app.core.config import Settings
 
@@ -61,3 +62,65 @@ async def test_rag_query_route_rejects_non_admin_before_service_call():
 
     assert exc.value.status_code == 403
     assert exc.value.detail == "RAG_ADMIN_FORBIDDEN"
+
+
+async def test_duplicate_pending_document_requeues_after_previous_enqueue_failure(monkeypatch):
+    from app.api.routers import rag
+    from app.core.enums import RAGDocumentStatus, RAGIngestionJobStatus
+    from app.core.schemas import RAGDocumentCreate
+
+    document = SimpleNamespace(
+        id="doc-1",
+        knowledge_base_id="kb-1",
+        owner_user_id="rag-admin",
+        status=RAGDocumentStatus.PENDING,
+    )
+    job = SimpleNamespace(
+        id="job-1",
+        document_id="doc-1",
+        status=RAGIngestionJobStatus.PENDING,
+    )
+    enqueued: list[tuple[str, str]] = []
+
+    class _DocumentRepo:
+        def __init__(self, session):
+            pass
+
+        async def create_or_get(self, **kwargs):
+            return document, False
+
+    class _JobRepo:
+        def __init__(self, session):
+            pass
+
+        async def get_latest_for_document(self, document_id):
+            return job
+
+        async def mark_dispatched(self, job_id):
+            job.dispatch_attempts = 1
+
+    async def _kb(*args, **kwargs):
+        return SimpleNamespace(status="ACTIVE")
+
+    monkeypatch.setattr(rag, "RAGDocumentRepository", _DocumentRepo)
+    monkeypatch.setattr(rag, "RAGIngestionJobRepository", _JobRepo)
+    monkeypatch.setattr(rag, "_get_kb_or_error", _kb)
+    monkeypatch.setattr(
+        rag,
+        "_enqueue_ingestion",
+        lambda job_id, document_id: enqueued.append((job_id, document_id)),
+    )
+
+    accepted = await rag.create_document(
+        RAGDocumentCreate(
+            knowledge_base_id="kb-1",
+            source_type="manual",
+            content="same content",
+        ),
+        user="rag-admin",
+        repos=SimpleNamespace(session=object()),
+        settings=Settings(_env_file=None, rag_admin_user_ids="rag-admin"),
+    )
+
+    assert accepted.replayed is True
+    assert enqueued == [("job-1", "doc-1")]
