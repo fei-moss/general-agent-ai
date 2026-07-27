@@ -2,8 +2,9 @@
 
 ## Related Runbooks
 
+- Jenkins / Docker Compose 正式生产部署契约: [ops/production-deployment-contract.md](ops/production-deployment-contract.md)
 - 生产观测、Grafana MCP 日志查询、告警阈值和排障路径: [OBSERVABILITY_AND_ALERTING_RUNBOOK.md](OBSERVABILITY_AND_ALERTING_RUNBOOK.md)
-- DockerHost Git pull 发布、同环境 redeploy、回滚、清理和审计: [DOCKERHOST_RELEASE_RUNBOOK.md](DOCKERHOST_RELEASE_RUNBOOK.md)
+- dev/test DockerHost Git pull 演练、redeploy、回滚、清理和审计: [DOCKERHOST_RELEASE_RUNBOOK.md](DOCKERHOST_RELEASE_RUNBOOK.md)
 
 ## Current Request Flow
 
@@ -37,7 +38,7 @@
 - Release evidence must include both a Marketplace-to-Chat 正向 smoke and an
   外部负向可达性 smoke proving the Chat endpoint cannot be reached outside the private path.
 
-## DockerHost Deploy
+## DockerHost Dev/Test Rehearsal
 
 Use local secret env files only; do not put secrets in this repository.
 

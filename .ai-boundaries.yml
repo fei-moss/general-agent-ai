@@ -15,16 +15,16 @@ allowed:
 approval_required:
   - AGENTS.md
   - CLAUDE.md
-  - .ai-boundaries.yml
+  - .*
   - .github/
   - Makefile
   - harness/
-  - production-deployment-contract.md
+  - *.example
   - scripts/
   - app/
   - dockerhost/
   - requirements.txt
-  - docker-compose.yml
+  - docker-compose*.yml
 
 forbidden:
   - .git/
