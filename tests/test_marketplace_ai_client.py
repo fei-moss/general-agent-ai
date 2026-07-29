@@ -118,6 +118,12 @@ def test_extract_current_agent_ref_rejects_missing_or_invalid_address():
     assert extract_current_agent_ref({"agent_address": "not-an-address"}) is None
 
 
+def test_extract_current_ballot_agent_id_resolves_live_id_without_agent_id():
+    result = {"ok": True, "data": {"agent": {"id": 64}}}
+
+    assert extract_current_ballot_agent_id(result) == 64
+
+
 def test_extract_current_ballot_agent_id_uses_marketplace_context_result_only():
     assert (
         extract_current_ballot_agent_id(

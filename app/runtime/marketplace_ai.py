@@ -483,6 +483,9 @@ def extract_current_ballot_agent_id(
     agent = payload.get("agent") if isinstance(payload, dict) else None
     if not isinstance(agent, dict):
         return None
+    agent_id = _clean_agent_id(agent.get("id"))
+    if agent_id is not None:
+        return agent_id
     return _clean_agent_id(agent.get("agent_id"))
 
 

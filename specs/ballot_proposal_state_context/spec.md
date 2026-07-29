@@ -177,6 +177,15 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   fabricated agent_id, and never silently falling back to an address-shaped
   value). `run_context`-based `agent_id` lookup, if any remains, is
   informational only and never required for this flow to succeed.
+- `SPEC-BALLOT-PROPOSAL-STATE-CONTEXT-001-R7`: `extract_current_ballot_agent_id`
+  reads the confirmed live field `data.agent.id` (per Chris's 2026-07-29
+  read-only production verification and
+  `internal/query/aicontext/service.go:88`'s `json:"id"` tag), not
+  `data.agent.agent_id`. `agent_id` may be checked as an additional,
+  lower-priority fallback candidate for forward compatibility, but `id` is
+  the primary and only currently-confirmed source; a test must assert `id`
+  resolves correctly on its own with no `agent_id` key present, matching the
+  real production shape exactly.
 
 ### Invariants
 
@@ -264,6 +273,16 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 11. Redeploy `chris-general-agent-ai-chat-prod` on the `Deploy` ref and
     re-verify "is there a current proposal" against Agent 64 returns the
     real proposal data.
+12. Add a RED test asserting `extract_current_ballot_agent_id` resolves
+    `agent_id` from `data.agent.id` (e.g. `{"data": {"agent": {"id": 64}}}`,
+    no `agent_id` key present), per R7.
+13. Change `extract_current_ballot_agent_id` to read `agent.get("id")` as the
+    primary source (optionally `agent.get("agent_id")` as a lower-priority
+    fallback), matching the confirmed live field. Make test 12 pass, then run
+    full `pytest`, `check_spec_contract.sh`, and `verify-change` again.
+14. Redeploy `chris-general-agent-ai-chat-prod` on the `Deploy` ref and
+    re-verify "is there a current proposal" against Agent 64 returns the
+    real proposal data (4 open proposals, per Chris's live verification).
 
 ## Closeout Evidence
 
@@ -378,3 +397,41 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `marketplace_agent_context` result; a missing/non-numeric/unavailable
   result fails closed via the tool's own `CURRENT_BALLOT_AGENT_ID_MISSING`
   path rather than falling back to `run_context`.
+- Post-deploy follow-up #3 (2026-07-29, root cause corrected): after R6
+  deployed, Agent 64 still returned `CURRENT_BALLOT_AGENT_ID_MISSING` even
+  though `marketplace_agent_context` clearly succeeded (its other fields —
+  `lock_period_seconds`, `fee_schedule`, `exchange_rate` — rendered
+  correctly). Chris (Marketplace backend owner) ran a read-only live
+  verification against production and found the actual field name: Chat
+  Server reads `data.agent.agent_id`, but Marketplace's `ai-context` response
+  returns the field as `data.agent.id`
+  (`internal/query/aicontext/service.go:88`, `json:"id"`) — confirmed live
+  by `GET /api/v1/agents/{address}/ai-context` returning
+  `data.agent.id = 64` and no `agent_id` key. `AgentID int64 json:"agent_id"`
+  (line ~36 of the same file) is a different, unrelated struct — most likely
+  `ai-compute`'s response — that this spec's earlier MCI research incorrectly
+  conflated with the `ai-context` `agent` object because the two fields
+  happened to share a name and appear in the same file. The internal
+  proposals route and its data are confirmed fully healthy independently
+  (`GET /api/v1/ballot/agents/64/proposals` returns `200` with 4 `open`
+  items); this was purely a Chat-Server field-name defect, not a proposal,
+  data, or network availability issue. No code was changed for this
+  read-only verification.
+- R7 TDD verification (2026-07-29): RED
+  `test_extract_current_ballot_agent_id_resolves_live_id_without_agent_id`
+  failed with `None != 64` for the production-shaped `data.agent.id` payload
+  with no `agent_id` key. GREEN: the focused test and all 26 tests in
+  `tests/test_marketplace_ai_client.py` passed; full pytest passed
+  (**676 passed, 1 skipped**) under the already-documented proxy-clean
+  `uvloop` sandbox workaround.
+- Independent re-verification (2026-07-29, this session, default asyncio, no
+  uvloop needed): full `pytest -q` — **739 passed, 1 skipped**, exit code 0.
+  `scripts/check_spec_contract.sh` passed. `verify-change`
+  (`AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:approved in chat 2026-07-29,
+  ballot proposal agent_id field name fix (R7)`) passed all four gates;
+  evidence in `.artifacts/change`. Diff reviewed: `extract_current_ballot_agent_id`
+  now checks `agent.get("id")` first (the confirmed live field) and falls
+  back to `agent.get("agent_id")` only if `id` is absent — minimal, matches
+  R7 exactly, no changes to R6's tool-call ordering. Implementation Plan
+  step 14 (redeploy and re-verify Agent 64 returns the real 4 open
+  proposals) remains pending the owner's redeploy.
