@@ -13,6 +13,7 @@ from app.runtime.marketplace_ai import (
     MarketplaceComputeWindow,
     MarketplaceViewerContext,
     annotate_ballot_context_availability,
+    extract_current_ballot_agent_id,
     extract_current_agent_ref,
 )
 
@@ -58,6 +59,36 @@ def test_ballot_context_annotation_types_available_and_missing_fields():
     assert fields["vote_cost_note"]["availability"] == "not_provided"
 
 
+def test_ballot_context_annotation_uses_returned_dynamic_governance_fields():
+    result = annotate_ballot_context_availability(
+        {
+            "ok": True,
+            "source": "marketplace_ai",
+            "data": {
+                "agent": {
+                    "agent_type": "ballot",
+                    "name": "Governance Fixture",
+                    "accept_token_symbol": "GOV",
+                    "proposal_creation_rule": "Holders above the threshold may propose.",
+                    "voting_power_rule": "One vote per eligible wallet.",
+                }
+            },
+        }
+    )
+
+    fields = result["data"]["ballot_governance"]
+    assert fields["proposal_creation_rule"] == {
+        "availability": "available",
+        "value": "Holders above the threshold may propose.",
+        "source": "agent.proposal_creation_rule",
+    }
+    assert fields["voting_power_rule"] == {
+        "availability": "available",
+        "value": "One vote per eligible wallet.",
+        "source": "agent.voting_power_rule",
+    }
+
+
 def test_ballot_context_annotation_leaves_other_agent_types_unchanged():
     result = {
         "ok": True,
@@ -85,6 +116,20 @@ def test_extract_current_agent_ref_ignores_context_chain_id_by_default():
 def test_extract_current_agent_ref_rejects_missing_or_invalid_address():
     assert extract_current_agent_ref({}) is None
     assert extract_current_agent_ref({"agent_address": "not-an-address"}) is None
+
+
+def test_extract_current_ballot_agent_id_uses_server_context_only():
+    assert extract_current_ballot_agent_id({"agent": {"agent_id": "#64"}}) == 64
+    assert extract_current_ballot_agent_id(
+        {"marketplace_agent": {"id": 1051}}
+    ) == 1051
+    assert extract_current_ballot_agent_id({"agent_id": "0"}) is None
+    assert (
+        extract_current_ballot_agent_id(
+            {"agent": {"agent_id": "not-an-id"}}
+        )
+        is None
+    )
 
 
 async def test_marketplace_ai_context_builds_documented_get_request():
@@ -135,6 +180,62 @@ async def test_marketplace_ai_context_builds_documented_get_request():
     assert request.headers["X-Conversation-ID"] == VIEWER.conversation_id
     assert request.headers["X-Trace-ID"] == VIEWER.trace_id
     assert "Authorization" not in request.headers
+    assert "Marketplace-AI-Service-Token" not in request.headers
+    assert "X-Marketplace-AI-Service-Token" not in request.headers
+
+
+async def test_marketplace_ballot_proposals_builds_public_read_only_get_request():
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "agent_config": {"agent_id": 64},
+                "items": [
+                    {
+                        "id": 37,
+                        "title": "Current voting test",
+                        "status": "open",
+                        "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                        "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                        "vote_summary": {"total_vote_count": 1},
+                    }
+                ],
+                "pagination": {"limit": 10, "offset": 0, "total": 1},
+            },
+        )
+
+    client = MarketplaceAIClient(
+        "https://market.example",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_ballot_proposals(64)
+
+    assert result == {
+        "ok": True,
+        "source": "marketplace_ai",
+        "data": {
+            "items": [
+                {
+                    "title": "Current voting test",
+                    "status": "open",
+                    "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                    "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                }
+            ]
+        },
+    }
+    request = seen[0]
+    assert request.method == "GET"
+    assert request.url.path == "/api/v1/ballot/agents/64/proposals"
+    assert dict(request.url.params) == {"limit": "10", "offset": "0"}
+    assert request.headers["Accept"] == "application/json"
+    assert "Authorization" not in request.headers
+    assert "X-Marketplace-User-ID" not in request.headers
+    assert "X-Marketplace-Wallet" not in request.headers
     assert "Marketplace-AI-Service-Token" not in request.headers
     assert "X-Marketplace-AI-Service-Token" not in request.headers
 

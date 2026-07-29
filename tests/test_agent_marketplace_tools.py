@@ -14,6 +14,7 @@ from pydantic_ai.models.function import FunctionModel
 
 from app.runtime.agent_factory import (
     AgentDeps,
+    TOOL_MARKETPLACE_BALLOT_PROPOSALS,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     _knowledge_query_for_context,
@@ -21,6 +22,7 @@ from app.runtime.agent_factory import (
     _missing_approved_mechanism_facts,
     _protocol_creation_time_violations,
     _safe_ballot_redeem_vote_unknown,
+    _unsupported_ballot_claims,
     _unsupported_dynamic_claims,
     _violation_feedback,
     build_agent,
@@ -76,6 +78,24 @@ def test_ballot_output_guard_accepts_missing_data_and_contract_boundary():
     )
 
     assert _unsupported_dynamic_claims(output, context) == []
+
+
+def test_ballot_output_guard_rejects_bilingual_proposal_absence_inference():
+    unsupported = (
+        "There is no active proposal.",
+        "No proposal is currently open.",
+        "没有进行中的提案。",
+        "当前没有提案。",
+    )
+
+    for output in unsupported:
+        assert "ballot_missing_value_as_absent" in _unsupported_ballot_claims(
+            output
+        ), output
+
+    assert _unsupported_ballot_claims(
+        "Current proposal instance data was not returned; check the proposal page."
+    ) == []
 
 
 def test_ballot_knowledge_query_is_qualified_by_typed_agent_context():
@@ -325,6 +345,286 @@ async def test_agent_marketplace_context_tool_exposes_typed_dynamic_config():
     assert "claim_required" in rendered
     assert "management_fee" in rendered
     assert "rate_bps" in rendered
+
+
+async def test_agent_ballot_proposals_tool_uses_server_agent_id_and_exact_fields():
+    marketplace = _FakeMarketplaceAI()
+    agent = build_agent(
+        _tool_calling_model(TOOL_MARKETPLACE_BALLOT_PROPOSALS, {})
+    )
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {
+                "agent_id": "#64",
+                "agent_type": "ballot",
+                "contract_address": ADDRESS,
+            }
+        },
+    )
+
+    result = await agent.run("Is there a current proposal?", deps=deps)
+
+    assert marketplace.proposal_calls == [{"agent_id": 64}]
+    assert "Current voting test" in result.output
+    assert "'status': 'open'" in result.output
+    assert "2026-07-28T09:48:58.282Z" in result.output
+    assert "2026-08-04T09:48:58.282Z" in result.output
+
+
+async def test_current_ballot_proposal_question_forces_public_proposal_tool_only():
+    marketplace = _FakeMarketplaceAI()
+
+    def function(messages, _info):
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_BALLOT_PROPOSALS in returned_tools:
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "Current voting test — status: open; "
+                            "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+                            "voting_ends_at: 2026-08-04T09:48:58.282Z."
+                        )
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="There is no active proposal.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        marketplace_viewer_context=VIEWER,
+        run_context={
+            "agent": {
+                "agent_id": "#64",
+                "agent_type": "ballot",
+                "contract_address": ADDRESS,
+            },
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("Is there a current proposal?", deps=deps)
+
+    assert marketplace.proposal_calls == [{"agent_id": 64}]
+    assert marketplace.context_calls == []
+    assert result.output == (
+        "Current voting test — status: open; "
+        "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+        "voting_ends_at: 2026-08-04T09:48:58.282Z."
+    )
+
+
+async def test_empty_ballot_proposal_result_requires_not_returned_fallback():
+    marketplace = _EmptyProposalMarketplaceAI()
+    retry_feedback: list[str] = []
+
+    def function(messages, _info):
+        retry_parts = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, RetryPromptPart)
+        ]
+        if retry_parts:
+            retry_feedback.append(str(retry_parts[-1].content))
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "Current proposal instance data was not returned; "
+                            "check the current Agent's proposal page."
+                        )
+                    )
+                ]
+            )
+        for message in messages:
+            if not isinstance(message, ModelRequest):
+                continue
+            for part in message.parts:
+                if (
+                    isinstance(part, ToolReturnPart)
+                    and part.tool_name == TOOL_MARKETPLACE_BALLOT_PROPOSALS
+                ):
+                    return ModelResponse(
+                        parts=[TextPart(content="There is no active proposal.")]
+                    )
+        return ModelResponse(parts=[TextPart(content="No proposal is currently open.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {
+                "agent_id": "#64",
+                "agent_type": "ballot",
+                "contract_address": ADDRESS,
+            },
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("Is there a current proposal?", deps=deps)
+
+    assert marketplace.proposal_calls == [{"agent_id": 64}]
+    assert retry_feedback
+    assert "no active proposal" in retry_feedback[0]
+    assert result.output == (
+        "Current proposal instance data was not returned; "
+        "check the current Agent's proposal page."
+    )
+
+
+async def test_ballot_proposal_answer_requires_every_returned_field_verbatim():
+    marketplace = _FakeMarketplaceAI()
+    retry_feedback: list[str] = []
+
+    def function(messages, _info):
+        retry_parts = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, RetryPromptPart)
+        ]
+        if retry_parts:
+            retry_feedback.append(str(retry_parts[-1].content))
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "Current voting test — status: open; "
+                            "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+                            "voting_ends_at: 2026-08-04T09:48:58.282Z."
+                        )
+                    )
+                ]
+            )
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_BALLOT_PROPOSALS in returned_tools:
+            return ModelResponse(
+                parts=[TextPart(content="Current voting test — status: open.")]
+            )
+        return ModelResponse(parts=[TextPart(content="No proposal data yet.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {
+                "agent_id": "#64",
+                "agent_type": "ballot",
+                "contract_address": ADDRESS,
+            },
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("Is there a current proposal?", deps=deps)
+
+    assert retry_feedback
+    assert "voting_starts_at" in retry_feedback[0]
+    assert "voting_ends_at" in retry_feedback[0]
+    assert "2026-07-28T09:48:58.282Z" in result.output
+    assert "2026-08-04T09:48:58.282Z" in result.output
+
+
+async def test_empty_ballot_proposal_answer_rejects_vague_unknown_wording():
+    marketplace = _EmptyProposalMarketplaceAI()
+    retry_feedback: list[str] = []
+
+    def function(messages, _info):
+        retry_parts = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, RetryPromptPart)
+        ]
+        if retry_parts:
+            retry_feedback.append(str(retry_parts[-1].content))
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        content=(
+                            "Current proposal instance data was not returned; "
+                            "check the current Agent's proposal page."
+                        )
+                    )
+                ]
+            )
+        returned_tools = {
+            part.tool_name
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        }
+        if TOOL_MARKETPLACE_BALLOT_PROPOSALS in returned_tools:
+            return ModelResponse(
+                parts=[TextPart(content="I cannot determine that from this response.")]
+            )
+        return ModelResponse(parts=[TextPart(content="I do not know.")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        marketplace_ai=marketplace,
+        run_context={
+            "agent": {
+                "agent_id": "#64",
+                "agent_type": "ballot",
+                "contract_address": ADDRESS,
+            },
+            "turn_policy": {
+                "intent": "current_agent_question",
+                "tool_use": "marketplace_context_first",
+            },
+        },
+    )
+
+    result = await agent.run("Is there a current proposal?", deps=deps)
+
+    assert retry_feedback
+    assert "not returned" in retry_feedback[0]
+    assert "proposal page" in retry_feedback[0]
+    assert result.output == (
+        "Current proposal instance data was not returned; "
+        "check the current Agent's proposal page."
+    )
 
 
 def test_marketplace_context_tool_description_defines_protocol_creation_time():
@@ -1363,6 +1663,7 @@ class _FakeMarketplaceAI:
     def __init__(self, *, deployed_at: str | None = DEPLOYED_AT) -> None:
         self.context_calls: list[dict[str, Any]] = []
         self.compute_calls: list[dict[str, Any]] = []
+        self.proposal_calls: list[dict[str, Any]] = []
         self.deployed_at = deployed_at
 
     async def get_agent_context(
@@ -1450,6 +1751,33 @@ class _FakeMarketplaceAI:
                     }
                 ],
             },
+        }
+
+    async def get_ballot_proposals(self, agent_id: int) -> dict[str, Any]:
+        self.proposal_calls.append({"agent_id": agent_id})
+        return {
+            "ok": True,
+            "source": "marketplace_ai",
+            "data": {
+                "items": [
+                    {
+                        "title": "Current voting test",
+                        "status": "open",
+                        "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                        "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                    }
+                ]
+            },
+        }
+
+
+class _EmptyProposalMarketplaceAI(_FakeMarketplaceAI):
+    async def get_ballot_proposals(self, agent_id: int) -> dict[str, Any]:
+        self.proposal_calls.append({"agent_id": agent_id})
+        return {
+            "ok": True,
+            "source": "marketplace_ai",
+            "data": {"items": []},
         }
 
 

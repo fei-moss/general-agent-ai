@@ -95,6 +95,27 @@ def test_protocol_creation_time_golden_cases_are_bilingual_and_context_only(case
         assert "marketplace_agent_context" in case.raw["expected_sources"]
 
 
+def test_ballot_current_proposal_golden_case_uses_public_proposal_tool(cases):
+    selected = {
+        case.id: case
+        for case in cases
+        if case.id == "allow_ballot_current_proposals_en"
+    }
+
+    assert set(selected) == {"allow_ballot_current_proposals_en"}
+    row = selected["allow_ballot_current_proposals_en"].raw
+    assert row["applicable_agent_types"] == ["ballot"]
+    assert row["requires_tool"] == "marketplace_ballot_proposals"
+    assert row["requires_rag"] is False
+    assert row["expected_sources"] == ["marketplace_ballot_proposals"]
+    assert row["expected_fields"] == [
+        "title",
+        "status",
+        "voting_starts_at",
+        "voting_ends_at",
+    ]
+
+
 @pytest.mark.parametrize("case", load_cases(), ids=lambda case: case.id)
 def test_input_guardrail_matches_golden_cases(case: ChatBehaviorCase):
     decision = evaluate_user_message(case.user_message)

@@ -339,6 +339,13 @@ def _deterministic_answer(case: ChatBehaviorCase) -> str:
             "block time of the protocol Factory AgentCreated event, with the original "
             "timezone preserved."
         ),
+        "allow_ballot_current_proposals_en": (
+            "Use each returned row's title, status, voting_starts_at, and "
+            "voting_ends_at exactly as returned. If the request yields no usable rows, "
+            "state that current proposal instance data was not returned and refer to "
+            "the current Agent's proposal page; do not infer proposal existence from "
+            "missing data."
+        ),
     }
     return answers.get(
         case.id,

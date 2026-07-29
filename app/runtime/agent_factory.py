@@ -52,6 +52,7 @@ from app.runtime.marketplace_ai import (
     MarketplaceViewerContext,
     annotate_ballot_context_availability,
     current_agent_missing_result,
+    extract_current_ballot_agent_id,
     extract_current_agent_ref,
     marketplace_unavailable,
     normalize_compute_queries,
@@ -70,6 +71,7 @@ _MOCK_CHUNK_SIZE = 12
 TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
 TOOL_MARKETPLACE_AGENT_CONTEXT = "marketplace_agent_context"
 TOOL_MARKETPLACE_AGENT_COMPUTE = "marketplace_agent_compute"
+TOOL_MARKETPLACE_BALLOT_PROPOSALS = "marketplace_ballot_proposals"
 
 # Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
 _SYSTEM_PROMPT = build_system_prompt(get_behavior_profile("ask_this_agent").policy)
@@ -77,20 +79,24 @@ _ASK_THIS_AGENT_PROFILE = "ask_this_agent"
 _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT = 1
 _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT = 1
 _MARKETPLACE_AGENT_COMPUTE_CORRECTION_LIMIT = 1
+_MARKETPLACE_BALLOT_PROPOSALS_CALL_LIMIT = 1
 _SEARCH_KNOWLEDGE_CALL_LIMIT = 1
 _MARKETPLACE_BUDGETED_TOOLS = {
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
+    TOOL_MARKETPLACE_BALLOT_PROPOSALS,
 }
 _TOOL_CALL_LIMITS = {
     TOOL_SEARCH_KNOWLEDGE: _SEARCH_KNOWLEDGE_CALL_LIMIT,
     TOOL_MARKETPLACE_AGENT_CONTEXT: _MARKETPLACE_AGENT_CONTEXT_CALL_LIMIT,
     TOOL_MARKETPLACE_AGENT_COMPUTE: _MARKETPLACE_AGENT_COMPUTE_CALL_LIMIT,
+    TOOL_MARKETPLACE_BALLOT_PROPOSALS: _MARKETPLACE_BALLOT_PROPOSALS_CALL_LIMIT,
 }
 _ASK_THIS_AGENT_TOOLS = {
     TOOL_SEARCH_KNOWLEDGE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
+    TOOL_MARKETPLACE_BALLOT_PROPOSALS,
 }
 _UNSUPPORTED_FEE_CLAIMS = (
     "annualized",
@@ -251,6 +257,26 @@ _BALLOT_ABSENCE_INFERENCE_PATTERNS = (
     ),
     re.compile(r"(?:没有|未配置|不存在).{0,20}(?:固定收益|治理奖励|投票奖励)"),
 )
+_BALLOT_PROPOSAL_ABSENCE_PATTERNS = (
+    re.compile(
+        r"(?:there\s+(?:is|are)\s+)?no\s+"
+        r"(?:(?:currently|current|active|open)\s+)*proposals?\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bno\s+proposals?\s+(?:(?:is|are)\s+)?"
+        r"(?:currently\s+)?(?:active|open)\b",
+        re.I,
+    ),
+    re.compile(r"(?:没有|不存在).{0,12}(?:进行中|当前|开放).{0,8}提案"),
+    re.compile(r"(?:当前|目前).{0,8}(?:没有|不存在).{0,8}提案"),
+)
+_BALLOT_PROPOSAL_INSTANCE_FIELDS = (
+    "title",
+    "status",
+    "voting_starts_at",
+    "voting_ends_at",
+)
 _BALLOT_DEFAULT_VOTING_RULE = re.compile(
     r"default.{0,24}(?:share[- ]weighted|voting).{0,16}(?:applies|model)|"
     r"默认.{0,20}(?:按份额加权|一份一票)",
@@ -295,6 +321,7 @@ class AgentDeps:
     tool_call_counts: dict[str, int] = field(default_factory=dict)
     marketplace_compute_retry_allowed: bool = False
     marketplace_context_result: dict[str, Any] | None = None
+    marketplace_proposals_result: dict[str, Any] | None = None
 
 
 def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[AgentDeps, str]:
@@ -352,6 +379,24 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             return ""
         if turn_policy.get("intent") != "identity_introduction":
             if turn_policy.get("intent") == "current_agent_question":
+                if _is_current_ballot_proposal_state_question(
+                    _query_from_prompt(ctx.prompt)
+                ):
+                    return (
+                        "This turn asks for current Ballot proposal-instance state. "
+                        "You must call marketplace_ballot_proposals before answering. "
+                        "This public read-only tool resolves the current Agent ID from "
+                        "server context and accepts no Agent identifier from the model. "
+                        "For every returned row, preserve title, status, "
+                        "voting_starts_at, and voting_ends_at exactly as returned; do "
+                        "not rename, aggregate, or invent a field. Do not use "
+                        "ballot_governance or ai-context as proposal-instance state. "
+                        "If no rows are returned, the tool is unavailable, or it "
+                        "errors, state that current proposal instance data was not "
+                        "returned and point to the current Agent's proposal page. "
+                        "Never convert missing data into a claim that a proposal does "
+                        "or does not exist."
+                    )
                 return (
                     "This turn asks about the current Agent. You must call"
                     " marketplace_agent_context before answering. Treat the returned"
@@ -445,6 +490,19 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             output,
             ctx.deps.marketplace_context_result,
         )
+        if (
+            _agent_type(ctx.deps.marketplace_context_result) != "ballot"
+            and _agent_type_from_run_context(ctx.deps.run_context) == "ballot"
+        ):
+            violations.extend(_unsupported_ballot_claims(output))
+        if _resolved_agent_type(ctx) == "ballot":
+            violations.extend(
+                _ballot_proposal_output_violations(
+                    prompt,
+                    output,
+                    ctx.deps.marketplace_proposals_result,
+                )
+            )
         missing_mechanism_facts = _missing_approved_mechanism_facts(
             prompt,
             output,
@@ -604,6 +662,49 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
         )
         result = annotate_ballot_context_availability(result)
         ctx.deps.marketplace_context_result = result
+        return result
+
+    @agent.tool
+    async def marketplace_ballot_proposals(ctx: RunContext[AgentDeps]) -> dict[str, Any]:
+        """获取当前 Ballot Agent 的公开提案实例。
+
+        这是只读公开 GET。当前 Agent ID 只从服务端 run_context 解析，模型和
+        用户不能传入 Agent ID 或地址。每条提案只返回 Marketplace 原样提供的
+        title、status、voting_starts_at、voting_ends_at 字段。若 items 为空、
+        Marketplace unavailable 或请求失败，只能说明当前提案实例数据未返回并
+        引导查看当前 Agent 的提案页，不能据此声称存在或不存在提案。
+        """
+        if not tool_allowed(
+            TOOL_MARKETPLACE_BALLOT_PROPOSALS, ctx.deps.run_context
+        ):
+            result = tool_denied_result(TOOL_MARKETPLACE_BALLOT_PROPOSALS)
+            ctx.deps.marketplace_proposals_result = result
+            return result
+        agent_id = extract_current_ballot_agent_id(ctx.deps.run_context)
+        if agent_id is None:
+            result = marketplace_unavailable(
+                "CURRENT_BALLOT_AGENT_ID_MISSING",
+                "Current Ballot Agent ID is missing from server run_context.",
+            )
+            ctx.deps.marketplace_proposals_result = result
+            return result
+        exhausted = _claim_tool_budget(
+            ctx,
+            TOOL_MARKETPLACE_BALLOT_PROPOSALS,
+            _MARKETPLACE_BALLOT_PROPOSALS_CALL_LIMIT,
+        )
+        if exhausted is not None:
+            return exhausted
+        client = ctx.deps.marketplace_ai
+        if client is None:
+            result = marketplace_unavailable(
+                "marketplace_client_missing",
+                "Marketplace AI client is not available.",
+            )
+            ctx.deps.marketplace_proposals_result = result
+            return result
+        result = await client.get_ballot_proposals(agent_id)
+        ctx.deps.marketplace_proposals_result = result
         return result
 
     @agent.tool(retries=1)
@@ -833,6 +934,10 @@ def _unsupported_ballot_claims(
     violations: list[str] = []
     if any(pattern.search(text) for pattern in _BALLOT_ABSENCE_INFERENCE_PATTERNS):
         violations.append("ballot_missing_value_as_absent")
+    if any(pattern.search(text) for pattern in _BALLOT_PROPOSAL_ABSENCE_PATTERNS):
+        if "ballot_missing_value_as_absent" not in violations:
+            violations.append("ballot_missing_value_as_absent")
+        violations.append("ballot_proposal_absence_invented")
     if _BALLOT_DEFAULT_VOTING_RULE.search(text):
         violations.append("ballot_default_voting_rule")
     if _BALLOT_EXCHANGE_RATE_YIELD.search(text):
@@ -908,6 +1013,11 @@ def _violation_feedback(violation: str) -> str:
             "ballot missing value was stated as absent; replace no, none, or "
             "unconfigured with the exact wording 'not provided' or '未提供'"
         ),
+        "ballot_proposal_absence_invented": (
+            "the answer says or implies 'no active proposal'; current proposal "
+            "instance data was not returned, so point to the current Agent's proposal "
+            "page without claiming that a proposal exists or does not exist"
+        ),
         "ballot_default_voting_rule": (
             "a default Ballot voting rule was invented; say the exact current rule "
             "is not provided"
@@ -977,6 +1087,112 @@ def _agent_type(context_result: dict[str, Any] | None) -> str:
         if isinstance(agent, dict)
         else ""
     )
+
+
+def _agent_type_from_run_context(run_context: dict[str, Any] | None) -> str:
+    context = run_context or {}
+    candidates: list[Any] = []
+    for key in ("marketplace_agent", "agent"):
+        value = context.get(key)
+        if isinstance(value, dict):
+            candidates.append(value.get("agent_type"))
+    candidates.append(context.get("agent_type"))
+    for candidate in candidates:
+        agent_type = str(candidate or "").strip().casefold()
+        if agent_type:
+            return agent_type
+    return ""
+
+
+def _resolved_agent_type(ctx: RunContext[AgentDeps]) -> str:
+    return _agent_type(ctx.deps.marketplace_context_result) or (
+        _agent_type_from_run_context(ctx.deps.run_context)
+    )
+
+
+def _is_current_ballot_proposal_state_question(prompt: str) -> bool:
+    text = " ".join(str(prompt or "").casefold().split())
+    if not text or not ("proposal" in text or "提案" in text):
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "current",
+            "currently",
+            "active",
+            "open",
+            "进行中",
+            "当前",
+            "目前",
+            "开放",
+        )
+    )
+
+
+def _ballot_proposal_output_violations(
+    prompt: str,
+    output: str,
+    proposal_result: dict[str, Any] | None,
+) -> list[str]:
+    if not _is_current_ballot_proposal_state_question(prompt):
+        return []
+    payload = (
+        proposal_result.get("data")
+        if isinstance(proposal_result, dict)
+        and proposal_result.get("ok") is True
+        else None
+    )
+    items = payload.get("items") if isinstance(payload, dict) else None
+    proposals = []
+    if isinstance(items, list):
+        proposals = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and any(field in item for field in _BALLOT_PROPOSAL_INSTANCE_FIELDS)
+        ]
+    if proposals:
+        missing = [
+            f"items[{index}].{field}={value!r}"
+            for index, item in enumerate(proposals)
+            for field in _BALLOT_PROPOSAL_INSTANCE_FIELDS
+            if field in item
+            and (value := item[field]) is not None
+            and str(value) not in output
+        ]
+        return (
+            [
+                "returned Ballot proposal fields must appear verbatim; omitted "
+                + ", ".join(missing)
+            ]
+            if missing
+            else []
+        )
+
+    normalized = " ".join(str(output or "").casefold().split())
+    states_not_returned = (
+        "current proposal instance data" in normalized
+        and "not returned" in normalized
+    ) or (
+        ("当前提案实例数据" in output or "当前提案数据" in output)
+        and "未返回" in output
+    )
+    points_to_page = (
+        "proposal page" in normalized
+        or "提案页" in output
+        or "提案页面" in output
+    )
+    violations: list[str] = []
+    if not states_not_returned:
+        violations.append(
+            "state exactly that current proposal instance data was not returned "
+            "(当前提案实例数据未返回)"
+        )
+    if not points_to_page:
+        violations.append(
+            "point the user to the current Agent's proposal page (当前 Agent 的提案页)"
+        )
+    return violations
 
 
 def _missing_approved_mechanism_facts(
@@ -1158,6 +1374,32 @@ def _force_required_tool_call(
     tool_names = {
         part.tool_name for part in response.parts if isinstance(part, ToolCallPart)
     }
+    if (
+        _is_current_ballot_proposal_state_question(_query_from_prompt(ctx.prompt))
+        and _resolved_agent_type(ctx) == "ballot"
+    ):
+        proposals_missing = (
+            ctx.deps.marketplace_proposals_result is None
+            and int(
+                ctx.deps.tool_call_counts.get(
+                    TOOL_MARKETPLACE_BALLOT_PROPOSALS, 0
+                )
+            )
+            == 0
+        )
+        if not proposals_missing:
+            return response
+        if TOOL_MARKETPLACE_BALLOT_PROPOSALS in tool_names:
+            return response
+        return replace(
+            response,
+            parts=[
+                ToolCallPart(
+                    tool_name=TOOL_MARKETPLACE_BALLOT_PROPOSALS,
+                    args={},
+                )
+            ],
+        )
     context_missing = (
         ctx.deps.marketplace_context_result is None
         and int(
@@ -1276,6 +1518,29 @@ def _prepare_tools_for_turn(
     if (
         isinstance(turn_policy, dict)
         and turn_policy.get("intent") == "current_agent_question"
+        and _is_current_ballot_proposal_state_question(
+            _query_from_prompt(ctx.prompt)
+        )
+        and _resolved_agent_type(ctx) == "ballot"
+    ):
+        if (
+            ctx.deps.marketplace_proposals_result is None
+            and int(
+                ctx.deps.tool_call_counts.get(
+                    TOOL_MARKETPLACE_BALLOT_PROPOSALS, 0
+                )
+            )
+            == 0
+        ):
+            return [
+                tool
+                for tool in tool_defs
+                if tool.name == TOOL_MARKETPLACE_BALLOT_PROPOSALS
+            ]
+        return []
+    if (
+        isinstance(turn_policy, dict)
+        and turn_policy.get("intent") == "current_agent_question"
         and _is_current_agent_protocol_creation_time_question(
             _query_from_prompt(ctx.prompt)
         )
@@ -1309,7 +1574,10 @@ def _prepare_tools_for_turn(
     ):
         return [tool for tool in tool_defs if tool.name == TOOL_SEARCH_KNOWLEDGE]
     if behavior_profile_name == _ASK_THIS_AGENT_PROFILE:
-        return [tool for tool in tool_defs if tool.name in _ASK_THIS_AGENT_TOOLS]
+        allowed_tools = set(_ASK_THIS_AGENT_TOOLS)
+        if _resolved_agent_type(ctx) != "ballot":
+            allowed_tools.discard(TOOL_MARKETPLACE_BALLOT_PROPOSALS)
+        return [tool for tool in tool_defs if tool.name in allowed_tools]
     return tool_defs
 
 

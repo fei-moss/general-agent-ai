@@ -23,6 +23,12 @@ _ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 _MARKETPLACE_USER_RE = re.compile(r"^marketplace:user:[1-9][0-9]*$")
 _MAX_REPORTS_LIMIT = 20
 _MAX_QUERIES = 10
+_BALLOT_PROPOSAL_FIELDS = (
+    "title",
+    "status",
+    "voting_starts_at",
+    "voting_ends_at",
+)
 BALLOT_DYNAMIC_CONTEXT_FIELDS = (
     "accrual_display_location", "airdrop_token", "concentration_note",
     "early_redeem_rule", "execution_rule", "fixed_apy", "gov_reward_detail",
@@ -243,6 +249,27 @@ class MarketplaceAIClient:
             viewer_context=viewer_context,
         )
 
+    async def get_ballot_proposals(self, agent_id: int) -> dict[str, Any]:
+        """Call the public GET /api/v1/ballot/agents/{agent_id}/proposals."""
+        if not self._base_url:
+            return marketplace_unavailable(
+                "marketplace_not_configured",
+                "Marketplace AI base URL is not configured.",
+            )
+        clean_agent_id = _clean_agent_id(agent_id)
+        if clean_agent_id is None:
+            return marketplace_unavailable(
+                "marketplace_agent_id_invalid",
+                "Current Ballot Agent ID is invalid.",
+                status="invalid_request",
+            )
+        result = await self._request(
+            "GET",
+            f"/api/v1/ballot/agents/{clean_agent_id}/proposals",
+            params={"limit": 10, "offset": 0},
+        )
+        return _project_ballot_proposal_fields(result)
+
     async def compute_agent_metrics(
         self,
         address: str,
@@ -368,7 +395,12 @@ def annotate_ballot_context_availability(result: dict[str, Any]) -> dict[str, An
     }
     typed: dict[str, dict[str, Any]] = {}
     for field in BALLOT_DYNAMIC_CONTEXT_FIELDS:
-        value, source = direct.get(field, (None, "marketplace_agent_context"))
+        if field in direct:
+            value, source = direct[field]
+        elif field in agent:
+            value, source = agent.get(field), f"agent.{field}"
+        else:
+            value, source = None, "marketplace_agent_context"
         available = value is not None and bool(str(value).strip())
         typed[field] = {
             "availability": "available" if available else "not_provided",
@@ -438,6 +470,24 @@ def extract_current_agent_ref(
     return None
 
 
+def extract_current_ballot_agent_id(
+    run_context: dict[str, Any] | None,
+) -> int | None:
+    """Extract a positive Ballot Agent ID from server-owned run context."""
+    context = run_context or {}
+    candidates: list[Any] = []
+    for key in ("marketplace_agent", "agent"):
+        value = context.get(key)
+        if isinstance(value, dict):
+            candidates.extend([value.get("agent_id"), value.get("id")])
+    candidates.extend([context.get("agent_id")])
+    for candidate in candidates:
+        agent_id = _clean_agent_id(candidate)
+        if agent_id is not None:
+            return agent_id
+    return None
+
+
 def normalize_compute_queries(queries: Any) -> list[dict[str, Any]]:
     """Validate and serialize a bounded Marketplace compute query list."""
     if not isinstance(queries, list):
@@ -498,6 +548,35 @@ def _clean_address(value: Any) -> str | None:
     if not _ADDRESS_RE.match(address):
         return None
     return address
+
+
+def _clean_agent_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    match = re.fullmatch(r"#?([1-9][0-9]*)", str(value or "").strip())
+    return int(match.group(1)) if match is not None else None
+
+
+def _project_ballot_proposal_fields(result: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return result
+    payload = result.get("data")
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return marketplace_unavailable(
+            "marketplace_proposals_not_returned",
+            "Current proposal instance data was not returned.",
+        )
+    projected = [
+        {
+            field: item[field]
+            for field in _BALLOT_PROPOSAL_FIELDS
+            if field in item
+        }
+        for item in items
+        if isinstance(item, dict)
+    ]
+    return {**result, "data": {"items": projected}}
 
 
 def _bounded_int(
