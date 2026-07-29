@@ -130,6 +130,8 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "需要固定平台机制知识时调用 search_knowledge 检索知识库。",
         "需要当前 Agent 的基础上下文、概览指标或最近报告时调用 marketplace_agent_context。",
         "需要当前 Ballot Agent 的当前提案实例时调用只读的 marketplace_ballot_proposals，"
+        "若本轮尚未从 marketplace_agent_context 的 data.agent.agent_id 解析 Agent ID，"
+        "必须先调用 marketplace_agent_context；"
         "逐字使用返回的 title、status、voting_starts_at、voting_ends_at；"
         "无返回或错误时说明当前提案实例数据未返回并引导查看提案页，不得推断没有提案。",
         "需要任意窗口成交量、share price 变化、PnL 预留口径、报告搜索等动态指标时调用 marketplace_agent_compute。",

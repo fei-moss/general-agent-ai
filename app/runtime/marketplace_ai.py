@@ -471,21 +471,19 @@ def extract_current_agent_ref(
 
 
 def extract_current_ballot_agent_id(
-    run_context: dict[str, Any] | None,
+    marketplace_context_result: dict[str, Any] | None,
 ) -> int | None:
-    """Extract a positive Ballot Agent ID from server-owned run context."""
-    context = run_context or {}
-    candidates: list[Any] = []
-    for key in ("marketplace_agent", "agent"):
-        value = context.get(key)
-        if isinstance(value, dict):
-            candidates.extend([value.get("agent_id"), value.get("id")])
-    candidates.extend([context.get("agent_id")])
-    for candidate in candidates:
-        agent_id = _clean_agent_id(candidate)
-        if agent_id is not None:
-            return agent_id
-    return None
+    """Extract the positive Agent ID returned by Marketplace ``ai-context``."""
+    if (
+        not isinstance(marketplace_context_result, dict)
+        or marketplace_context_result.get("ok") is not True
+    ):
+        return None
+    payload = marketplace_context_result.get("data")
+    agent = payload.get("agent") if isinstance(payload, dict) else None
+    if not isinstance(agent, dict):
+        return None
+    return _clean_agent_id(agent.get("agent_id"))
 
 
 def normalize_compute_queries(queries: Any) -> list[dict[str, Any]]:

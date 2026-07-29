@@ -118,15 +118,26 @@ def test_extract_current_agent_ref_rejects_missing_or_invalid_address():
     assert extract_current_agent_ref({"agent_address": "not-an-address"}) is None
 
 
-def test_extract_current_ballot_agent_id_uses_server_context_only():
-    assert extract_current_ballot_agent_id({"agent": {"agent_id": "#64"}}) == 64
-    assert extract_current_ballot_agent_id(
-        {"marketplace_agent": {"id": 1051}}
-    ) == 1051
-    assert extract_current_ballot_agent_id({"agent_id": "0"}) is None
+def test_extract_current_ballot_agent_id_uses_marketplace_context_result_only():
     assert (
         extract_current_ballot_agent_id(
-            {"agent": {"agent_id": "not-an-id"}}
+            {"ok": True, "data": {"agent": {"agent_id": "#64"}}}
+        )
+        == 64
+    )
+    assert extract_current_ballot_agent_id({"agent": {"agent_id": 1051}}) is None
+    assert (
+        extract_current_ballot_agent_id(
+            {"ok": True, "data": {"agent": {"agent_id": "0"}}}
+        )
+        is None
+    )
+    assert (
+        extract_current_ballot_agent_id(
+            {
+                "ok": True,
+                "data": {"agent": {"agent_id": "not-an-id"}},
+            }
         )
         is None
     )

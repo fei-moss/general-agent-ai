@@ -384,9 +384,12 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 ):
                     return (
                         "This turn asks for current Ballot proposal-instance state. "
-                        "You must call marketplace_ballot_proposals before answering. "
-                        "This public read-only tool resolves the current Agent ID from "
-                        "server context and accepts no Agent identifier from the model. "
+                        "You must call marketplace_agent_context first when its result "
+                        "has not resolved data.agent.agent_id, then call "
+                        "marketplace_ballot_proposals before answering. This public "
+                        "read-only tool resolves the current Agent ID only from the "
+                        "marketplace_agent_context result and accepts no Agent "
+                        "identifier from the model. "
                         "For every returned row, preserve title, status, "
                         "voting_starts_at, and voting_ends_at exactly as returned; do "
                         "not rename, aggregate, or invent a field. Do not use "
@@ -668,11 +671,12 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
     async def marketplace_ballot_proposals(ctx: RunContext[AgentDeps]) -> dict[str, Any]:
         """获取当前 Ballot Agent 的公开提案实例。
 
-        这是只读公开 GET。当前 Agent ID 只从服务端 run_context 解析，模型和
-        用户不能传入 Agent ID 或地址。每条提案只返回 Marketplace 原样提供的
-        title、status、voting_starts_at、voting_ends_at 字段。若 items 为空、
-        Marketplace unavailable 或请求失败，只能说明当前提案实例数据未返回并
-        引导查看当前 Agent 的提案页，不能据此声称存在或不存在提案。
+        这是只读公开 GET。当前 Agent ID 只从 marketplace_agent_context 返回的
+        data.agent.agent_id 解析，模型和用户不能传入 Agent ID 或地址。每条提案
+        只返回 Marketplace 原样提供的 title、status、voting_starts_at、
+        voting_ends_at 字段。若 items 为空、Marketplace unavailable 或请求失败，
+        只能说明当前提案实例数据未返回并引导查看当前 Agent 的提案页，不能据此
+        声称存在或不存在提案。
         """
         if not tool_allowed(
             TOOL_MARKETPLACE_BALLOT_PROPOSALS, ctx.deps.run_context
@@ -680,11 +684,16 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
             result = tool_denied_result(TOOL_MARKETPLACE_BALLOT_PROPOSALS)
             ctx.deps.marketplace_proposals_result = result
             return result
-        agent_id = extract_current_ballot_agent_id(ctx.deps.run_context)
+        agent_id = extract_current_ballot_agent_id(
+            ctx.deps.marketplace_context_result
+        )
         if agent_id is None:
             result = marketplace_unavailable(
                 "CURRENT_BALLOT_AGENT_ID_MISSING",
-                "Current Ballot Agent ID is missing from server run_context.",
+                (
+                    "Current Ballot Agent ID was not returned by "
+                    "marketplace_agent_context."
+                ),
             )
             ctx.deps.marketplace_proposals_result = result
             return result
@@ -1378,6 +1387,31 @@ def _force_required_tool_call(
         _is_current_ballot_proposal_state_question(_query_from_prompt(ctx.prompt))
         and _resolved_agent_type(ctx) == "ballot"
     ):
+        agent_id = extract_current_ballot_agent_id(
+            ctx.deps.marketplace_context_result
+        )
+        context_missing = (
+            agent_id is None
+            and ctx.deps.marketplace_context_result is None
+            and int(
+                ctx.deps.tool_call_counts.get(
+                    TOOL_MARKETPLACE_AGENT_CONTEXT, 0
+                )
+            )
+            == 0
+        )
+        if context_missing:
+            if tool_names == {TOOL_MARKETPLACE_AGENT_CONTEXT}:
+                return response
+            return replace(
+                response,
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                        args={"reports_limit": 5, "include_raw": False},
+                    )
+                ],
+            )
         proposals_missing = (
             ctx.deps.marketplace_proposals_result is None
             and int(
@@ -1523,6 +1557,24 @@ def _prepare_tools_for_turn(
         )
         and _resolved_agent_type(ctx) == "ballot"
     ):
+        agent_id = extract_current_ballot_agent_id(
+            ctx.deps.marketplace_context_result
+        )
+        if (
+            agent_id is None
+            and ctx.deps.marketplace_context_result is None
+            and int(
+                ctx.deps.tool_call_counts.get(
+                    TOOL_MARKETPLACE_AGENT_CONTEXT, 0
+                )
+            )
+            == 0
+        ):
+            return [
+                tool
+                for tool in tool_defs
+                if tool.name == TOOL_MARKETPLACE_AGENT_CONTEXT
+            ]
         if (
             ctx.deps.marketplace_proposals_result is None
             and int(

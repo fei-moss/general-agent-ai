@@ -60,6 +60,66 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   public proposals endpoint.
 - This spec is scoped to Ballot (`agent_type == "ballot"`) Agents only. It
   does not change Hyperliquid or other Agent-type behavior.
+- Post-deploy verification (2026-07-29, Agent 64 live chat screenshot after
+  R1-R5 were deployed to `chris-general-agent-ai-chat-prod`): the model
+  correctly stopped claiming "no active proposal" (R2 confirmed working) but
+  answered "The Ballot proposal tool is unavailable for this Agent at this
+  time." Root cause confirmed via Marketplace backend source (MCI,
+  2026-07-29): `MarketplaceAIClient` has a single `_base_url`, configured in
+  this deployment to
+  `MARKETPLACE_AI_BASE_URL=http://app.df-moss-site-agent-marketplace-dev.dockerhost:8081`
+  — the dedicated **internal** listener that
+  `docs/specifications/2026-07-23-backend-security-hardening-specification.md`
+  states registers only `ai-context` and `ai-compute` ("The dedicated listener
+  on port 8081 is the only surface that registers those two routes"). The R3
+  proposals endpoint is registered on the separate **public** listener (port
+  8080; confirmed reachable in R4's live smoke via the public HTTPS domain,
+  never via the internal `:8081` host). `get_ballot_proposals` reuses the
+  internal-only client, so every production call to it fails as
+  `marketplace_unavailable`, which is exactly the "tool is unavailable"
+  wording the model correctly reported instead of inventing an answer.
+- Resolution decision (2026-07-29, owner call): fixed on the Marketplace side,
+  not in this repository. `moss-site/agent_marketplace` already has an
+  established precedent for exactly this situation —
+  `docs/specifications/2026-07-27-internal-governance-sync-routes-specification.md`
+  states "The same route shapes... remain available on Marketplace port
+  `8081`" for other routes that originally existed only on the public
+  listener. The owner will have the Marketplace backend team register
+  `GET /api/v1/ballot/agents/{agent_id}/proposals` on the internal `8081`
+  listener as well (mirroring that precedent), so `MarketplaceAIClient`'s
+  existing single `_base_url` keeps working unchanged once that lands. This
+  repository's `get_ballot_proposals` implementation is not changed for this
+  issue; a second Chat-Server-side base URL was drafted and then reverted
+  (uncommitted) in favor of this simpler, single-URL resolution.
+- Marketplace-side fix landed and confirmed (2026-07-29, MCI): commit
+  `570901666221ca2d5a503382c05855bdd2db080b` on `moss-site/agent_marketplace`
+  registers `GET /api/v1/ballot/agents/{agent_id}/proposals` on the internal
+  `8081` listener (`internal/transport/http/router.go`'s
+  `NewInternalAIRouter`), confirmed by
+  `internal/contract/internal_ai_listener_contract_test.go`. Per `API.md`
+  (2026-07-29): "内网入口不解析或要求 JWT... 并在转发前清除 caller 的
+  `Authorization`、`X-Marketplace-User-ID` 与 `X-Marketplace-Wallet`" — the
+  internal registration is anonymous (`prepareAnonymousProxyRequest`, not
+  `middleware.TrustedMarketplaceIdentity`) and strips any identity headers
+  before forwarding. This confirms `get_ballot_proposals` sending no viewer
+  headers is already correct, and `MarketplaceAIClient`'s single existing
+  `_base_url` now reaches both `ai-context` and the proposals route — no
+  second base URL is needed after all.
+- Despite the above, re-verification against Agent 64 still returned "The
+  Ballot proposal tool is unavailable for this Agent at this time." Root
+  cause (2026-07-29): `extract_current_ballot_agent_id` resolves `agent_id`
+  from server-owned `run_context`, but `run_context`'s only audited contract
+  (`SPEC-MARKETPLACE-AI-INTERFACE-001-R1`) guarantees a contract *address*
+  (`marketplace_agent.address`/`contract_address`, `agent.address`/
+  `contract_address`, top-level `agent_address`/`contract_address`) — it was
+  never specified to carry a ballot `agent_id`, and does not in production.
+  Separately, Marketplace's `ai-context` response (`agent` object, per
+  `internal/query/aicontext/service.go`) now includes
+  `AgentID int64 json:"agent_id"` — the same field Chat Server's existing
+  `marketplace_agent_context` tool already receives but does not read for
+  this purpose. `extract_current_ballot_agent_id` must resolve `agent_id`
+  from the `marketplace_agent_context` tool result (already fetched by Chat
+  Server), not from `run_context`.
 
 ### Behavior
 
@@ -105,6 +165,18 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `specs/ballot_golden_answers/spec.md` remains unchanged. This spec only
   fixes how already-approved dynamic fields are populated and validated; it
   does not rewrite the approved Q1-Q18 source or its ideal answers.
+- `SPEC-BALLOT-PROPOSAL-STATE-CONTEXT-001-R6`: the ballot proposals turn
+  resolves `agent_id` from the `marketplace_agent_context` tool's own result
+  (`data.agent.agent_id`, as returned by Marketplace's `ai-context`), not from
+  server-owned `run_context`. For a "current proposal" question, Chat Server
+  calls `marketplace_agent_context` before `marketplace_ballot_proposals`
+  when an `agent_id` has not already been resolved this turn, exactly as it
+  already sequences other current-Agent tool dependencies. If `agent_id` is
+  missing, non-numeric, or `ai-context` itself is unavailable, the proposals
+  tool returns a structured `marketplace_unavailable` result (never a
+  fabricated agent_id, and never silently falling back to an address-shaped
+  value). `run_context`-based `agent_id` lookup, if any remains, is
+  informational only and never required for this flow to succeed.
 
 ### Invariants
 
@@ -135,6 +207,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `/api/v1/ballot/agents/{agent_id}/proposals` endpoint itself is owned by
   `moss-site/marketplace-ballot-agent` and is unaffected by this repository's
   rollback.
+- R6 changes only how `agent_id` is sourced for the proposals turn (from the
+  `marketplace_agent_context` result instead of `run_context`) and the
+  within-turn tool call order; it does not change `marketplace_agent_context`
+  itself, its budget, or non-ballot turns. Rollback is a code-and-test revert;
+  no Marketplace-side change is required.
 
 ## Implementation Plan
 
@@ -168,6 +245,25 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
    proposal" case using this tool's output.
 7. Run full `pytest`, the Ballot golden-case acceptance suite, `verify-change`,
    and `verify-release` on the integrated tree before any deployment.
+8. Add a RED test asserting that when `marketplace_ballot_proposals` runs
+   after a `marketplace_agent_context` call whose result contains
+   `data.agent.agent_id`, it calls `MarketplaceAIClient.get_ballot_proposals`
+   with that resolved integer `agent_id` — and that when `agent_id` is
+   absent, non-numeric, or `ai-context` itself failed, it returns a
+   structured `marketplace_unavailable` result instead, per R6.
+9. Change `agent_id` resolution for the ballot-proposals turn to read from
+   `ctx.deps.marketplace_context_result` (the `marketplace_agent_context`
+   tool's own result) instead of `run_context`, and adjust
+   `_force_required_tool_call`/`_prepare_tools_for_turn` so
+   `marketplace_agent_context` is called first when no `agent_id` has been
+   resolved yet this turn, then `marketplace_ballot_proposals` runs with it.
+   Make test 8 pass without changing `marketplace_agent_context` itself or
+   non-ballot turns.
+10. Run full `pytest`, `check_spec_contract.sh`, `verify-change`, and
+    `verify-release` again on the integrated tree.
+11. Redeploy `chris-general-agent-ai-chat-prod` on the `Deploy` ref and
+    re-verify "is there a current proposal" against Agent 64 returns the
+    real proposal data.
 
 ## Closeout Evidence
 
@@ -236,3 +332,49 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `verify-change` are all green. The only outstanding gate is
   `verify-release`, which requires committing the change first; that is a
   separate, explicit decision left to the owner and not taken here.
+- Post-deploy follow-up #1 (2026-07-29, resolved on Marketplace side): R3's
+  tool was initially blocked because `MARKETPLACE_AI_BASE_URL` only reached
+  Marketplace's internal `ai-context`/`ai-compute`-only listener (port 8081)
+  while the proposals endpoint lived on the public listener (port 8080). Per
+  the owner's decision, the Marketplace backend team registered the route on
+  the internal listener instead (commit `570901666221ca2d5a503382c05855bdd2db080b`,
+  confirmed via MCI — see Source And Scope); no code in this repository
+  changed for this follow-up, and a drafted second-base-URL fix was reverted
+  uncommitted before landing.
+- Post-deploy follow-up #2 (2026-07-29, local R6 implementation complete):
+  after follow-up #1
+  landed, re-verification against Agent 64 still returned "tool is
+  unavailable." Root cause: this repository's `agent_id` resolution read
+  `run_context`, whose only audited contract carries a contract address, not
+  a ballot `agent_id` (see Source And Scope and R6). RED:
+  `test_extract_current_ballot_agent_id_uses_marketplace_context_result_only`
+  failed with `None != 64` for `data.agent.agent_id == "#64"`. GREEN:
+  the resolver and proposal tool now read only the successful
+  `marketplace_agent_context` result, the turn policy forces context before
+  proposals while unresolved, and missing/non-numeric/unavailable context
+  fails closed without using a conflicting `run_context.agent_id`.
+- R6 verification (2026-07-29): 4 focused regression tests passed; the
+  affected `test_agent_marketplace_tools.py`, `test_chat_behavior_eval.py`,
+  and `test_marketplace_ai_client.py` suites passed (**148 passed**); full
+  pytest passed (**675 passed, 1 skipped**); `scripts/check_spec_contract.sh`
+  passed; and `verify-change` passed `change_scope`, `ai_boundaries`,
+  `spec_registry`, and `legacy_spec_contract`. The sandbox's default asyncio
+  loop did not wake worker-thread callbacks even in a minimal standard-library
+  reproduction, so Agent tests ran under the already-installed `uvloop`;
+  unchanged baseline Agent tests passed under the same workaround.
+  `verify-release` stopped at its expected clean-tree precondition because
+  this R6 change is intentionally uncommitted. Implementation Plan step 11
+  remains pending until the owner commits the candidate to the `Deploy` ref
+  and authorizes/executes the production redeploy and Agent 64 smoke.
+- Independent re-verification (2026-07-29, this session, no uvloop
+  workaround needed): full `pytest -q` with default asyncio — **738 passed,
+  1 skipped**, exit code 0, no hang observed. `scripts/check_spec_contract.sh`
+  passed. `verify-change` (`AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:
+  approved in chat 2026-07-29, ballot proposal agent_id resolution fix (R6)`)
+  passed all four gates; evidence in `.artifacts/change`. Code review of the
+  diff (`extract_current_ballot_agent_id`, `marketplace_ballot_proposals`,
+  `_force_required_tool_call`, `_prepare_tools_for_turn`) confirms it matches
+  R6 exactly: `agent_id` is read only from a successful
+  `marketplace_agent_context` result; a missing/non-numeric/unavailable
+  result fails closed via the tool's own `CURRENT_BALLOT_AGENT_ID_MISSING`
+  path rather than falling back to `run_context`.

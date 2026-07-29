@@ -347,11 +347,9 @@ async def test_agent_marketplace_context_tool_exposes_typed_dynamic_config():
     assert "rate_bps" in rendered
 
 
-async def test_agent_ballot_proposals_tool_uses_server_agent_id_and_exact_fields():
+async def test_agent_ballot_proposals_tool_uses_agent_context_id_and_exact_fields():
     marketplace = _FakeMarketplaceAI()
-    agent = build_agent(
-        _tool_calling_model(TOOL_MARKETPLACE_BALLOT_PROPOSALS, {})
-    )
+    agent = build_agent(_context_then_proposals_model())
     deps = AgentDeps(
         retriever=_NoopRetriever(),
         tool_router=_NoopToolRouter(),
@@ -359,7 +357,6 @@ async def test_agent_ballot_proposals_tool_uses_server_agent_id_and_exact_fields
         marketplace_viewer_context=VIEWER,
         run_context={
             "agent": {
-                "agent_id": "#64",
                 "agent_type": "ballot",
                 "contract_address": ADDRESS,
             }
@@ -368,6 +365,10 @@ async def test_agent_ballot_proposals_tool_uses_server_agent_id_and_exact_fields
 
     result = await agent.run("Is there a current proposal?", deps=deps)
 
+    assert marketplace.call_order == [
+        TOOL_MARKETPLACE_AGENT_CONTEXT,
+        TOOL_MARKETPLACE_BALLOT_PROPOSALS,
+    ]
     assert marketplace.proposal_calls == [{"agent_id": 64}]
     assert "Current voting test" in result.output
     assert "'status': 'open'" in result.output
@@ -375,7 +376,7 @@ async def test_agent_ballot_proposals_tool_uses_server_agent_id_and_exact_fields
     assert "2026-08-04T09:48:58.282Z" in result.output
 
 
-async def test_current_ballot_proposal_question_forces_public_proposal_tool_only():
+async def test_current_ballot_proposal_question_forces_context_before_proposals():
     marketplace = _FakeMarketplaceAI()
 
     def function(messages, _info):
@@ -408,7 +409,6 @@ async def test_current_ballot_proposal_question_forces_public_proposal_tool_only
         marketplace_viewer_context=VIEWER,
         run_context={
             "agent": {
-                "agent_id": "#64",
                 "agent_type": "ballot",
                 "contract_address": ADDRESS,
             },
@@ -421,13 +421,65 @@ async def test_current_ballot_proposal_question_forces_public_proposal_tool_only
 
     result = await agent.run("Is there a current proposal?", deps=deps)
 
+    assert marketplace.call_order == [
+        TOOL_MARKETPLACE_AGENT_CONTEXT,
+        TOOL_MARKETPLACE_BALLOT_PROPOSALS,
+    ]
     assert marketplace.proposal_calls == [{"agent_id": 64}]
-    assert marketplace.context_calls == []
+    assert len(marketplace.context_calls) == 1
     assert result.output == (
         "Current voting test — status: open; "
         "voting_starts_at: 2026-07-28T09:48:58.282Z; "
         "voting_ends_at: 2026-08-04T09:48:58.282Z."
     )
+
+
+async def test_agent_ballot_proposals_fails_closed_without_valid_context_agent_id():
+    context_results = (
+        (
+            "missing",
+            _FakeMarketplaceAI(agent_id=None),
+        ),
+        (
+            "non-numeric",
+            _FakeMarketplaceAI(agent_id="not-an-id"),
+        ),
+        (
+            "unavailable",
+            _FakeMarketplaceAI(
+                context_result={
+                    "ok": False,
+                    "source": "marketplace_ai",
+                    "status": "unavailable",
+                    "reason": "marketplace_request_failed",
+                    "message": "Marketplace AI request failed.",
+                }
+            ),
+        ),
+    )
+
+    for label, marketplace in context_results:
+        agent = build_agent(_context_then_proposals_model())
+        deps = AgentDeps(
+            retriever=_NoopRetriever(),
+            tool_router=_NoopToolRouter(),
+            marketplace_ai=marketplace,
+            run_context={
+                "agent": {
+                    "agent_id": "#999",
+                    "agent_type": "ballot",
+                    "contract_address": ADDRESS,
+                }
+            },
+        )
+
+        result = await agent.run("Is there a current proposal?", deps=deps)
+
+        assert marketplace.call_order == [TOOL_MARKETPLACE_AGENT_CONTEXT], label
+        assert marketplace.proposal_calls == [], label
+        assert "'ok': False" in result.output, label
+        assert "'status': 'unavailable'" in result.output, label
+        assert "CURRENT_BALLOT_AGENT_ID_MISSING" in result.output, label
 
 
 async def test_empty_ballot_proposal_result_requires_not_returned_fallback():
@@ -1660,11 +1712,20 @@ class _NoopToolRouter:
 
 
 class _FakeMarketplaceAI:
-    def __init__(self, *, deployed_at: str | None = DEPLOYED_AT) -> None:
+    def __init__(
+        self,
+        *,
+        deployed_at: str | None = DEPLOYED_AT,
+        agent_id: Any = 64,
+        context_result: dict[str, Any] | None = None,
+    ) -> None:
         self.context_calls: list[dict[str, Any]] = []
         self.compute_calls: list[dict[str, Any]] = []
         self.proposal_calls: list[dict[str, Any]] = []
+        self.call_order: list[str] = []
         self.deployed_at = deployed_at
+        self.agent_id = agent_id
+        self.context_result = context_result
 
     async def get_agent_context(
         self,
@@ -1675,6 +1736,7 @@ class _FakeMarketplaceAI:
         include_raw: bool = False,
         viewer_context: MarketplaceViewerContext | None = None,
     ) -> dict[str, Any]:
+        self.call_order.append(TOOL_MARKETPLACE_AGENT_CONTEXT)
         self.context_calls.append(
             {
                 "address": address,
@@ -1684,7 +1746,11 @@ class _FakeMarketplaceAI:
                 "viewer_context": viewer_context,
             }
         )
+        if self.context_result is not None:
+            return self.context_result
         agent = {"name": "BTC Trend Agent"}
+        if self.agent_id is not None:
+            agent["agent_id"] = self.agent_id
         if self.deployed_at is not None:
             agent["deployed_at"] = self.deployed_at
         return {
@@ -1754,6 +1820,7 @@ class _FakeMarketplaceAI:
         }
 
     async def get_ballot_proposals(self, agent_id: int) -> dict[str, Any]:
+        self.call_order.append(TOOL_MARKETPLACE_BALLOT_PROPOSALS)
         self.proposal_calls.append({"agent_id": agent_id})
         return {
             "ok": True,
@@ -1773,6 +1840,7 @@ class _FakeMarketplaceAI:
 
 class _EmptyProposalMarketplaceAI(_FakeMarketplaceAI):
     async def get_ballot_proposals(self, agent_id: int) -> dict[str, Any]:
+        self.call_order.append(TOOL_MARKETPLACE_BALLOT_PROPOSALS)
         self.proposal_calls.append({"agent_id": agent_id})
         return {
             "ok": True,
@@ -1848,6 +1916,44 @@ def _tool_calling_model(tool_name: str, args: dict[str, Any]) -> FunctionModel:
                             parts=[TextPart(content=repr(part.content))]
                         )
         return ModelResponse(parts=[TextPart(content="done")])
+
+    return FunctionModel(function=function)
+
+
+def _context_then_proposals_model() -> FunctionModel:
+    def function(messages, _info):
+        returned_tools = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        ]
+        returned_tool_names = {part.tool_name for part in returned_tools}
+        if TOOL_MARKETPLACE_AGENT_CONTEXT not in returned_tool_names:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_AGENT_CONTEXT,
+                        args={"reports_limit": 5, "include_raw": False},
+                    )
+                ]
+            )
+        if TOOL_MARKETPLACE_BALLOT_PROPOSALS not in returned_tool_names:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=TOOL_MARKETPLACE_BALLOT_PROPOSALS,
+                        args={},
+                    )
+                ]
+            )
+        proposal_result = next(
+            part.content
+            for part in reversed(returned_tools)
+            if part.tool_name == TOOL_MARKETPLACE_BALLOT_PROPOSALS
+        )
+        return ModelResponse(parts=[TextPart(content=repr(proposal_result))])
 
     return FunctionModel(function=function)
 
