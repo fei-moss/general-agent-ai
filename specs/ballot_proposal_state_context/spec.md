@@ -186,6 +186,24 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   the primary and only currently-confirmed source; a test must assert `id`
   resolves correctly on its own with no `agent_id` key present, matching the
   real production shape exactly.
+- `SPEC-BALLOT-PROPOSAL-STATE-CONTEXT-001-R8`: proposal `title` rendering
+  follows the turn's target language. When the target language is `en` and a
+  returned `title` is not already English, the answer renders an English
+  translation of that title and does not paste the original non-English title;
+  when the target language is `zh-Hans` or `unknown`, `title` is rendered
+  verbatim as returned, so a Chinese answer may still contain English titles.
+  `status`, `voting_starts_at`, and `voting_ends_at` are rendered verbatim in
+  every language because they are machine-generated, language-neutral values.
+  R3's verbatim output guard is relaxed for `title` only under the
+  `en` + non-English-title condition; it continues to enforce verbatim `title`
+  in all other cases and verbatim `status`/`voting_starts_at`/`voting_ends_at`
+  unconditionally. The answer keeps pointing to the current Agent's proposal
+  page, which remains the authoritative source for the original proposal text.
+  Owner decision recorded 2026-07-30: the owner was shown the alternative of
+  rendering the original title plus an English gloss, and the risk that a
+  model-generated translation of a governance proposal title can differ from
+  the authoritative on-chain text, and chose translation-only rendering for
+  English answers.
 
 ### Invariants
 
@@ -283,6 +301,25 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 14. Redeploy `chris-general-agent-ai-chat-prod` on the `Deploy` ref and
     re-verify "is there a current proposal" against Agent 64 returns the
     real proposal data (4 open proposals, per Chris's live verification).
+15. Add RED tests for R8 in `tests/test_agent_marketplace_tools.py`: (a) with
+    `target_language="en"` and a returned non-English `title`, an answer that
+    renders an English translation and omits the original title raises no
+    violation, while an answer omitting a returned `status`/`voting_starts_at`/
+    `voting_ends_at` still does; (b) with `target_language="zh-Hans"` (and
+    `unknown`), omitting a returned non-English `title` still raises the
+    existing verbatim violation.
+16. Thread the turn's target language into `_ballot_proposal_output_violations`
+    from the already-existing `AgentDeps.target_language`, and relax the
+    `title` verbatim check exactly under the R8 condition. Extend
+    `DEFAULT_CHAT_BEHAVIOR_POLICY.tool_policy` so English turns are instructed
+    to translate a non-English proposal title and to keep
+    `status`/`voting_starts_at`/`voting_ends_at` exactly as returned. Do not
+    change `_evaluate_language_consistency` or its thresholds. Make step 15
+    pass, then run full `pytest`, `check_spec_contract.sh`, and `verify-change`.
+17. Redeploy `chris-general-agent-ai-chat-prod` on the `Deploy` ref and
+    re-verify that an English "show the active proposal" turn renders English
+    titles with verbatim status and voting timestamps, and that the same
+    question asked in Chinese still renders the original titles verbatim.
 
 ## Closeout Evidence
 
@@ -425,7 +462,12 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   (**676 passed, 1 skipped**) under the already-documented proxy-clean
   `uvloop` sandbox workaround.
 - Independent re-verification (2026-07-29, this session, default asyncio, no
-  uvloop needed): full `pytest -q` — **739 passed, 1 skipped**, exit code 0.
+  uvloop needed): full `pytest -q` — **676 passed, 1 skipped**, exit code 0.
+  (Corrected 2026-07-30: this entry originally recorded "739 passed", which was
+  a transcription error on the reviewer's side. Re-measured at commit
+  `d54131b` with `--collect-only`, the suite collects **677** tests total,
+  i.e. 676 passed + 1 skipped — matching the count Codex had reported. The
+  earlier claim that the reviewer's count superseded Codex's was wrong.)
   `scripts/check_spec_contract.sh` passed. `verify-change`
   (`AI_BOUNDARY_APPROVAL_EVIDENCE=owner-request:approved in chat 2026-07-29,
   ballot proposal agent_id field name fix (R7)`) passed all four gates;
@@ -435,3 +477,54 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   R7 exactly, no changes to R6's tool-call ordering. Implementation Plan
   step 14 (redeploy and re-verify Agent 64 returns the real 4 open
   proposals) remains pending the owner's redeploy.
+- Implementation Plan step 14 CONFIRMED (2026-07-30, live production after the
+  owner's redeploy of `d54131b`): an English "show the active proposal" turn
+  against Agent 64 returned all 4 real `open` proposals with their titles,
+  `status`, and `voting_starts_at`/`voting_ends_at` values, replacing the
+  previous `CURRENT_BALLOT_AGENT_ID_MISSING` failure. This closes the original
+  incident end-to-end: R1, R2, R3, R6, and R7 are all verified in production.
+- Post-deploy follow-up #4 (2026-07-30, new scope — R8): with the incident
+  resolved, the owner observed that the confirming English answer rendered its
+  narrative text in English but the proposal titles in their original Chinese.
+  Investigation found this is the intended interaction of two existing rules,
+  not a regression: `_evaluate_language_consistency`
+  (`app/runtime/chat_behavior.py:857`) deliberately allows mixed-script answers
+  (for `en` it passes when `latin_count > 0`, so it only rejects answers with
+  no Latin characters at all), and R3 requires every returned proposal field
+  verbatim, enforced by `_ballot_proposal_output_violations`
+  (`app/runtime/agent_factory.py:1170`, `str(value) not in output`). The owner
+  ruled the resulting mixed-script English answer unacceptable for users and
+  chose translation-only titles for English turns, which R8 now specifies.
+  Note that tightening the language guard is NOT a valid implementation of
+  this: forbidding CJK in `en` answers would make a verbatim Chinese title
+  self-violating and break the proposal feature, so R8 is implemented in the
+  generation and verbatim-guard layers only.
+- R8 verification (2026-07-30, Implementation Plan steps 15-16 complete):
+  `_ballot_proposal_output_violations` now takes a keyword-only
+  `target_language` and skips the verbatim `title` check only when all three of
+  `field == "title"`, `normalize_target_language(target_language) ==
+  TARGET_LANGUAGE_EN`, and `contains_cjk(str(value))` hold. `contains_cjk` was
+  added to `app/runtime/chat_behavior.py` reusing the existing `_CJK_CHAR_RE`;
+  `_evaluate_language_consistency` and its thresholds are untouched, per the
+  explicit prohibition above. The `tool_policy` entry now separates always-
+  verbatim `status`/`voting_starts_at`/`voting_ends_at` from language-dependent
+  `title`, and its stale `data.agent.agent_id` reference was corrected to
+  `data.agent.id` (left over from R7).
+  Four tests were added to `tests/test_agent_marketplace_tools.py`, covering
+  en + CJK title translated (no violation), en + CJK title but omitted
+  `status` (violation), zh-Hans and unknown + omitted CJK title (violation),
+  and en + omitted plain-English title (violation).
+  Conjunct-pinning proof (run independently by the reviewer, not taken on the
+  implementer's report): with the `contains_cjk(str(value))` line removed,
+  **exactly one** test fails —
+  `test_ballot_proposal_guard_requires_english_title_verbatim_in_english_turn`
+  — and the file was restored byte-identical afterwards. Without that test the
+  condition could be silently weakened to "skip title on any English turn"
+  with the whole suite still green.
+  Full `pytest` — **680 passed, 1 skipped**, exit code 0 (677 baseline at
+  `d54131b` + 4 new tests; verified via `--collect-only`).
+  `tests/test_agent_marketplace_tools.py` alone — 56 passed.
+  `scripts/check_spec_contract.sh` passed.
+  Implementation Plan step 17 (redeploy and re-verify an English turn renders
+  English titles while a Chinese turn keeps the originals) remains pending the
+  owner's redeploy.

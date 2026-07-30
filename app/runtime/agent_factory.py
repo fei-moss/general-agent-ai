@@ -44,8 +44,11 @@ from pydantic_ai.tools import ToolDefinition
 from app.core.config import Settings, get_settings
 from app.core.secrets import SecretProvider, SecretValue, build_secret_provider, is_mock_provider
 from app.runtime.chat_behavior import (
+    TARGET_LANGUAGE_EN,
     build_system_prompt,
+    contains_cjk,
     get_behavior_profile,
+    normalize_target_language,
 )
 from app.runtime.marketplace_ai import (
     MarketplaceComputeQueries,
@@ -504,6 +507,7 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                     prompt,
                     output,
                     ctx.deps.marketplace_proposals_result,
+                    target_language=ctx.deps.target_language,
                 )
             )
         missing_mechanism_facts = _missing_approved_mechanism_facts(
@@ -1142,6 +1146,8 @@ def _ballot_proposal_output_violations(
     prompt: str,
     output: str,
     proposal_result: dict[str, Any] | None,
+    *,
+    target_language: str,
 ) -> list[str]:
     if not _is_current_ballot_proposal_state_question(prompt):
         return []
@@ -1167,6 +1173,11 @@ def _ballot_proposal_output_violations(
             for field in _BALLOT_PROPOSAL_INSTANCE_FIELDS
             if field in item
             and (value := item[field]) is not None
+            and not (
+                field == "title"
+                and normalize_target_language(target_language) == TARGET_LANGUAGE_EN
+                and contains_cjk(str(value))
+            )
             and str(value) not in output
         ]
         return (

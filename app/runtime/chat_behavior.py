@@ -130,9 +130,10 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "需要固定平台机制知识时调用 search_knowledge 检索知识库。",
         "需要当前 Agent 的基础上下文、概览指标或最近报告时调用 marketplace_agent_context。",
         "需要当前 Ballot Agent 的当前提案实例时调用只读的 marketplace_ballot_proposals，"
-        "若本轮尚未从 marketplace_agent_context 的 data.agent.agent_id 解析 Agent ID，"
+        "若本轮尚未从 marketplace_agent_context 的 data.agent.id 解析 Agent ID，"
         "必须先调用 marketplace_agent_context；"
-        "逐字使用返回的 title、status、voting_starts_at、voting_ends_at；"
+        "返回的 status、voting_starts_at、voting_ends_at 始终逐字使用；"
+        "本轮回答语言为英语且返回的 title 含 CJK 字符时，使用其英语翻译而非原文，否则逐字使用 title；"
         "无返回或错误时说明当前提案实例数据未返回并引导查看提案页，不得推断没有提案。",
         "需要任意窗口成交量、share price 变化、PnL 预留口径、报告搜索等动态指标时调用 marketplace_agent_compute。",
         "Ask this Agent 产品范围内不得联网搜索或引用外部新闻、其他平台、其他 Agent、"
@@ -901,6 +902,10 @@ def _language_gate_should_open(text: str, target_language: str) -> bool:
 
 def _count_cjk(text: str) -> int:
     return len(_CJK_CHAR_RE.findall(str(text or "")))
+
+
+def contains_cjk(text: str) -> bool:
+    return bool(_CJK_CHAR_RE.search(str(text or "")))
 
 
 def _count_latin(text: str) -> int:

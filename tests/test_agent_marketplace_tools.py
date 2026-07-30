@@ -17,6 +17,7 @@ from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_BALLOT_PROPOSALS,
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
+    _ballot_proposal_output_violations,
     _knowledge_query_for_context,
     _is_correctable_compute_failure,
     _missing_approved_mechanism_facts,
@@ -611,6 +612,129 @@ async def test_ballot_proposal_answer_requires_every_returned_field_verbatim():
     assert "voting_ends_at" in retry_feedback[0]
     assert "2026-07-28T09:48:58.282Z" in result.output
     assert "2026-08-04T09:48:58.282Z" in result.output
+
+
+def test_ballot_proposal_guard_allows_english_translation_of_cjk_title():
+    proposal_result = {
+        "ok": True,
+        "data": {
+            "items": [
+                {
+                    "title": "提升治理参与度",
+                    "status": "open",
+                    "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                    "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                }
+            ]
+        },
+    }
+    output = (
+        "Increase governance participation — status: open; "
+        "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+        "voting_ends_at: 2026-08-04T09:48:58.282Z."
+    )
+
+    assert _ballot_proposal_output_violations(
+        "Is there a current proposal?",
+        output,
+        proposal_result,
+        target_language="en",
+    ) == []
+
+
+def test_ballot_proposal_guard_still_requires_status_for_english_cjk_title():
+    proposal_result = {
+        "ok": True,
+        "data": {
+            "items": [
+                {
+                    "title": "提升治理参与度",
+                    "status": "open",
+                    "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                    "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                }
+            ]
+        },
+    }
+    output = (
+        "Increase governance participation; "
+        "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+        "voting_ends_at: 2026-08-04T09:48:58.282Z."
+    )
+
+    violations = _ballot_proposal_output_violations(
+        "Is there a current proposal?",
+        output,
+        proposal_result,
+        target_language="en",
+    )
+
+    assert len(violations) == 1
+    assert "status='open'" in violations[0]
+    assert "title=" not in violations[0]
+
+
+def test_ballot_proposal_guard_requires_cjk_title_outside_english():
+    proposal_result = {
+        "ok": True,
+        "data": {
+            "items": [
+                {
+                    "title": "提升治理参与度",
+                    "status": "open",
+                    "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                    "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                }
+            ]
+        },
+    }
+    output = (
+        "status: open; "
+        "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+        "voting_ends_at: 2026-08-04T09:48:58.282Z."
+    )
+
+    for target_language in ("zh-Hans", "unknown"):
+        violations = _ballot_proposal_output_violations(
+            "Is there a current proposal?",
+            output,
+            proposal_result,
+            target_language=target_language,
+        )
+
+        assert len(violations) == 1
+        assert "title='提升治理参与度'" in violations[0]
+
+
+def test_ballot_proposal_guard_requires_english_title_verbatim_in_english_turn():
+    proposal_result = {
+        "ok": True,
+        "data": {
+            "items": [
+                {
+                    "title": "Increase governance participation",
+                    "status": "open",
+                    "voting_starts_at": "2026-07-28T09:48:58.282Z",
+                    "voting_ends_at": "2026-08-04T09:48:58.282Z",
+                }
+            ]
+        },
+    }
+    output = (
+        "status: open; "
+        "voting_starts_at: 2026-07-28T09:48:58.282Z; "
+        "voting_ends_at: 2026-08-04T09:48:58.282Z."
+    )
+
+    violations = _ballot_proposal_output_violations(
+        "Is there a current proposal?",
+        output,
+        proposal_result,
+        target_language="en",
+    )
+
+    assert len(violations) == 1
+    assert "title='Increase governance participation'" in violations[0]
 
 
 async def test_empty_ballot_proposal_answer_rejects_vague_unknown_wording():
