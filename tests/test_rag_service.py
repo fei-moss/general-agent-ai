@@ -4,7 +4,16 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.core.config import Settings
+
+
+@pytest.fixture
+def event_loop_policy():
+    # RAG ingestion runs as the Celery task app.tasks.agent_tasks.rag_ingest_document
+    # (queue QUEUE_RAG), so production uses the worker's stdlib loop.
+    return asyncio.DefaultEventLoopPolicy()
 
 
 class _FakeKnowledgeBaseRepo:

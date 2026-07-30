@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import pytest
+
 from app.core.enums import RunStatus, TaskStatus
 from tests.harness_fakes import FakeClock, FakeRunLease
+
+
+@pytest.fixture
+def event_loop_policy():
+    # The reaper runs in its own process via asyncio.run (app/tasks/reaper.py),
+    # so production uses the stdlib loop here, not uvloop.
+    return asyncio.DefaultEventLoopPolicy()
 
 
 async def test_pending_reaper_can_distinguish_live_and_expired_run_lease():

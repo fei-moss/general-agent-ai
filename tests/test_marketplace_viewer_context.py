@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
+
+import pytest
 
 from app.api.identity import ResolvedIdentity
 from app.core.schemas import ChatRequest
@@ -142,127 +145,138 @@ async def test_realtime_runner_forwards_typed_viewer_context_to_orchestrator():
     assert captured["marketplace_viewer_context"] is viewer
 
 
-async def test_batch_worker_forwards_viewer_payload_to_orchestration(monkeypatch):
-    from app.tasks import agent_tasks
+class TestBatchWorkerLoop:
+    """Batch worker tests run on the stdlib loop, matching the Celery worker process."""
 
-    captured = {}
-    viewer_payload = {
-        "user_id": USER_ID,
-        "wallet": WALLET,
-        "agent_run_id": "run-1",
-        "conversation_id": "conv-1",
-        "trace_id": "trace-1",
-    }
+    @pytest.fixture
+    def event_loop_policy(self):
+        return asyncio.DefaultEventLoopPolicy()
 
-    async def orchestrate(**kwargs):
-        captured.update(kwargs)
-        return {"content": "ok", "intent": None}
+    async def test_batch_worker_forwards_viewer_payload_to_orchestration(
+        self, monkeypatch
+    ):
+        from app.tasks import agent_tasks
 
-    async def noop(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr(agent_tasks, "_resolve_orchestrator", lambda: orchestrate)
-    monkeypatch.setattr(agent_tasks.run_store, "ensure_run", noop)
-    monkeypatch.setattr(agent_tasks.run_store, "mark_run_running", noop)
-    monkeypatch.setattr(agent_tasks.run_store, "mark_run_succeeded", noop)
-
-    await agent_tasks._execute(
-        "run-1",
-        "conv-1",
-        "trace-1",
-        "hello",
-        marketplace_viewer_context=viewer_payload,
-    )
-
-    assert captured["marketplace_viewer_context"] == viewer_payload
-
-
-async def test_batch_worker_does_not_overwrite_failed_orchestration_status(monkeypatch):
-    from app.tasks import agent_tasks
-
-    calls: list[tuple[str, tuple]] = []
-
-    async def orchestrate(**_kwargs):
-        return {
-            "content": "safe fallback",
-            "intent": None,
-            "status": "FAILED",
-            "error": "ORCHESTRATION_FAILED",
+        captured = {}
+        viewer_payload = {
+            "user_id": USER_ID,
+            "wallet": WALLET,
+            "agent_run_id": "run-1",
+            "conversation_id": "conv-1",
+            "trace_id": "trace-1",
         }
 
-    async def record(name, *args, **_kwargs):
-        calls.append((name, args))
+        async def orchestrate(**kwargs):
+            captured.update(kwargs)
+            return {"content": "ok", "intent": None}
 
-    monkeypatch.setattr(agent_tasks, "_resolve_orchestrator", lambda: orchestrate)
-    monkeypatch.setattr(
-        agent_tasks.run_store,
-        "ensure_run",
-        lambda *args, **kwargs: record("ensure", *args, **kwargs),
-    )
-    monkeypatch.setattr(
-        agent_tasks.run_store,
-        "mark_run_running",
-        lambda *args, **kwargs: record("running", *args, **kwargs),
-    )
-    monkeypatch.setattr(
-        agent_tasks.run_store,
-        "mark_run_succeeded",
-        lambda *args, **kwargs: record("succeeded", *args, **kwargs),
-    )
-    monkeypatch.setattr(
-        agent_tasks.run_store,
-        "mark_run_failed",
-        lambda *args, **kwargs: record("failed", *args, **kwargs),
-    )
+        async def noop(*_args, **_kwargs):
+            return None
 
-    result = await agent_tasks._execute("run-failed", "conv", "trace", "hello")
+        monkeypatch.setattr(agent_tasks, "_resolve_orchestrator", lambda: orchestrate)
+        monkeypatch.setattr(agent_tasks.run_store, "ensure_run", noop)
+        monkeypatch.setattr(agent_tasks.run_store, "mark_run_running", noop)
+        monkeypatch.setattr(agent_tasks.run_store, "mark_run_succeeded", noop)
 
-    assert result["status"] == "FAILED"
-    assert any(name == "failed" for name, _args in calls)
-    assert all(name != "succeeded" for name, _args in calls)
+        await agent_tasks._execute(
+            "run-1",
+            "conv-1",
+            "trace-1",
+            "hello",
+            marketplace_viewer_context=viewer_payload,
+        )
 
+        assert captured["marketplace_viewer_context"] == viewer_payload
 
-async def test_batch_orchestration_rehydrates_only_execution_bound_context(monkeypatch):
-    from app.runtime import deps as deps_module
-    from app.runtime import orchestrator as orchestrator_module
+    async def test_batch_worker_does_not_overwrite_failed_orchestration_status(
+        self, monkeypatch
+    ):
+        from app.tasks import agent_tasks
 
-    captured = []
+        calls: list[tuple[str, tuple]] = []
 
-    class _Orchestrator:
-        def __init__(self, _deps):
-            pass
+        async def orchestrate(**_kwargs):
+            return {
+                "content": "safe fallback",
+                "intent": None,
+                "status": "FAILED",
+                "error": "ORCHESTRATION_FAILED",
+            }
 
-        async def run(self, **kwargs):
-            captured.append(kwargs["marketplace_viewer_context"])
-            return "ok"
+        async def record(name, *args, **_kwargs):
+            calls.append((name, args))
 
-    monkeypatch.setattr(deps_module, "build_deps", lambda: object())
-    monkeypatch.setattr(orchestrator_module, "AgentOrchestrator", _Orchestrator)
-    valid_payload = {
-        "user_id": USER_ID,
-        "wallet": WALLET,
-        "agent_run_id": "run-1",
-        "conversation_id": "conv-1",
-        "trace_id": "trace-1",
-    }
+        monkeypatch.setattr(agent_tasks, "_resolve_orchestrator", lambda: orchestrate)
+        monkeypatch.setattr(
+            agent_tasks.run_store,
+            "ensure_run",
+            lambda *args, **kwargs: record("ensure", *args, **kwargs),
+        )
+        monkeypatch.setattr(
+            agent_tasks.run_store,
+            "mark_run_running",
+            lambda *args, **kwargs: record("running", *args, **kwargs),
+        )
+        monkeypatch.setattr(
+            agent_tasks.run_store,
+            "mark_run_succeeded",
+            lambda *args, **kwargs: record("succeeded", *args, **kwargs),
+        )
+        monkeypatch.setattr(
+            agent_tasks.run_store,
+            "mark_run_failed",
+            lambda *args, **kwargs: record("failed", *args, **kwargs),
+        )
 
-    await orchestrator_module.run_orchestration(
-        agent_run_id="run-1",
-        conversation_id="conv-1",
-        trace_id="trace-1",
-        user_message="hello",
-        marketplace_viewer_context=valid_payload,
-    )
-    await orchestrator_module.run_orchestration(
-        agent_run_id="run-1",
-        conversation_id="conv-1",
-        trace_id="trace-1",
-        user_message="hello",
-        marketplace_viewer_context={**valid_payload, "agent_run_id": "run-other"},
-    )
+        result = await agent_tasks._execute("run-failed", "conv", "trace", "hello")
 
-    assert isinstance(captured[0], MarketplaceViewerContext)
-    assert captured[1] is None
+        assert result["status"] == "FAILED"
+        assert any(name == "failed" for name, _args in calls)
+        assert all(name != "succeeded" for name, _args in calls)
+
+    async def test_batch_orchestration_rehydrates_only_execution_bound_context(
+        self, monkeypatch
+    ):
+        from app.runtime import deps as deps_module
+        from app.runtime import orchestrator as orchestrator_module
+
+        captured = []
+
+        class _Orchestrator:
+            def __init__(self, _deps):
+                pass
+
+            async def run(self, **kwargs):
+                captured.append(kwargs["marketplace_viewer_context"])
+                return "ok"
+
+        monkeypatch.setattr(deps_module, "build_deps", lambda: object())
+        monkeypatch.setattr(orchestrator_module, "AgentOrchestrator", _Orchestrator)
+        valid_payload = {
+            "user_id": USER_ID,
+            "wallet": WALLET,
+            "agent_run_id": "run-1",
+            "conversation_id": "conv-1",
+            "trace_id": "trace-1",
+        }
+
+        await orchestrator_module.run_orchestration(
+            agent_run_id="run-1",
+            conversation_id="conv-1",
+            trace_id="trace-1",
+            user_message="hello",
+            marketplace_viewer_context=valid_payload,
+        )
+        await orchestrator_module.run_orchestration(
+            agent_run_id="run-1",
+            conversation_id="conv-1",
+            trace_id="trace-1",
+            user_message="hello",
+            marketplace_viewer_context={**valid_payload, "agent_run_id": "run-other"},
+        )
+
+        assert isinstance(captured[0], MarketplaceViewerContext)
+        assert captured[1] is None
 
 
 def test_viewer_context_values_never_appear_in_masked_plan_context():
