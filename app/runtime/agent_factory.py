@@ -385,6 +385,17 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                 if _is_current_ballot_proposal_state_question(
                     _query_from_prompt(ctx.prompt)
                 ):
+                    proposal_fields_instruction = (
+                        "For every returned row, if title is not English, render its "
+                        "English translation instead of pasting the original non-English "
+                        "title; preserve status, voting_starts_at, and voting_ends_at "
+                        "exactly as returned; do not rename, aggregate, or invent a field. "
+                        if normalize_target_language(ctx.deps.target_language)
+                        == TARGET_LANGUAGE_EN
+                        else "For every returned row, preserve title, status, "
+                        "voting_starts_at, and voting_ends_at exactly as returned; do "
+                        "not rename, aggregate, or invent a field. "
+                    )
                     return (
                         "This turn asks for current Ballot proposal-instance state. "
                         "You must call marketplace_agent_context first when its result "
@@ -393,9 +404,8 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
                         "read-only tool resolves the current Agent ID only from the "
                         "marketplace_agent_context result and accepts no Agent "
                         "identifier from the model. "
-                        "For every returned row, preserve title, status, "
-                        "voting_starts_at, and voting_ends_at exactly as returned; do "
-                        "not rename, aggregate, or invent a field. Do not use "
+                        f"{proposal_fields_instruction}"
+                        "Do not use "
                         "ballot_governance or ai-context as proposal-instance state. "
                         "If no rows are returned, the tool is unavailable, or it "
                         "errors, state that current proposal instance data was not "
@@ -677,8 +687,9 @@ def build_agent(model: Model, *, behavior_profile: Any | None = None) -> Agent[A
 
         这是只读公开 GET。当前 Agent ID 只从 marketplace_agent_context 返回的
         data.agent.agent_id 解析，模型和用户不能传入 Agent ID 或地址。每条提案
-        只返回 Marketplace 原样提供的 title、status、voting_starts_at、
-        voting_ends_at 字段。若 items 为空、Marketplace unavailable 或请求失败，
+        的 title 按当前 turn 的 target language 渲染；status、voting_starts_at、
+        voting_ends_at 字段保持 Marketplace 原样。若 items 为空、Marketplace
+        unavailable 或请求失败，
         只能说明当前提案实例数据未返回并引导查看当前 Agent 的提案页，不能据此
         声称存在或不存在提案。
         """

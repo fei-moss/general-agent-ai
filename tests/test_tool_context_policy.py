@@ -328,6 +328,64 @@ async def test_agent_injects_compute_turn_policy_instruction():
     assert "answer only with the user-facing result" in serialized
 
 
+async def test_agent_injects_english_ballot_proposal_title_translation_instruction():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={"turn_policy": {"intent": "current_agent_question"}},
+        target_language="en",
+    )
+
+    await agent.run("Is there a current proposal?", deps=deps)
+
+    serialized = repr(seen_messages)
+    assert (
+        "if title is not English, render its English translation instead of "
+        "pasting the original non-English title"
+    ) in serialized
+    assert (
+        "preserve title, status, voting_starts_at, and voting_ends_at exactly as returned"
+        not in serialized
+    )
+    assert (
+        "preserve status, voting_starts_at, and voting_ends_at exactly as returned"
+        in serialized
+    )
+    assert "do not rename, aggregate, or invent a field" in serialized
+
+
+async def test_agent_preserves_verbatim_ballot_proposal_fields_outside_english():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_NoopRetriever(),
+        tool_router=_NoopToolRouter(),
+        run_context={"turn_policy": {"intent": "current_agent_question"}},
+        target_language="zh-Hans",
+    )
+
+    await agent.run("Is there a current proposal?", deps=deps)
+
+    serialized = repr(seen_messages)
+    assert (
+        "For every returned row, preserve title, status, voting_starts_at, and "
+        "voting_ends_at exactly as returned; do not rename, aggregate, or invent a field."
+        in serialized
+    )
+
+
 async def test_agent_disables_parallel_tool_calls_by_default():
     seen_parallel_settings: list[bool | None] = []
 

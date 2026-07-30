@@ -320,6 +320,27 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
     re-verify that an English "show the active proposal" turn renders English
     titles with verbatim status and voting timestamps, and that the same
     question asked in Chinese still renders the original titles verbatim.
+18. R9 (completes R8, no new requirement): make the per-turn instruction
+    injected by `turn_policy_instruction` in `app/runtime/agent_factory.py`
+    language-conditional, mirroring the R8 condition. Step 16 changed only the
+    verbatim guard and the global `tool_policy`, but this Ballot-specific turn
+    instruction still stated "preserve title, status, voting_starts_at, and
+    voting_ends_at exactly as returned" unconditionally; being narrower and
+    injected per turn, it overrode the global policy and the model kept pasting
+    original non-English titles on `en` turns. Under
+    `normalize_target_language(ctx.deps.target_language) == TARGET_LANGUAGE_EN`
+    the instruction must ask for an English rendering of a non-English `title`
+    while keeping `status`/`voting_starts_at`/`voting_ends_at` exactly as
+    returned; all other target languages keep the existing verbatim wording.
+    Align the `marketplace_ballot_proposals` docstring with the same split. Do
+    not change `_ballot_proposal_output_violations` or
+    `_evaluate_language_consistency`.
+19. Add tests asserting the *injected instruction text* varies by target
+    language (`tests/test_tool_context_policy.py`, following the existing
+    `FunctionModel` message-capture pattern). Step 15's tests only covered the
+    verbatim guard, which is why a production-visible defect passed a green
+    suite; an R8/R9-shaped change is not adequately tested without an assertion
+    on what the model is actually told.
 
 ## Closeout Evidence
 
@@ -371,6 +392,13 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   exit code 0 (sandbox `ALL_PROXY`/`HTTPS_PROXY` env vars caused 11 unrelated
   provider-model collection failures until unset; confirmed environment-only,
   not a regression). `scripts/check_spec_contract.sh` passed.
+  (Flagged 2026-07-30 during R9: the "738 passed" figure above is not
+  reconcilable with any measured collection count for this suite — `pytest
+  --collect-only` reports 677 tests at `d54131b` and 683 after R9 at
+  `be44d91`, and the same entry's own re-verification was separately corrected
+  from "739 passed" to 676. Treat 738 as an uncorroborated transcription
+  artifact; it is left in place rather than rewritten because the original run
+  cannot be reproduced to establish what the true number was.)
   `VERIFY_COMPARE_REF=13b324d AI_BOUNDARY_APPROVED=1
   AI_BOUNDARY_APPROVAL_EVIDENCE="owner-request:..." bash scripts/verify_change.sh`
   passed all four gates (`change_scope`, `ai_boundaries`, `spec_registry`,
@@ -528,3 +556,51 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Implementation Plan step 17 (redeploy and re-verify an English turn renders
   English titles while a Chinese turn keeps the originals) remains pending the
   owner's redeploy.
+- Implementation Plan step 17 FAILED (2026-07-30, live production after the
+  owner's redeploy of `be44d91`): an English "show the active proposal" turn
+  against Agent 64 returned an English narrative and a table whose five titles
+  were all still the original Chinese, with `status` and the voting timestamps
+  verbatim and correct. R8 as shipped was therefore inert in production.
+  Root cause: R8 relaxed the verbatim guard (making a translated title
+  *permissible*) and updated the global `tool_policy` (making it *requested*),
+  but `turn_policy_instruction`
+  (`app/runtime/agent_factory.py`, the Ballot proposal-state branch) still
+  instructed "For every returned row, preserve title, status, voting_starts_at,
+  and voting_ends_at exactly as returned" with no language branch. That
+  instruction is injected only for this question type and is therefore more
+  specific and more proximate than the global policy, so the model complied
+  with it. The R8 tests could not catch this because all four assert on
+  `_ballot_proposal_output_violations` and none assert on the instruction text
+  handed to the model.
+- R9 verification (2026-07-30, Implementation Plan steps 18-19 complete):
+  the Ballot branch of `turn_policy_instruction` now selects between an
+  English-turn instruction ("if title is not English, render its English
+  translation instead of pasting the original non-English title; preserve
+  status, voting_starts_at, and voting_ends_at exactly as returned") and the
+  unchanged verbatim wording for all other target languages, keyed on
+  `normalize_target_language(ctx.deps.target_language) == TARGET_LANGUAGE_EN`.
+  The `marketplace_ballot_proposals` docstring was aligned to the same split.
+  `_ballot_proposal_output_violations`, `_evaluate_language_consistency`, and
+  R8's four tests are untouched; no data flow or field was added.
+  Two tests were added to `tests/test_tool_context_policy.py`:
+  `test_agent_injects_english_ballot_proposal_title_translation_instruction`
+  (en: translation wording present, unconditional verbatim-title wording
+  absent, `status`/`voting_starts_at`/`voting_ends_at` still verbatim) and
+  `test_agent_preserves_verbatim_ballot_proposal_fields_outside_english`
+  (zh-Hans: original verbatim wording intact).
+  Conjunct-pinning proof (run independently by the reviewer, not taken on the
+  implementer's report): with `TARGET_LANGUAGE_EN` in the new branch replaced
+  by a never-matching sentinel, **exactly one** test fails —
+  `test_agent_injects_english_ballot_proposal_title_translation_instruction`
+  — and `app/runtime/agent_factory.py` was restored byte-identical afterwards
+  (SHA-256 compared before and after).
+  Full `pytest` — **682 passed, 1 skipped**, exit code 0 (680 baseline at
+  `be44d91` + 2 new tests). `tests/test_tool_context_policy.py` alone — 19
+  passed; `tests/test_agent_marketplace_tools.py` alone — 56 passed.
+  The 11 provider-model failures seen on the first full run were reproduced as
+  environment-only (`ALL_PROXY`/`HTTPS_PROXY` set to a SOCKS proxy without the
+  `socksio` package) and all pass with those variables unset, matching the
+  same effect already documented for R7.
+  Implementation Plan step 17's re-verification (English turn renders English
+  titles, Chinese turn keeps the originals) remains pending a redeploy of this
+  change.
