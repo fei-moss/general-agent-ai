@@ -604,3 +604,19 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Implementation Plan step 17's re-verification (English turn renders English
   titles, Chinese turn keeps the originals) remains pending a redeploy of this
   change.
+- R9 release (2026-07-30): committed as `6a89960` on `Deploy` and redeployed to
+  `chris-general-agent-ai-chat-prod`; all 17 release steps passed, exit code 0,
+  live commit `6a89960133eca1ee5cb0362179132956e146b035`, build succeeded in
+  27s, `api`/`db`/`cache` running and healthy with 0 restarts.
+- Implementation Plan step 17 CONFIRMED (2026-07-30, reported by the repo owner
+  from the live Ask this Agent panel): after the R9 deploy, the English and
+  Chinese turns behave as R8 specifies. Recorded on the owner's report, not on
+  a reviewer observation — the reviewer's own attempt to reproduce the turn
+  server-side could not verify R8/R9 either way, because a `/chat` request
+  built from the release smoke's synthetic identity carries no Agent context
+  (`app/core/schemas.py` resolves the current Agent address from
+  `metadata.current_agent_address` or `agent_context.contract_address`), so the
+  answer terminates in the "current Agent address is missing" branch before any
+  Ballot tool call and returns no titles at all. A server-side reproduction of
+  this check requires the real Agent context that the Marketplace front end
+  supplies.
