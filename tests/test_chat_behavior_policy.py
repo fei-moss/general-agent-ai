@@ -40,6 +40,9 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "不要编造" in prompt
     assert "清晰版式" in prompt
     assert "短标题、要点或紧凑表格" in prompt
+    assert "Markdown 表格必须为紧凑写法" in prompt
+    assert "不得使用不换行空格 U+00A0 或全角空格 U+3000 对齐" in prompt
+    assert "不要单独增加纯序号列" in prompt
     assert "避免整段堆砌" in prompt
     assert "必须由模型自然生成回答" in prompt
     assert "不要把内部计算、时间查询、联网检索" in prompt
