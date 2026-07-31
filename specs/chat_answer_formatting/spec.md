@@ -58,12 +58,27 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   VERIFY_COMPARE_REF=origin/Deploy make verify-change PY=.venv/bin/python`
   passed `change_scope`, `ai_boundaries`, `spec_registry`, and
   `legacy_spec_contract`.
-- Release command: not run. This change was not committed, released, or
-  deployed in the same session.
-- Evidence path: `.artifacts/change`.
+- Release command: clean `make verify-release PY=.venv/bin/python` passed with
+  compare ref `origin/Deploy` and active spec `SPEC-CHAT-ANSWER-FORMATTING-001`
+  (`change_scope`, `release_context_before`, `symlinks`, `ai_boundaries`,
+  `spec_registry`, `legacy_spec_contract`, `project_release`,
+  `release_context_after`).
+- Implementation commit: `45f4efb4420946c0416f1e40b10849eca6e5d20a`.
+- Evidence path: `.artifacts/change`, `.artifacts/release`.
+- Runtime evidence: DockerHost branch space `chris-general-agent-ai-chat-prod`
+  redeployed from `6a89960133eca1ee5cb0362179132956e146b035` to
+  `45f4efb4420946c0416f1e40b10849eca6e5d20a`. All 17 release-CLI steps passed,
+  including `/healthz`, `/readyz`, the `stream=false` 422 check, accepted chat,
+  SSE, run status, and worker/reaper logs. `/readyz` reported `db`, `redis`, and
+  `event_bus` ok, `provider_secret` configured, `provider_key_pool` `single:1`,
+  pgvector RAG, and the Gemini embedding provider. Rollback target is
+  `6a89960133eca1ee5cb0362179132956e146b035`.
 - Residual risk: the reported table layout defect is not root-caused yet. The
   raw Markdown of the failing answer and the frontend table DOM and computed
   style were both unavailable, so it is unconfirmed whether the padding
   originates from model output or from frontend rendering. This constraint is a
   prompt instruction only; model adherence is unverified against a real
-  provider, and a frontend-side cause would not be fixed by it.
+  provider, and a frontend-side cause would not be fixed by it. The release
+  smoke uses a synthetic identity with no Agent address, so it cannot exercise
+  Agent-context answers; table rendering must be confirmed in the real Ask this
+  Agent UI.
