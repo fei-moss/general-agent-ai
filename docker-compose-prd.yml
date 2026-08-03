@@ -1,4 +1,4 @@
-name: agent-marketplace
+name: general-agent-ai
 
 x-default-logging: &default-logging
   driver: json-file
@@ -30,6 +30,8 @@ services:
       APP_PORT: "8080"
     init: true
     restart: unless-stopped
+    networks:
+      - internal-connect
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -70,6 +72,8 @@ services:
       - .env
     init: true
     restart: unless-stopped
+    networks:
+      - internal-connect
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -113,4 +117,6 @@ services:
       - .env
     init: true
     restart: "no"
+    networks:
+      - internal-connect
     logging: *default-logging
