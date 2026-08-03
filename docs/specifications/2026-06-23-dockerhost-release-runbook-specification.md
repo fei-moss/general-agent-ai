@@ -221,3 +221,15 @@
   - Rejected broad `envctl logs` or unbounded tailing as default verification; bounded tails are enough for release gate evidence。
 - Reviewer findings and resolution:
   - Pending implementation review。
+- Amendment 2026-08-03 (owner-approved via chat request):
+  - `dockerhost/release_cli.py` `PRODUCTION_RUNTIME_ENV_NAMES` now includes
+    `GEMINI_MODEL` so the release CLI forwards and requires the Gemini chat
+    model selection alongside the existing provider configuration names。
+  - `dockerhost/compose.yaml` maps `GEMINI_MODEL` into the api and worker
+    environments with the code default `gemini-2.5-flash` as fallback,
+    matching `app.core.config.Settings.gemini_model`;an empty-string
+    override is deliberately avoided so the application default stays
+    effective when the value is absent。
+  - Rationale: `LLM_PROVIDER=gemini` previously could not select a non-default
+    Gemini model in DockerHost dev/test environments because the variable was
+    neither forwarded nor mapped。
