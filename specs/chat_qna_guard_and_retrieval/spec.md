@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-CHAT-QNA-GUARD-AND-RETRIEVAL-001
 module: chat_qna_guard_and_retrieval
-status: approved
+status: implemented
 workflow_class: HARNESS-SPEC-FIRST-FEATURE
 ---
 
@@ -98,4 +98,29 @@ Ask-this-Agent UI testing on 2026-08-03 against the v6 Marketplace QnA corpus
 
 ## Closeout Evidence
 
-- Pending implementation.
+- Tests-first: the new policy assertions (three false refusals → allow,
+  trading-topic knowledge detection, R4 refusal regressions, `/v6` version)
+  were added alongside the implementation in commit `93ebf3c`; the focused
+  suite `tests/test_chat_behavior_policy.py` passes 72/72 and the full local
+  pytest suite is green after migrating three hardcoded `/v5` version
+  assertions to reference `POLICY_VERSION`.
+- `AI_BOUNDARY_APPROVED` change gate passed with owner-request evidence
+  (chat instruction "是的 开始修复", 2026-08-03); spec contract and registry
+  checks pass with this module registered.
+- Deployed to `chris-general-agent-ai-chat-prod` (ref `93ebf3c`,
+  gemini-2.5-pro): release CLI redeploy 17/17 steps passed.
+- Live verification (real `/chat`, server-default V6 knowledge base):
+  - the three previously refused questions now answer correctly (Share Token
+    same-address explanation, private-key-leak consequence with
+    funds-cannot-leave facts, Owner-key self-custody statement passes the
+    output guard);
+  - with `current_agent_address` set (Ask-this-Agent path), "Trading Wallet
+    的授权会过期吗" answers 90 days + re-authorization and the
+    mistaken-transfer question answers settlement absorption — both were the
+    incident failures;
+  - direct extraction requests still refuse (regression tests).
+- Residual risk: without current-Agent context the knowledge forcing does not
+  apply, and the model sometimes retrieves but declines to adopt the corpus
+  reframing for "Executor 每次划转多少钱" (the golden answer explains the
+  invariant rather than a formula). The Ask-this-Agent UI path is unaffected;
+  track under a future batch if the plain-chat path becomes product-critical.
