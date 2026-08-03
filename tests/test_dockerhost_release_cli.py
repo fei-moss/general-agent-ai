@@ -593,6 +593,7 @@ def _set_production_env(monkeypatch) -> None:
         "ALLOW_MOCK_PROVIDER": "false",
         "LLM_PROVIDER": "zai",
         "ZAI_MODEL": "glm-5.2",
+        "GEMINI_MODEL": "gemini-2.5-flash",
         "ZAI_THINKING_TYPE": "disabled",
         "ZAI_REASONING_EFFORT": "low",
         "ZAI_TOOL_STREAM": "true",

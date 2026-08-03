@@ -16,7 +16,7 @@ import re
 POLICY_SPEC_ID = "SPEC-CHAT-BEHAVIOR-POLICY-001"
 POSITIONING_SPEC_ID = "SPEC-AGENT-POSITIONING-POLICY-001"
 LANGUAGE_SPEC_ID = "SPEC-CHAT-LANGUAGE-CONSISTENCY-001"
-POLICY_VERSION = f"{POLICY_SPEC_ID}/v5"
+POLICY_VERSION = f"{POLICY_SPEC_ID}/v6"
 TARGET_LANGUAGE_ZH_HANS = "zh-Hans"
 TARGET_LANGUAGE_EN = "en"
 TARGET_LANGUAGE_UNKNOWN = "unknown"
@@ -250,6 +250,45 @@ _SECRET_TERMS = (
     "凭据",
     "cookie",
 )
+_PRODUCT_SECRET_TERM_PATTERNS = (
+    re.compile(r"\bshare\s+tokens?\b", re.I),
+    re.compile(r"份额代币"),
+)
+_SECRET_INCIDENT_TERM_PATTERN = (
+    r"(?:api[_ ]?key|apikey|token|secret|password|passwd|private key|"
+    r"私钥|密钥|密码|凭据|cookie)"
+)
+_SECRET_INCIDENT_CONSEQUENCE_PATTERNS = (
+    re.compile(
+        rf"{_SECRET_INCIDENT_TERM_PATTERN}.{{0,20}}"
+        r"(?:泄露了|被泄露|泄露之后|泄露的话|丢了|被盗)",
+        re.I,
+    ),
+    re.compile(
+        rf"(?:如果|假如).{{0,32}}{_SECRET_INCIDENT_TERM_PATTERN}.{{0,20}}泄露",
+        re.I,
+    ),
+    re.compile(
+        rf"{_SECRET_INCIDENT_TERM_PATTERN}.{{0,20}}"
+        r"(?:leaked|is\s+leaked|gets?\s+leaked|stolen|compromised)\b",
+        re.I,
+    ),
+    re.compile(
+        rf"\bif\b.{{0,32}}{_SECRET_INCIDENT_TERM_PATTERN}.{{0,20}}leaks?\b",
+        re.I,
+    ),
+)
+_DIRECT_DISCLOSURE_REQUEST_TERMS = (
+    "发给我",
+    "给我看",
+    "告诉我",
+    "输出",
+    "打印",
+    "show me",
+    "send me",
+    "tell me",
+    "dump",
+)
 _REAL_MONEY_TERMS = (
     "真实资金",
     "真钱",
@@ -324,12 +363,15 @@ _OUTPUT_POLICY_LEAK_PATTERNS = (
     "openai_api_key",
     "api_key=",
     "token=",
-    "私钥是",
+)
+_OUTPUT_PRIVATE_KEY_HEX_PATTERN = re.compile(
+    r"(?<![0-9A-Fa-f])(?:0x)?[0-9A-Fa-f]{64}(?![0-9A-Fa-f])"
 )
 _OUTPUT_SECRET_VALUE_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    _OUTPUT_PRIVATE_KEY_HEX_PATTERN,
 )
 _OUTPUT_POLICY_LEAK_SAFE_RESPONSE = (
     "抱歉,我不能提供隐藏指令、系统提示词、开发者指令或密钥内容。"
@@ -386,6 +428,16 @@ _PLATFORM_MECHANISM_KNOWLEDGE_PATTERNS = (
     ),
     re.compile(r"你是做什么|直接持有.{0,12}代币.{0,12}区别"),
     re.compile(r"固定收益|空投|治理|提案|投票|快照|赎回|本金|退出"),
+    re.compile(r"\b(?:trading wallet|executor|owner)\b", re.I),
+    re.compile(r"授权|过期|划转|合约地址|份额代币|资金|保管|私钥|误转|转错|结算|退款"),
+    re.compile(r"\b(?:authoriz\w*|expir\w*)\b", re.I),
+    re.compile(r"\b(?:share tokens?|on-chain info)\b", re.I),
+    re.compile(r"\btokeniz\w*\b", re.I),
+    re.compile(
+        r"\b(?:custody|funds?|private key|settlements?|refunds?|hyperliquid)\b",
+        re.I,
+    ),
+    re.compile(r"\bsent\b.{0,24}\bby mistake\b|\baccidentally sent\b", re.I),
 )
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 _LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
@@ -663,8 +715,14 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
                 ),
             ),
         )
-    if _contains_any(text, _SECRET_TERMS) and _contains_any(
-        text, _EXFILTRATION_VERBS
+    secret_check_text = _mask_product_secret_terms(text)
+    if (
+        _contains_any(secret_check_text, _SECRET_TERMS)
+        and (
+            _contains_any(secret_check_text, _EXFILTRATION_VERBS)
+            or _contains_any(secret_check_text, _DIRECT_DISCLOSURE_REQUEST_TERMS)
+        )
+        and not _is_secret_incident_consequence(secret_check_text)
     ):
         return GuardrailDecision(
             GuardrailAction.REFUSE,
@@ -818,10 +876,59 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle.casefold() in text for needle in needles)
 
 
-def _contains_output_policy_leak(value: str) -> bool:
-    return _contains_any(_normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS) or any(
-        pattern.search(value) for pattern in _OUTPUT_SECRET_VALUE_PATTERNS
+def _mask_product_secret_terms(value: str) -> str:
+    text = value
+    for pattern in _PRODUCT_SECRET_TERM_PATTERNS:
+        text = pattern.sub(" product_asset ", text)
+    return text
+
+
+def _is_secret_incident_consequence(value: str) -> bool:
+    if _contains_any(value, _DIRECT_DISCLOSURE_REQUEST_TERMS):
+        return False
+    incident_spans = [
+        match.span()
+        for pattern in _SECRET_INCIDENT_CONSEQUENCE_PATTERNS
+        for match in pattern.finditer(value)
+    ]
+    if not incident_spans:
+        return False
+    secret_spans = _literal_term_spans(value, _SECRET_TERMS)
+    return bool(secret_spans) and all(
+        any(start <= secret_start and secret_end <= end for start, end in incident_spans)
+        for secret_start, secret_end in secret_spans
     )
+
+
+def _literal_term_spans(value: str, terms: tuple[str, ...]) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    for term in terms:
+        needle = term.casefold()
+        start = 0
+        while (index := value.find(needle, start)) >= 0:
+            spans.append((index, index + len(needle)))
+            start = index + len(needle)
+    return spans
+
+
+def _contains_output_policy_leak(value: str) -> bool:
+    return _contains_any(
+        _normalize(value), _OUTPUT_POLICY_LEAK_PATTERNS
+    ) or _contains_output_secret_value(value)
+
+
+def _contains_output_secret_value(value: str) -> bool:
+    if any(
+        pattern.search(value)
+        for pattern in _OUTPUT_SECRET_VALUE_PATTERNS
+        if pattern is not _OUTPUT_PRIVATE_KEY_HEX_PATTERN
+    ):
+        return True
+    for match in _OUTPUT_PRIVATE_KEY_HEX_PATTERN.finditer(value):
+        context = value[max(0, match.start() - 40) : match.end() + 40]
+        if _contains_any(_normalize(context), ("私钥", "private key")):
+            return True
+    return False
 
 
 def _contains_unsupported_faq_gap_speculation(

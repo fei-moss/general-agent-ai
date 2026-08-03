@@ -27,6 +27,7 @@ from app.runtime.agent_factory import build_agent, build_mock_model
 from app.runtime.chat_behavior import (
     ChatBehaviorProfile,
     DEFAULT_CHAT_BEHAVIOR_POLICY,
+    POLICY_VERSION,
     TARGET_LANGUAGE_ZH_HANS,
 )
 from app.runtime.deps import RuntimeDeps
@@ -270,7 +271,7 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
 
     assert plan["knowledge_base_id"] == "kb_internal"
     assert plan["metadata"] == {"mode": "realtime"}
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == POLICY_VERSION
     assert plan["target_language"] == "zh-Hans"
 
 
@@ -583,7 +584,7 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == POLICY_VERSION
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert plan["guardrail"]["category"] in {
@@ -683,7 +684,7 @@ async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == POLICY_VERSION
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert "policy_version" not in plan["metadata"]

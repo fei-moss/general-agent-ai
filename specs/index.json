@@ -5,6 +5,7 @@
     "specs/ballot_proposal_state_context/spec.md",
     "specs/chat_answer_formatting/spec.md",
     "specs/chat_output_completion/spec.md",
+    "specs/chat_qna_guard_and_retrieval/spec.md",
     "specs/hyperliquid_golden_answers/spec.md",
     "specs/marketplace_agent_protocol_created_at/spec.md",
     "specs/marketplace_viewer_context/spec.md",
