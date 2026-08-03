@@ -36,11 +36,11 @@ Voting eligibility and weight are based on share holdings at the proposal snapsh
 
 **Q: What is a governance snapshot and when is it taken?**
 
-A snapshot records share holdings at a specific point and fixes eligibility and weight for that proposal. Its exact block or time is proposal-specific and should be shown in current Agent context or on the proposal page. Later balance changes must not be silently applied to that vote.
+A snapshot records share holdings at a specific point and fixes eligibility and weight for that proposal. The snapshot is taken when the proposal is created, and its exact time should be shown in current Agent context or on the proposal page. Later balance changes must not be silently applied to that vote.
 
 **Q: How do I vote, and can I change my vote?**
 
-The user selects a position on the proposal page and signs under the product flow; the vote record is verifiable. Whether a vote can be changed, whether gas is required, and the exact cost are dynamic proposal or Agent rules that must come from current Agent context.
+The user selects a position on the proposal page and signs under the product flow; the vote record is verifiable. Voting is an on-chain action and carries the standard network fee (gas) for the Agent's network. Whether a vote can be changed during the voting window is a dynamic proposal or Agent rule that must come from current Agent context.
 
 **Q: Are there extra rewards for governance participation?**
 

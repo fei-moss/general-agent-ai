@@ -8,49 +8,49 @@
   },
   "knowledge_base": {
     "description": "Reviewed bilingual Marketplace product QnA corpus.",
-    "name": "Moss Agent Marketplace QnA V5",
+    "name": "Moss Agent Marketplace QnA V6",
     "source_root_uri": "urn:moss:marketplace-qna:",
     "visibility": "internal"
   },
-  "manifest_id": "marketplace-qna-rag-seed-v5",
+  "manifest_id": "marketplace-qna-rag-seed-v6",
   "source_files": [
     {
       "path": "tests/rag_eval/marketplace_qna_corpus.jsonl",
       "role": "corpus",
-      "row_count": 20,
-      "sha256": "5cc062762c42b7876512c9f0ba311f17626554d5743e20b133bd291ebf41a008"
+      "row_count": 24,
+      "sha256": "cc42049e4d1d7a4f5bb152d3892dac3d8e904722eb90538a03dbe39a8cbf7847"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_queries.jsonl",
       "role": "golden_queries",
-      "row_count": 150,
-      "sha256": "6a8c80cbd735d266bbf9fbad031207ddab7f9366b20a882e9e766c2350a2acda"
+      "row_count": 218,
+      "sha256": "4d06bd2cb111a6ca35fcbf7d472598d25095fbf89e729c5703711dc72121645d"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_query_review.jsonl",
       "role": "review_evidence",
-      "row_count": 150,
-      "sha256": "61363c3240116fcc7e37647c3c62308945f5e519514327fa504e1ee81bf1cd9c"
+      "row_count": 218,
+      "sha256": "c9cfde5009da987c594f1b0fc2e258d73496b0ef145494601bccef59ea285a67"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_chat_cases.jsonl",
       "role": "chat_cases",
-      "row_count": 20,
-      "sha256": "10dd7781d579f59c57bfb9baeeffe029d3a28e2f9becf7743948e400e9bfd83a"
+      "row_count": 24,
+      "sha256": "b32000a2cd17806605294ee52ce625507a745e2c3c5f0bd86235ea3076ba5a34"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_coverage_contract.json",
       "role": "coverage_contract",
       "row_count": null,
-      "sha256": "7c2441a6d9cafde5e010d33a82738f6362faf42abe2da68b2a1f477a396c701c"
+      "sha256": "daf9402b81325afa6ee83c0906300bee6cfdd9bff54752a1c81ac898cdaf9f47"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_acceptance_evidence_contract.json",
       "role": "acceptance_contract",
       "row_count": null,
-      "sha256": "44aa9ee78d9ab355ce490326fcdb52e41edf9f4395ebb7c467c56db461f2a00b"
+      "sha256": "f4289440760628920658ccb60edf20aa92757021ad529f73a1e08decf8dacde6"
     }
   ],
-  "source_set": "marketplace-qna-bilingual-2026-07-21-v5",
+  "source_set": "marketplace-qna-bilingual-2026-08-03-v6",
   "spec_id": "SPEC-RAG-EVAL-002"
 }

@@ -11,14 +11,14 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-07-21-v5"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-03-v6"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
     "review_evidence": Path(__file__).parent / "marketplace_qna_golden_query_review.jsonl",
     "chat_cases": Path(__file__).parent / "marketplace_qna_chat_cases.jsonl",
 }
-EXPECTED_QUESTION_COUNTS = (5, 7, 2, 16, 4, 9, 4, 7, 3, 18)
+EXPECTED_QUESTION_COUNTS = (5, 7, 2, 16, 4, 9, 4, 7, 3, 18, 22, 12)
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
 # Representative chat cases use deterministic semantic fact groups instead of
@@ -58,6 +58,16 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("current Agent context", "current Agent configuration", "current Agent data"),
         ("fixed-yield accrual", "fixed yield"),
     ),
+    "marketplace_qna_en_11": (
+        ("settlement data", "incorrect settlement"),
+        ("orders in the Agent's name", "reckless orders"),
+        ("cannot leave", "cannot be moved out", "cannot send funds to an arbitrary address"),
+    ),
+    "marketplace_qna_en_12": (
+        ("snapshot",),
+        ("proposal went live", "proposal creation", "proposal is created"),
+        ("holdings", "held", "shares"),
+    ),
     "marketplace_qna_zh_cn_01": (("FAT Protocol",), ("不需要", "无需", "不必")),
     "marketplace_qna_zh_cn_02": (("完整保留", "完整迁移", "保留完整"),),
     "marketplace_qna_zh_cn_03": (("Perp Trading", "永续交易"), ("Governance", "治理"), ("Consumer", "消费者")),
@@ -84,6 +94,16 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Governance Agent",),
         ("当前 Agent context", "当前 Agent 配置", "当前 Agent 数据"),
         ("固定收益",),
+    ),
+    "marketplace_qna_zh_cn_11": (
+        ("结算数据",),
+        ("下单",),
+        ("转不出去", "无法转出", "无法将资金转出"),
+    ),
+    "marketplace_qna_zh_cn_12": (
+        ("快照",),
+        ("提案创建", "创建时"),
+        ("持仓", "份额"),
     ),
 }
 CHAT_QUERY_OVERRIDES = {

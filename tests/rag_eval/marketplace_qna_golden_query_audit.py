@@ -86,11 +86,11 @@ def build_audit_report(*, eval_dir: Path = EVAL_DIR) -> dict[str, Any]:
         "source_questions": len(expected_query_ids),
     }
     expected_counts = {
-        "source_documents": 20,
-        "golden_queries": 150,
-        "review_rows": 150,
-        "chat_cases": 20,
-        "source_questions": 150,
+        "source_documents": 24,
+        "golden_queries": 218,
+        "review_rows": 218,
+        "chat_cases": 24,
+        "source_questions": 218,
     }
     if counts != expected_counts:
         errors.append("count_mismatch")
