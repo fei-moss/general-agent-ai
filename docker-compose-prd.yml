@@ -117,6 +117,9 @@ services:
       - .env
     init: true
     restart: "no"
-    networks:
-      - internal-connect
     logging: *default-logging
+
+networks:
+  internal-connect:
+    external: true
+    name: "${INTERNAL_CONNECT_NETWORK:?INTERNAL_CONNECT_NETWORK is required}"
