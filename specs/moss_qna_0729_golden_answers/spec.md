@@ -86,5 +86,29 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   run from this host: the embedding key rejects both available proxy exits with
   `API_KEY_IP_ADDRESS_BLOCKED`. It remains part of the operator acceptance
   before upload.
-- Live corpus promotion (upload, deploy, default knowledge-base switch) is not
-  part of this closeout and follows `docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md`.
+- Live corpus promotion completed on 2026-08-03 against
+  `chris-general-agent-ai-chat-prod` (release commit `b64ba54`, previous
+  release `f5523e5` retained as rollback ref):
+  - `VERIFY_COMPARE_REF=f5523e5 make verify-release` all gates PASS before push.
+  - Knowledge base `kb_0b163eb7369b4589aa3fcb0d5b78e3f0` ("Moss Agent
+    Marketplace QnA V6") created through `POST /rag/knowledge-bases`; 24
+    documents imported, 24 ingestion jobs `SUCCEEDED`, 0 failed, 241 chunks
+    (worker-log task results; per-document counts match the local chunker),
+    SHA-256 metadata equal to `marketplace-qna-rag-seed-v6`; resubmitting all
+    24 payloads returned `replayed=true` for every document (idempotency).
+    Redacted summary: `.artifacts/release/marketplace_qna_ingestion_summary.json`.
+  - `scripts/dockerhost_release.py redeploy --execute` with
+    `RAG_DEFAULT_KNOWLEDGE_BASE_ID` switched to the V6 knowledge base: all 17
+    audited steps passed (preflight, branch-space switch/deploy, healthz,
+    readyz, stream=false 422, accepted chat, SSE, run status, worker/reaper
+    logs). The V5 knowledge base is retained for rollback.
+  - Post-deploy verification on the server-default knowledge base: three
+    `/rag/query` spot checks hit the new documents at rank 1 in both
+    languages, and two live `/chat` runs answered from the new corpus
+    (Trading Wallet 90-day authorization in Chinese; snapshot-at-proposal-
+    creation voting rule in English).
+- Remaining operator acceptance: the full `make marketplace-qna-acceptance`
+  suite (Gemini preflight, 218-case Promptfoo semantic evaluation, 218-case
+  live retrieval, 24-case live chat) has not run because the embedding key
+  rejects this host's egress IPs; run it from an allowlisted environment per
+  `docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md`.
