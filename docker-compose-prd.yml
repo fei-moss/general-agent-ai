@@ -1,4 +1,4 @@
-name: general-agent-ai
+name: agent-marketplace
 
 x-default-logging: &default-logging
   driver: json-file
