@@ -221,6 +221,11 @@ class MarketplaceAIClient:
         self._timeout_s = timeout_s
         self._transport = transport
 
+    @property
+    def is_configured(self) -> bool:
+        """Return whether Marketplace has a request base URL."""
+        return bool(self._base_url)
+
     async def get_agent_context(
         self,
         address: str,

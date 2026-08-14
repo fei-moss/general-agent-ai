@@ -62,7 +62,11 @@ from app.runtime.chat_behavior import (
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
-from app.runtime.marketplace_ai import MarketplaceViewerContext, extract_current_agent_ref
+from app.runtime.marketplace_ai import (
+    MarketplaceViewerContext,
+    extract_current_agent_ref,
+    marketplace_unavailable,
+)
 from app.runtime.provider_limits import (
     ProviderLimitDecision,
     ProviderLimitRequest,
@@ -102,6 +106,47 @@ class _AgentOutput:
 
 class _OutputTruncatedError(RuntimeError):
     pass
+
+
+async def _prefetch_marketplace_trading_context(
+    client: Any,
+    run_context: dict[str, Any] | None,
+    viewer_context: MarketplaceViewerContext | None,
+) -> dict[str, Any] | None:
+    """Fetch current-Agent context only when all trusted server gates are present."""
+    ref = extract_current_agent_ref(run_context)
+    if (
+        ref is None
+        or viewer_context is None
+        or client is None
+        or not bool(getattr(client, "is_configured", False))
+    ):
+        return None
+    try:
+        result = await client.get_agent_context(
+            ref.address,
+            viewer_context=viewer_context,
+            chain_id=ref.chain_id,
+            reports_limit=5,
+            include_raw=False,
+        )
+    except Exception as exc:
+        log_with_fields(
+            logger,
+            logging.WARNING,
+            "marketplace trading context prefetch failed",
+            error=type(exc).__name__,
+        )
+        return marketplace_unavailable(
+            "marketplace_prefetch_failed",
+            "Marketplace trading context is temporarily unavailable.",
+        )
+    if not isinstance(result, dict):
+        return marketplace_unavailable(
+            "marketplace_prefetch_invalid_result",
+            "Marketplace trading context is temporarily unavailable.",
+        )
+    return result
 
 
 class RunExecutionError(RuntimeError):
@@ -420,6 +465,21 @@ class AgentOrchestrator:
         knowledge_base_owner_user_id = _knowledge_base_owner_user_id(
             self._deps.settings, user_id
         )
+        quota_decision = await self._acquire_provider_quota(
+            agent_run_id,
+            user_message,
+            route_type,
+            metadata,
+            run_context,
+        )
+        agent = self._agent_for_quota(quota_decision)
+        marketplace_trading_context_result = (
+            await _prefetch_marketplace_trading_context(
+                self._deps.marketplace_ai,
+                run_context,
+                marketplace_viewer_context,
+            )
+        )
         deps = AgentDeps(
             retriever=self._contextual_retriever(
                 user_id=user_id,
@@ -439,20 +499,15 @@ class AgentOrchestrator:
             run_context=run_context,
             marketplace_ai=self._deps.marketplace_ai,
             marketplace_viewer_context=marketplace_viewer_context,
+            marketplace_trading_context_result=(
+                marketplace_trading_context_result
+            ),
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
         emitted_chunks: list[str] = []
         llm_started = False
         defer_output_until_validated = _defer_output_until_validated(run_context)
-        quota_decision = await self._acquire_provider_quota(
-            agent_run_id,
-            user_message,
-            route_type,
-            metadata,
-            run_context,
-        )
-        agent = self._agent_for_quota(quota_decision)
         try:
             async with agent.iter(
                 user_message,
