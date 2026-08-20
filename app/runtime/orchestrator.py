@@ -40,6 +40,7 @@ from app.core.enums import MessageRole, RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.logging import get_logger, log_with_fields, set_trace_id
 from app.core.secrets import redact_runtime_error
+from app.rag.service import build_query_service
 from app.runtime.agent_factory import (
     TOOL_MARKETPLACE_AGENT_COMPUTE,
     TOOL_MARKETPLACE_AGENT_CONTEXT,
@@ -59,6 +60,7 @@ from app.runtime.chat_behavior import (
     is_identity_introduction_request,
     is_marketplace_compute_request,
     is_platform_mechanism_knowledge_request,
+    normalize_target_language,
     select_behavior_profile,
 )
 from app.runtime.deps import RuntimeDeps
@@ -75,7 +77,7 @@ from app.runtime.provider_limits import (
     estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
-from app.runtime.tool_context import mask_run_context
+from app.runtime.tool_context import mask_run_context, tool_allowed
 from app.runtime.token_stream import TokenAggregator
 
 logger = get_logger(__name__)
@@ -87,6 +89,7 @@ _CHANNEL_PREFIX = "run:"
 # 顶层兜底文案
 _FATAL_ANSWER = "抱歉,处理过程中发生了内部错误,请稍后重试。"
 _OUTPUT_TRUNCATED_ANSWER = "回答达到模型输出上限，未能完整生成，请重试或缩小问题范围。"
+_PLATFORM_KNOWLEDGE_PREFETCH_TOP_K = 5
 # 计划快照中记录的工具清单(供回放/观测)
 _TOOL_NAMES = (
     TOOL_SEARCH_KNOWLEDGE,
@@ -146,6 +149,76 @@ async def _prefetch_marketplace_trading_context(
             "marketplace_prefetch_invalid_result",
             "Marketplace trading context is temporarily unavailable.",
         )
+    return result
+
+
+async def _prefetch_platform_knowledge(
+    *,
+    settings: Any,
+    run_context: dict[str, Any] | None,
+    user_message: str,
+    target_language: str,
+    user_id: str | None,
+    agent_run_id: str,
+    conversation_id: str,
+) -> dict[str, Any] | None:
+    """Fetch default-KB knowledge only for configured current-Agent turns."""
+    knowledge_base_id = _clean_text(
+        getattr(settings, "rag_default_knowledge_base_id", "")
+    )
+    turn_policy = (run_context or {}).get("turn_policy") or {}
+    turn_tool_use = (
+        str(turn_policy.get("tool_use") or "")
+        if isinstance(turn_policy, dict)
+        else ""
+    )
+    if (
+        extract_current_agent_ref(run_context) is None
+        or not bool(getattr(settings, "rag_enabled", False))
+        or knowledge_base_id is None
+        or not tool_allowed(TOOL_SEARCH_KNOWLEDGE, run_context)
+        or turn_tool_use in {"none", "marketplace_compute_only"}
+    ):
+        return None
+
+    normalized_language = normalize_target_language(target_language)
+    filters: dict[str, str] = {}
+    if normalized_language == "zh-Hans":
+        filters["language"] = "zh-CN"
+    elif normalized_language == "en":
+        filters["language"] = "en"
+
+    try:
+        service = build_query_service(settings)
+        response = await service.query(
+            user_id=user_id or "anonymous",
+            owner_user_id=_knowledge_base_owner_user_id(settings, user_id),
+            knowledge_base_id=knowledge_base_id,
+            query=user_message,
+            top_k=_PLATFORM_KNOWLEDGE_PREFETCH_TOP_K,
+            filters=filters,
+            agent_run_id=agent_run_id,
+            conversation_id=conversation_id,
+        )
+        model_dump = getattr(response, "model_dump", None)
+        result = model_dump(mode="json") if callable(model_dump) else response
+    except Exception as exc:
+        log_with_fields(
+            logger,
+            logging.WARNING,
+            "platform knowledge prefetch failed",
+            error=type(exc).__name__,
+        )
+        return None
+
+    if not isinstance(result, dict) or result.get("degraded") is not False:
+        return None
+    chunks = result.get("chunks")
+    if not isinstance(chunks, list) or not any(
+        isinstance(chunk, dict) and str(chunk.get("content") or "")
+        for chunk in chunks
+    ):
+        return None
     return result
 
 
@@ -480,6 +553,15 @@ class AgentOrchestrator:
                 marketplace_viewer_context,
             )
         )
+        platform_knowledge_context_result = await _prefetch_platform_knowledge(
+            settings=self._deps.settings,
+            run_context=run_context,
+            user_message=user_message,
+            target_language=target_language,
+            user_id=user_id,
+            agent_run_id=agent_run_id,
+            conversation_id=conversation_id,
+        )
         deps = AgentDeps(
             retriever=self._contextual_retriever(
                 user_id=user_id,
@@ -499,6 +581,10 @@ class AgentOrchestrator:
             run_context=run_context,
             marketplace_ai=self._deps.marketplace_ai,
             marketplace_viewer_context=marketplace_viewer_context,
+            platform_knowledge_context_result=platform_knowledge_context_result,
+            platform_knowledge_context_query=(
+                user_message if platform_knowledge_context_result is not None else None
+            ),
             marketplace_trading_context_result=(
                 marketplace_trading_context_result
             ),
