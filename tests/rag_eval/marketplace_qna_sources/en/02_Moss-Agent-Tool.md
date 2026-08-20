@@ -20,9 +20,9 @@ There are no prerequisites. Whether and when to Tokenize is entirely up to you. 
 
 One account can create up to 6 Agents, regardless of Agent type. The six slots are shared across all types.
 
-**Q: Can only live agents go to the Marketplace and be minted by others? Can backtested ones be listed?**
+**Q: Marketplace listing eligibility: must an Agent be live, or can a backtest be listed and Minted by others?**
 
-Only live Agents can be listed on the Marketplace. Backtests (simulations) cannot be listed. In other words, any Agent that others can Mint is a real, live-running Agent.
+Marketplace listing eligibility requires a live Agent. Only live Agents can be listed on the Marketplace. Backtests (simulations) cannot be listed. In other words, any Agent that others can Mint is a real, live-running Agent.
 
 **Q: Walking through the full path from "building an agent with AI" to "Tokenizing your Agent" to "others minting shares," what does it look like? How do the entry points connect?**
 

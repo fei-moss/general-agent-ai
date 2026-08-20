@@ -62,7 +62,7 @@ The Executor handles daily operation. The Owner comes in only for a handful of c
 
 In the On-Chain Info panel on the detail page, on the Contract row.
 
-**Q: Contract and Share Token show the same address. Is that a display error?**
+**Q: Contract row and Share Token row show identical addresses—is that right?**
 
 No. The Agent contract is the share token itself, so both rows point to the same contract. This sits at the core of FAT Protocol.
 
@@ -102,17 +102,17 @@ No. Those funds count toward the Agent's total assets at the next settlement, an
 
 ### Settlement, Minting, and Redemption
 
-**Q: Why don't I get my shares the moment I mint?**
+**Q: Why is there a wait after submitting a Trading Agent Mint before shares are issued?**
 
-How many shares you receive depends on the price per share for that period, and that price comes out of the Executor's settlement. Until it runs, the contract has no way to tell how many shares your deposit buys. Redemption works the same way. The settlement schedule is part of the current Agent's configuration; check the page for the current timing.
+For a Hyperliquid Trading Agent, a submitted Mint waits for Executor settlement; shares are issued only after that settlement. How many shares you receive depends on the price per share for that period, and that price comes out of the Executor's settlement. Until it runs, the contract has no way to tell how many shares your deposit buys. Trading Agent redemption works the same way. The settlement schedule is part of the current Agent's configuration; check the page for the current timing.
 
-**Q: I have submitted several redeem requests. Do I claim them one at a time?**
+**Q: After several Trading Agent redeem requests, do I claim each one separately?**
 
-No. When you claim, every redeem request that has already matured is redeemed together and paid out in one go, so there is nothing to work through one by one. Requests that have not matured yet stay pending and go out with a later settlement.
+For a Hyperliquid Trading Agent, several redeem requests do not require separate claims: all matured requests are claimed once in a batch, while unmatured requests wait for a later settlement.
 
 **Q: What if the Agent goes a long time without settling?**
 
-If the Agent stops running properly and goes a long stretch without settling, click Refund on the page to take your principal back.
+If a Hyperliquid Trading Agent remains unsettled for a long time, the Agent contract still holds the funds; use Refund on the page to take the principal back.
 
 ### Fees
 

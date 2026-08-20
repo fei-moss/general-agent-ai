@@ -15,7 +15,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.runtime.marketplace_ai import BALLOT_DYNAMIC_CONTEXT_FIELDS
+from app.runtime.marketplace_ai import (
+    BALLOT_DYNAMIC_CONTEXT_FIELDS,
+    CONSUMER_DYNAMIC_CONTEXT_FIELDS,
+)
 from tests.chat_eval.evaluator import validate_cases
 
 
@@ -34,6 +37,7 @@ ATTRIBUTIONS = {
     "evaluator_behavior",
 }
 BALLOT_DYNAMIC_FACT_RULES = set(BALLOT_DYNAMIC_CONTEXT_FIELDS)
+CONSUMER_DYNAMIC_FACT_RULES = set(CONSUMER_DYNAMIC_CONTEXT_FIELDS)
 _BALLOT_DYNAMIC_FIELD_TERMS = {
     "accrual_display_location": [
         "accrual_display_location", "accrual display location", "累积展示位置", "展示位置", "累积明细"
@@ -76,9 +80,59 @@ _BALLOT_DYNAMIC_FIELD_TERMS = {
         "yield_denomination", "yield denomination", "收益计价币种", "收益代币"
     ],
 }
-DYNAMIC_FACT_RULES = BALLOT_DYNAMIC_FACT_RULES | {
+DYNAMIC_FACT_RULES = BALLOT_DYNAMIC_FACT_RULES | CONSUMER_DYNAMIC_FACT_RULES | {
     "current_agent_redemption_policy",
     "current_agent_fee_schedule",
+}
+_CONSUMER_DYNAMIC_FIELD_TERMS = {
+    "consumer_accept_token": [
+        "consumer_accept_token", "accept token", "Accept Token", "结算代币", "接受代币"
+    ],
+    "consumer_brand_name": [
+        "consumer_brand_name", "brand", "brand name", "品牌", "品牌方"
+    ],
+    "consumer_enterprise_eligibility": [
+        "consumer_enterprise_eligibility", "enterprise eligibility", "企业用户", "企业方案"
+    ],
+    "consumer_feature_scope": [
+        "consumer_feature_scope", "feature scope", "功能范围", "通用额度", "限定功能"
+    ],
+    "consumer_mint_fee": [
+        "consumer_mint_fee", "mint fee", "Mint fee", "铸造费"
+    ],
+    "consumer_minimum_mint_amount": [
+        "consumer_minimum_mint_amount", "minimum mint amount", "最低金额", "最低铸造金额"
+    ],
+    "consumer_official_community_link": [
+        "consumer_official_community_link", "official community", "官方社群", "官方社群链接"
+    ],
+    "consumer_official_support_channel": [
+        "consumer_official_support_channel", "official support", "官方支持", "官方支持渠道", "支持渠道"
+    ],
+    "consumer_price_comparison": [
+        "consumer_price_comparison", "price comparison", "价格对比", "官网价格"
+    ],
+    "consumer_redemption_benefit": [
+        "consumer_redemption_benefit", "redemption benefit", "兑换权益", "具体权益"
+    ],
+    "consumer_redemption_code_expiry": [
+        "consumer_redemption_code_expiry", "code expiry", "有效期", "兑换码有效期"
+    ],
+    "consumer_redemption_code_value": [
+        "consumer_redemption_code_value", "code value", "兑换码价值", "对应价值", "权益价值"
+    ],
+    "consumer_redemption_entry": [
+        "consumer_redemption_entry", "redemption entry", "兑换入口", "使用入口", "具体入口"
+    ],
+    "consumer_redemption_threshold": [
+        "consumer_redemption_threshold", "threshold", "Threshold", "门槛", "兑换门槛"
+    ],
+    "consumer_refund_fee": [
+        "consumer_refund_fee", "refund fee", "Refund fee", "赎回费"
+    ],
+    "consumer_support_email": [
+        "consumer_support_email", "support email", "支持邮箱", "客服邮箱"
+    ],
 }
 _FEE_TYPE_TERMS = {
     "mint_fee": ["mint fee", "mint_fee", "铸造费"],
@@ -192,20 +246,37 @@ def build_preflight_contract(
         _validate_approved_case(case)
     truth = _validated_target_truth(target_truth)
     target_agent_type = str((truth or {}).get("agent_type") or "").casefold()
+    target_agent_brands = {
+        str(value).casefold() for value in (truth or {}).get("agent_brands", [])
+    }
+    target_brand_scope_known = bool(truth is not None and "agent_brands" in truth)
     dynamic_facts = dict((truth or {}).get("dynamic_facts") or {})
     blockers: list[str] = []
     matrix: list[dict[str, Any]] = []
     target_type_required = False
+    target_brand_scope_required = False
     dynamic_truth_required = False
     for case in cases:
         applicable_types = sorted(
             {str(value).casefold() for value in case.get("applicable_agent_types", [])}
         )
+        applicable_brands = sorted(
+            {str(value).casefold() for value in case.get("applicable_agent_brands", [])}
+        )
         if applicable_types:
             target_type_required = True
-        applicable = not applicable_types or (
+        type_applicable = not applicable_types or (
             bool(target_agent_type) and target_agent_type in applicable_types
         )
+        if applicable_brands and type_applicable:
+            target_brand_scope_required = True
+        brand_applicable = (
+            not applicable_brands
+            or not target_agent_type
+            or not target_brand_scope_known
+            or bool(target_agent_brands.intersection(applicable_brands))
+        )
+        applicable = type_applicable and brand_applicable
         rules = [str(value) for value in case.get("dynamic_fact_rules", [])]
         if rules and (applicable or not target_agent_type):
             dynamic_truth_required = True
@@ -216,21 +287,28 @@ def build_preflight_contract(
                 availability[rule] = "missing"
             else:
                 availability[rule] = str(fact.get("availability") or "available")
-        matrix.append(
-            {
-                "case_id": str(case["id"]),
-                "applicable": applicable,
-                "applicable_agent_types": applicable_types,
-                "static_fact_group_count": len(_fact_groups(case)),
-                "dynamic_fact_variables": [
-                    str(value) for value in case.get("dynamic_fact_variables", [])
-                ],
-                "dynamic_fact_rules": rules,
-                "dynamic_fact_availability": availability,
-            }
-        )
+        matrix_row = {
+            "case_id": str(case["id"]),
+            "applicable": applicable,
+            "applicable_agent_types": applicable_types,
+            "static_fact_group_count": len(_fact_groups(case)),
+            "dynamic_fact_variables": [
+                str(value) for value in case.get("dynamic_fact_variables", [])
+            ],
+            "dynamic_fact_rules": rules,
+            "dynamic_fact_availability": availability,
+        }
+        if applicable_brands:
+            matrix_row["applicable_agent_brands"] = applicable_brands
+        matrix.append(matrix_row)
     if target_type_required and not target_agent_type:
         blockers.append("target agent type missing")
+    if (
+        target_brand_scope_required
+        and target_agent_type
+        and not target_brand_scope_known
+    ):
+        blockers.append("target agent brand scope missing")
     if dynamic_truth_required and not truth:
         blockers.append("dynamic target truth missing")
     missing_rules = sorted(
@@ -244,7 +322,7 @@ def build_preflight_contract(
     )
     if missing_rules:
         blockers.append(f"dynamic target truth missing for {missing_rules}")
-    return {
+    output = {
         "schema_version": "approved-golden-preflight-v1",
         "status": "ready" if not blockers else "blocked",
         "live_run_allowed": not blockers,
@@ -255,6 +333,9 @@ def build_preflight_contract(
         "blockers": blockers,
         "fact_matrix": matrix,
     }
+    if target_brand_scope_required:
+        output["target_agent_brands"] = sorted(target_agent_brands)
+    return output
 
 
 def validate_live_preflight(
@@ -310,10 +391,14 @@ def build_target_truth_from_marketplace_context(
         ),
     }
     dynamic_facts.update(_ballot_target_facts(payload, agent_type=agent_type))
-    return {
+    dynamic_facts.update(_consumer_target_facts(payload, agent_type=agent_type))
+    output = {
         "agent_type": agent_type,
         "dynamic_facts": dynamic_facts,
     }
+    if agent_type == "consumer":
+        output["agent_brands"] = _consumer_agent_brands(agent)
+    return output
 
 
 def _ballot_target_facts(
@@ -349,6 +434,54 @@ def _ballot_target_facts(
                 "source": "marketplace_agent_context",
             }
     return facts
+
+
+def _consumer_target_facts(
+    payload: dict[str, Any], *, agent_type: str
+) -> dict[str, dict[str, Any]]:
+    """Expose only consumer facts present in typed Marketplace context."""
+    if agent_type != "consumer":
+        return {}
+    agent = payload["agent"]
+    facts: dict[str, dict[str, Any]] = {}
+    if "pixverse" in _consumer_agent_brands(agent):
+        facts["consumer_brand_name"] = _consumer_available_target_fact(
+            "consumer_brand_name",
+            "PixVerse",
+            source="agent.name_or_description",
+        )
+    accept_token = agent.get("accept_token_symbol")
+    if accept_token is not None and str(accept_token).strip():
+        facts["consumer_accept_token"] = _consumer_available_target_fact(
+            "consumer_accept_token",
+            str(accept_token).strip(),
+            source="agent.accept_token_symbol",
+        )
+    return facts
+
+
+def _consumer_available_target_fact(
+    rule: str,
+    value: str,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    required_terms = [value]
+    if rule == "consumer_brand_name":
+        required_terms.extend(_CONSUMER_DYNAMIC_FIELD_TERMS[rule])
+    return {
+        "required_fact_groups": [required_terms],
+        "forbidden_claims": [],
+        "availability": "available",
+        "source": source,
+    }
+
+
+def _consumer_agent_brands(agent: dict[str, Any]) -> list[str]:
+    identity_text = " ".join(
+        str(agent.get(field) or "") for field in ("name", "description")
+    ).casefold()
+    return ["pixverse"] if "pixverse" in identity_text else []
 
 
 def _redemption_target_fact(value: Any) -> dict[str, Any]:
@@ -510,6 +643,12 @@ def build_optimization_report(
 
     target_truth = _validated_target_truth(target_truth)
     target_agent_type = str((target_truth or {}).get("agent_type") or "").casefold()
+    target_agent_brands = {
+        str(value).casefold() for value in (target_truth or {}).get("agent_brands", [])
+    }
+    target_brand_scope_known = bool(
+        target_truth is not None and "agent_brands" in target_truth
+    )
     dynamic_facts = dict((target_truth or {}).get("dynamic_facts") or {})
     results: list[dict[str, Any]] = []
     release_blockers: list[str] = []
@@ -522,7 +661,18 @@ def build_optimization_report(
         applicable_types = {
             str(value).casefold() for value in case.get("applicable_agent_types", [])
         }
-        if applicable_types and target_agent_type and target_agent_type not in applicable_types:
+        applicable_brands = {
+            str(value).casefold() for value in case.get("applicable_agent_brands", [])
+        }
+        if (
+            applicable_types
+            and target_agent_type
+            and target_agent_type not in applicable_types
+        ) or (
+            applicable_brands
+            and target_brand_scope_known
+            and not target_agent_brands.intersection(applicable_brands)
+        ):
             not_applicable_count += 1
             results.append(
                 {
@@ -548,6 +698,11 @@ def build_optimization_report(
             continue
         active_cases.append(case)
         target_agent_type_missing = bool(applicable_types and not target_agent_type)
+        target_agent_brand_missing = bool(
+            applicable_brands
+            and target_agent_type
+            and not target_brand_scope_known
+        )
         baseline = baseline_by_id.get(case_id)
         answer = str((baseline or {}).get("content") or "")
         transport_ok = bool(
@@ -606,6 +761,7 @@ def build_optimization_report(
             and not missing_groups
             and not missing_dynamic_rules
             and not target_agent_type_missing
+            and not target_agent_brand_missing
             and not forbidden_hits
         )
         review = review_by_id.get(case_id)
@@ -626,6 +782,8 @@ def build_optimization_report(
             release_blockers.append(f"{case_id}: live baseline missing or failed")
         if target_agent_type_missing:
             release_blockers.append(f"{case_id}: target agent type missing")
+        if target_agent_brand_missing:
+            release_blockers.append(f"{case_id}: target agent brand scope missing")
         if missing_dynamic_rules:
             release_blockers.append(
                 f"{case_id}: dynamic target truth missing for {missing_dynamic_rules}"
@@ -660,6 +818,7 @@ def build_optimization_report(
             "missing_dynamic_fact_groups": missing_dynamic_groups,
             "missing_dynamic_rules": missing_dynamic_rules,
             "target_agent_type_missing": target_agent_type_missing,
+            "target_agent_brand_missing": target_agent_brand_missing,
             "forbidden_hits": forbidden_hits,
             "semantic_verdict": semantic_verdict,
             "semantic_reason": (review or {}).get("reason"),
@@ -836,7 +995,16 @@ def _normalize_source_row(
         raise ValueError(f"source row {index}: ideal_answer is required")
     _reject_sensitive_values(raw, index=index)
 
-    groups = _validated_fact_groups(raw.get("required_fact_groups"), index=index)
+    raw_dynamic_rules = (
+        _string_list(raw["dynamic_fact_rules"], "dynamic_fact_rules", index)
+        if "dynamic_fact_rules" in raw
+        else []
+    )
+    groups = _validated_fact_groups(
+        raw.get("required_fact_groups"),
+        index=index,
+        allow_empty=bool(raw_dynamic_rules),
+    )
     case_id = str(raw.get("id") or "").strip() or _stable_case_id(question)
     action = str(raw.get("expected_input_action") or "allow")
     if action == "refuse" and not str(raw.get("expected_input_category") or "").strip():
@@ -890,6 +1058,17 @@ def _normalize_source_row(
                 )
             }
         )
+    if "applicable_agent_brands" in raw:
+        canonical["applicable_agent_brands"] = sorted(
+            {
+                value.casefold()
+                for value in _string_list(
+                    raw["applicable_agent_brands"],
+                    "applicable_agent_brands",
+                    index,
+                )
+            }
+        )
     for field in (
         "dynamic_fact_variables",
         "dynamic_fact_rules",
@@ -926,12 +1105,16 @@ def _validate_approved_case(row: dict[str, Any]) -> None:
         raise ValueError(f"{case_id}: approval.source_version is required")
     if not str(row.get("ideal_answer") or "").strip():
         raise ValueError(f"{case_id}: ideal_answer is required")
-    _validated_fact_groups(row.get("required_fact_groups"), index=case_id)
-    _string_list(
-        row.get("dynamic_fact_variables", []), "dynamic_fact_variables", case_id
-    )
     dynamic_rules = _string_list(
         row.get("dynamic_fact_rules", []), "dynamic_fact_rules", case_id
+    )
+    _validated_fact_groups(
+        row.get("required_fact_groups"),
+        index=case_id,
+        allow_empty=bool(dynamic_rules),
+    )
+    _string_list(
+        row.get("dynamic_fact_variables", []), "dynamic_fact_variables", case_id
     )
     unknown_rules = sorted(set(dynamic_rules) - DYNAMIC_FACT_RULES)
     if unknown_rules:
@@ -941,6 +1124,11 @@ def _validate_approved_case(row: dict[str, Any]) -> None:
     ):
         if agent_type != agent_type.casefold():
             raise ValueError(f"{case_id}: applicable_agent_types must be lowercase")
+    for agent_brand in _string_list(
+        row.get("applicable_agent_brands", []), "applicable_agent_brands", case_id
+    ):
+        if agent_brand != agent_brand.casefold():
+            raise ValueError(f"{case_id}: applicable_agent_brands must be lowercase")
     _reject_sensitive_values(row, index=case_id)
 
 
@@ -979,11 +1167,30 @@ def _validated_target_truth(value: dict[str, Any] | None) -> dict[str, Any] | No
                 if not value_text:
                     raise ValueError(f"target truth {rule}.{field} must be non-empty")
                 facts[rule][field] = value_text
-    return {"agent_type": agent_type, "dynamic_facts": facts}
+    output = {"agent_type": agent_type, "dynamic_facts": facts}
+    if "agent_brands" in value:
+        output["agent_brands"] = sorted(
+            {
+                brand.casefold()
+                for brand in _string_list(
+                    value["agent_brands"], "agent_brands", "target truth"
+                )
+            }
+        )
+    return output
 
 
-def _validated_fact_groups(value: Any, *, index: Any) -> list[list[str]]:
-    if not isinstance(value, list) or not value:
+def _validated_fact_groups(
+    value: Any,
+    *,
+    index: Any,
+    allow_empty: bool = False,
+) -> list[list[str]]:
+    if not isinstance(value, list):
+        raise ValueError(f"source row {index}: required_fact_groups must be non-empty")
+    if not value:
+        if allow_empty:
+            return []
         raise ValueError(f"source row {index}: required_fact_groups must be non-empty")
     groups: list[list[str]] = []
     for group in value:
@@ -1105,6 +1312,8 @@ def _failure_modes(result: dict[str, Any]) -> list[str]:
         modes.append("runtime_or_transport")
     if result.get("target_agent_type_missing"):
         modes.append("target_agent_type_missing")
+    if result.get("target_agent_brand_missing"):
+        modes.append("target_agent_brand_missing")
     if result.get("missing_dynamic_rules"):
         modes.append("dynamic_truth_missing")
     if result.get("missing_static_fact_groups"):

@@ -123,8 +123,8 @@ def test_marketplace_qna_make_dry_run_is_ordered_without_secret_echo():
 def test_marketplace_qna_runbook_uses_make_as_the_canonical_entrypoint():
     runbook = RUNBOOK.read_text(encoding="utf-8")
 
-    assert "marketplace-qna-rag-seed-v6" in runbook
-    assert "241 chunks" in runbook
+    assert "marketplace-qna-rag-seed-v7" in runbook
+    assert "289 chunks" in runbook
     assert "make marketplace-qna-acceptance" in runbook
     assert "make marketplace-qna-preflight" in runbook
     assert "make marketplace-qna-local" in runbook

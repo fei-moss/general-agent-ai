@@ -18,11 +18,11 @@ ExchangeRate 上涨意味着持有的每单位份额能换回的钱变多了。�
 
 > 收益 =（Redeem 时的份额单价 − Mint 时的份额单价）× 持有数量
 
-**Q：我什么时候能拿到钱？赎回（Redeem）要多久到账？有锁定期吗？**
+**Q：我的资金什么时候可以取用？Redeem 通常多久到账？是否有锁定期？**
 
 可能有锁定期，由 Agent 创建者自己定义。对于有锁定期的情况，提交 Redeem 申请并等到锁定期结束后，资金将自动到账。
 
-**Q：mint 用什么币支付？必须是 ETH 吗？（Accept Token 是什么）**
+**Q：Mint 支付接受哪种加密货币？必须使用 ETH 吗？Accept Token 是什么？**
 
 不只是 ETH，Moss Agent Market 支持多链，支付币种具体以 Agent 详情页为准
 

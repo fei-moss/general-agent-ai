@@ -6,6 +6,7 @@
     "specs/chat_answer_formatting/spec.md",
     "specs/chat_output_completion/spec.md",
     "specs/chat_qna_guard_and_retrieval/spec.md",
+    "specs/consumer_golden_answers/spec.md",
     "specs/hyperliquid_golden_answers/spec.md",
     "specs/marketplace_agent_protocol_created_at/spec.md",
     "specs/marketplace_trading_context/spec.md",

@@ -1,12 +1,12 @@
 {
   "contract_id": "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE",
-  "required_chat_case_count": 24,
-  "required_document_count": 24,
+  "required_chat_case_count": 32,
+  "required_document_count": 32,
   "required_languages": [
     "zh-CN",
     "en"
   ],
-  "required_query_count": 218,
+  "required_query_count": 316,
   "spec_id": "SPEC-RAG-EVAL-002",
   "topic_groups": [
     {
@@ -393,6 +393,160 @@
         "marketplace_qna_en_12_q10",
         "marketplace_qna_en_12_q11",
         "marketplace_qna_en_12_q12"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_zh_cn_13",
+      "language": "zh-CN",
+      "name": "zh-CN-topic-13",
+      "query_ids": [
+        "marketplace_qna_zh_cn_13_q01",
+        "marketplace_qna_zh_cn_13_q02",
+        "marketplace_qna_zh_cn_13_q03",
+        "marketplace_qna_zh_cn_13_q04",
+        "marketplace_qna_zh_cn_13_q05",
+        "marketplace_qna_zh_cn_13_q06",
+        "marketplace_qna_zh_cn_13_q07",
+        "marketplace_qna_zh_cn_13_q08",
+        "marketplace_qna_zh_cn_13_q09",
+        "marketplace_qna_zh_cn_13_q10",
+        "marketplace_qna_zh_cn_13_q11",
+        "marketplace_qna_zh_cn_13_q12"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_zh_cn_14",
+      "language": "zh-CN",
+      "name": "zh-CN-topic-14",
+      "query_ids": [
+        "marketplace_qna_zh_cn_14_q01",
+        "marketplace_qna_zh_cn_14_q02",
+        "marketplace_qna_zh_cn_14_q03",
+        "marketplace_qna_zh_cn_14_q04",
+        "marketplace_qna_zh_cn_14_q05",
+        "marketplace_qna_zh_cn_14_q06",
+        "marketplace_qna_zh_cn_14_q07",
+        "marketplace_qna_zh_cn_14_q08"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_zh_cn_15",
+      "language": "zh-CN",
+      "name": "zh-CN-topic-15",
+      "query_ids": [
+        "marketplace_qna_zh_cn_15_q01",
+        "marketplace_qna_zh_cn_15_q02",
+        "marketplace_qna_zh_cn_15_q03",
+        "marketplace_qna_zh_cn_15_q04",
+        "marketplace_qna_zh_cn_15_q05",
+        "marketplace_qna_zh_cn_15_q06",
+        "marketplace_qna_zh_cn_15_q07",
+        "marketplace_qna_zh_cn_15_q08",
+        "marketplace_qna_zh_cn_15_q09",
+        "marketplace_qna_zh_cn_15_q10",
+        "marketplace_qna_zh_cn_15_q11",
+        "marketplace_qna_zh_cn_15_q12",
+        "marketplace_qna_zh_cn_15_q13",
+        "marketplace_qna_zh_cn_15_q14",
+        "marketplace_qna_zh_cn_15_q15",
+        "marketplace_qna_zh_cn_15_q16",
+        "marketplace_qna_zh_cn_15_q17",
+        "marketplace_qna_zh_cn_15_q18"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_zh_cn_16",
+      "language": "zh-CN",
+      "name": "zh-CN-topic-16",
+      "query_ids": [
+        "marketplace_qna_zh_cn_16_q01",
+        "marketplace_qna_zh_cn_16_q02",
+        "marketplace_qna_zh_cn_16_q03",
+        "marketplace_qna_zh_cn_16_q04",
+        "marketplace_qna_zh_cn_16_q05",
+        "marketplace_qna_zh_cn_16_q06",
+        "marketplace_qna_zh_cn_16_q07",
+        "marketplace_qna_zh_cn_16_q08",
+        "marketplace_qna_zh_cn_16_q09",
+        "marketplace_qna_zh_cn_16_q10",
+        "marketplace_qna_zh_cn_16_q11"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_en_13",
+      "language": "en",
+      "name": "en-topic-13",
+      "query_ids": [
+        "marketplace_qna_en_13_q01",
+        "marketplace_qna_en_13_q02",
+        "marketplace_qna_en_13_q03",
+        "marketplace_qna_en_13_q04",
+        "marketplace_qna_en_13_q05",
+        "marketplace_qna_en_13_q06",
+        "marketplace_qna_en_13_q07",
+        "marketplace_qna_en_13_q08",
+        "marketplace_qna_en_13_q09",
+        "marketplace_qna_en_13_q10",
+        "marketplace_qna_en_13_q11",
+        "marketplace_qna_en_13_q12"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_en_14",
+      "language": "en",
+      "name": "en-topic-14",
+      "query_ids": [
+        "marketplace_qna_en_14_q01",
+        "marketplace_qna_en_14_q02",
+        "marketplace_qna_en_14_q03",
+        "marketplace_qna_en_14_q04",
+        "marketplace_qna_en_14_q05",
+        "marketplace_qna_en_14_q06",
+        "marketplace_qna_en_14_q07",
+        "marketplace_qna_en_14_q08"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_en_15",
+      "language": "en",
+      "name": "en-topic-15",
+      "query_ids": [
+        "marketplace_qna_en_15_q01",
+        "marketplace_qna_en_15_q02",
+        "marketplace_qna_en_15_q03",
+        "marketplace_qna_en_15_q04",
+        "marketplace_qna_en_15_q05",
+        "marketplace_qna_en_15_q06",
+        "marketplace_qna_en_15_q07",
+        "marketplace_qna_en_15_q08",
+        "marketplace_qna_en_15_q09",
+        "marketplace_qna_en_15_q10",
+        "marketplace_qna_en_15_q11",
+        "marketplace_qna_en_15_q12",
+        "marketplace_qna_en_15_q13",
+        "marketplace_qna_en_15_q14",
+        "marketplace_qna_en_15_q15",
+        "marketplace_qna_en_15_q16",
+        "marketplace_qna_en_15_q17",
+        "marketplace_qna_en_15_q18"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_en_16",
+      "language": "en",
+      "name": "en-topic-16",
+      "query_ids": [
+        "marketplace_qna_en_16_q01",
+        "marketplace_qna_en_16_q02",
+        "marketplace_qna_en_16_q03",
+        "marketplace_qna_en_16_q04",
+        "marketplace_qna_en_16_q05",
+        "marketplace_qna_en_16_q06",
+        "marketplace_qna_en_16_q07",
+        "marketplace_qna_en_16_q08",
+        "marketplace_qna_en_16_q09",
+        "marketplace_qna_en_16_q10",
+        "marketplace_qna_en_16_q11"
       ]
     }
   ]

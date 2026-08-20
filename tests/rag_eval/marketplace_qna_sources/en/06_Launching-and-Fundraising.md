@@ -8,41 +8,14 @@ The creator publishes an AI Agent with trading capability and strategy to the ma
 
 A creator's income mainly comes from the Agent's fee mechanism, currently in two categories:
 
-Management Fee (a management fee, effectively the Mint / Redeem Fee)
+- Management Fee: the configured Mint Fee and Redeem Fee.
+- Profit Share: a contract-defined portion of actual trading profit when that feature is supported.
 
-- When users Mint to enter, a Mint Fee is charged per configuration; when users Redeem to exit, a Redeem Fee is charged per configuration.
-
-- How much the fee rate can be set to depends on the Agent configuration at creation and on-chain contract limits. It is not necessarily the same across Agents.
-
-Profit Share
-
-- After the Agent actually earns money through the executor, the returns enter the contract, and the creator can share a portion of the returns per the contract terms.
-
-- Whether it is supported, the ratio, and when it settles all depend on the contract rules set when the Agent is configured.
-
-Settlement:
-
-- Fees and shares such as the Mint Fee, Redeem Fee, and the returns from share unit price changes after the Agent profits are not paid out manually by the platform. They are determined by on-chain contracts and settlement logic.
-
-- When exactly they can be claimed, whether settlement is automatic, and whether the creator must actively claim can be checked against the Agent's on-chain contract implementation and the Agent management page.
+Rates, contract limits, support, and payout method are Agent-specific. The Agent management page and on-chain rules state the applicable values and whether the creator must claim them.
 
 **Q: Do I need to put up my own principal to Tokenize an agent, or does it all come from what others mint in?**
 
-You do not necessarily need to provide all the principal yourself. The Agent's main tokens come from the Accept Tokens that Minters bring in, so the creator does not need to fill the pool themselves.
-
-However, as a creator, you at least need to bear these basic costs:
-
-- Gas: The fees for deploying the contract and on-chain operations.
-
-- Configuration costs: Filling in information, configuring parameters, and binding the executor / trading wallet when creating the Agent.
-
-Two additional notes:
-
-- If no one mints, the Agent will have very little in its pool, and the strategy may not run properly or only at limited scale.
-
-- Some templates may require initial tokens or a minimum launch size in the future, subject to template rules.
-
-In short, you do not have to put up all the principal yourself. The main tokens come from Minter participation, but you must bear the basic deployment and configuration costs yourself, and whether initial tokens are needed depends on the specific template requirements.
+Other Minters supply the Agent's main capital, so the creator does not need to fill the pool. The creator still pays deployment gas and configuration costs. Without Minter participation the strategy may run only at limited scale, and a template may require initial tokens or a minimum launch size under its own rules.
 
 **Q: Can I, as the creator, move the tokens others mint in?**
 
@@ -76,11 +49,11 @@ The creator can modify the Agent's trading strategy at any time, which is essent
 
 **Q: Can I still modify the template / chain after selecting them?**
 
-Yes. Before the Agent is fully created, you can reselect or modify them.
+Selecting a template or blockchain does not lock it immediately. Yes. Before the Agent is fully created, you can reselect or modify them. Creation completion is the immutability boundary for both the selected template and the selected chain.
 
-**Q: After Tokenizing, can I still change the strategy / adjust parameters anytime like in the Tool? What is the impact on holders who have already minted?**
+**Q: After tokenization and fundraising, are strategy and parameters no longer freely adjustable, and what is the effect on holders who already Minted?**
 
-You can modify the Agent's trading strategy at any time, and this essentially does not affect the Agent listed on Moss Agent Marketplace.
+The post-tokenization strategy boundary is unchanged. You can modify the Agent's trading strategy at any time, and this essentially does not affect the Agent listed on Moss Agent Marketplace. This holder-impact statement does not turn every contract parameter into an editable strategy setting.
 
 **Q: After Tokenizing, how much control do I, the creator, still have over the pooled tokens? What can and cannot be moved?**
 

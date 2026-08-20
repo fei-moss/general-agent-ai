@@ -18,11 +18,11 @@ A rising exchange rate means each unit of shares you hold can be redeemed for mo
 
 > Return = (share unit price at Redeem − share unit price at Mint) × quantity held
 
-**Q: When can I get my money? How long does Redeem take? Is there a lock-up period?**
+**Q: When will my funds become accessible, and what is the typical duration for Redeem? Is there a lock-up period?**
 
 There may be a lock-up period, defined by the Agent's creator. For cases with a lock-up, submit the Redeem request, and once the lock-up period ends, the funds will arrive automatically.
 
-**Q: What currency is used to pay for Mint? Does it have to be ETH? (What is Accept Token?)**
+**Q: Which cryptocurrency is accepted for Mint payments, and must it be ETH? What does Accept Token mean?**
 
 Not only ETH. Moss Agent Market supports multiple chains, and the payment currency (the Accept Token) depends on the Agent's detail page.
 

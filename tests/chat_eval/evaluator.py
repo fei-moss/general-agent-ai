@@ -29,6 +29,7 @@ _ALLOWED_ACTIONS = {action.value for action in GuardrailAction}
 _ALLOWED_CATEGORIES = {category.value for category in GuardrailCategory}
 _ALLOWED_RISK_LEVELS = {"low", "medium", "high", "critical"}
 _OPTIONAL_LIST_FIELDS = {
+    "applicable_agent_brands",
     "applicable_agent_types",
     "dynamic_fact_variables",
     "dynamic_fact_rules",
@@ -156,7 +157,13 @@ def validate_cases(
         if row.get("expected_input_action") == "refuse":
             _validate_string_list(row, "safe_response_contains", errors, case_id)
         if row.get("expected_input_action") == "allow":
-            _validate_string_list(row, "answer_traits", errors, case_id)
+            dynamic_only_approved_case = bool(
+                row.get("schema_version") == "approved-golden-case-v1"
+                and row.get("dynamic_fact_rules")
+                and row.get("answer_traits") == []
+            )
+            if not dynamic_only_approved_case:
+                _validate_string_list(row, "answer_traits", errors, case_id)
             if not (
                 row.get("schema_version") == "approved-golden-case-v1"
                 and row.get("forbidden_claims") == []

@@ -28,9 +28,9 @@ But whether you can redeem immediately and when tokens arrive depend on the Agen
 
 - Whether the current chain and contract are operating normally.
 
-**Q: In which regions / countries can I not use it? Are there geographic restrictions?**
+**Q: Which countries or regions are unable to use Moss Agent Marketplace, and what geographic restrictions apply?**
 
-Mainland China is currently not available; other regions are available. Please confirm the specifics with Moss's official announcements.
+The restricted-country or restricted-region question is the Marketplace geographic-restriction rule. Mainland China is currently not available; other regions are available. Please confirm the specifics with Moss's official announcements.
 
 **Q: I lost my wallet's seed phrase. Can Moss help me recover it?**
 

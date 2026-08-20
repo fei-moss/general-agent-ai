@@ -10,9 +10,9 @@ A Governance Agent combines Agent shares, fixed-yield accrual, airdrops claimed 
 
 The platform mechanism has four benefit categories: yield accruing at the current Agent's fixed APY, airdrops accumulated while holding and claimed at Redeem, governance participation under snapshot rules, and project updates. The share is a standard onchain token in the holder's wallet; concrete values and rules come from the current Agent context.
 
-**Q: How is holding through a Governance Agent different from holding the project token directly?**
+**Q: Mechanically, how do governance shares differ from simply keeping the project token in my wallet?**
 
-Holding the project token directly mainly preserves exposure to that token. Holding Governance Agent shares can add contract-governed fixed yield, airdrop accrual, a governance entry point, and project updates. Whether and how a specific Agent provides them must follow its current contract and Agent context.
+Holding the project token directly mainly preserves exposure to that token while the token stays in the user's wallet. Mechanically, Governance Agent participation Mints project tokens into contract-governed shares that can add fixed yield, accumulated airdrops, governance participation, and project updates. Whether and how a specific Agent provides them must follow its current contract and Agent context.
 
 **Q: How does the fixed APY accrue?**
 
@@ -34,31 +34,31 @@ Proposal rights are defined by the current Agent's governance configuration. A t
 
 Voting eligibility and weight are based on share holdings at the proposal snapshot. The exact conversion rule belongs to the current Agent's governance configuration and must come from current Agent context; not every Agent may use one share equals one vote.
 
-**Q: What is a governance snapshot and when is it taken?**
+**Q: What does a proposal snapshot do to voter eligibility, and when is it taken?**
 
-A snapshot records share holdings at a specific point and fixes eligibility and weight for that proposal. The snapshot is taken when the proposal is created, and its exact time should be shown in current Agent context or on the proposal page. Later balance changes must not be silently applied to that vote.
+A Governance Agent proposal snapshot determines voter eligibility and voting weight for that specific proposal. A snapshot records share holdings at a specific point and fixes eligibility and weight for that proposal. It is taken when the proposal is created, and its exact time should be shown in current Agent context or on the proposal page. Later balance changes must not be silently applied to that vote.
 
 **Q: How do I vote, and can I change my vote?**
 
 The user selects a position on the proposal page and signs under the product flow; the vote record is verifiable. Voting is an on-chain action and carries the standard network fee (gas) for the Agent's network. Whether a vote can be changed during the voting window is a dynamic proposal or Agent rule that must come from current Agent context.
 
-**Q: Are there extra rewards for governance participation?**
+**Q: Are extra incentives automatic when someone casts a governance vote?**
 
-Extra voting rewards are not a platform-wide constant. They must come from current Agent context. When no reward configuration is returned, the answer must say the current data does not provide it rather than promising a reward.
+Casting a governance vote does not automatically earn an additional incentive. Extra voting rewards are not a platform-wide constant; any vote incentive must come from current Agent context. When no reward configuration is returned, the answer must say the current data does not provide it rather than promising a reward.
 
 **Q: Who executes a passed proposal?**
 
 Execution depends on the current Agent's governance rules. Contract-executable actions may run onchain, while offchain actions may be handled by the project. The exact executor, status, and progress must come from current Agent context or the proposal page.
 
-**Q: Can I exit, and does Redeem lose accrued rewards?**
+**Q: How do locks and accumulated rewards work when I exit governance shares as a holder?**
 
-Redeem availability, locks, and early-redemption effects are defined by the current Agent's redemption rules. Once those rules are met, the returned components must be described from current Agent context, including principal, accrued fixed yield, and accrued airdrops. Missing fields must not be invented.
+Redeem availability, locks, and early-redemption effects are defined by the current Agent's redemption rules. For a holder exiting governance shares, the current Agent context must state the lock and the treatment of accumulated rewards: principal, accrued fixed yield, and accrued airdrops. Missing fields must not be invented.
 
 **Q: How is principal held, and can the project use it?**
 
 Principal Minted into the Agent does not enter the project's personal wallet. It follows a contract-custodied path, with shares and Redeem governed by contract rules. The project cannot freely transfer holder principal as if it were its own wallet balance; exact permissions still follow the current contract.
 
-**Q: If I Redeem during a vote, does my vote still count?**
+**Q: In a Governance Agent, if I redeem after the snapshot, could my submitted governance ballot stop counting?**
 
 That depends on the current proposal's snapshot and Redeem interaction rules. A snapshot usually fixes eligibility and weight, but whether the vote remains counted after Redeem must come from current Agent context or proposal rules, not a demo assumption.
 

@@ -37,6 +37,25 @@ BALLOT_DYNAMIC_CONTEXT_FIELDS = (
     "redeem_during_vote_rule", "reward_source_summary", "snapshot_timing_rule",
     "vote_change_rule", "vote_cost_note", "voting_power_rule", "yield_denomination",
 )
+# Approval: owner-request:consumer-golden-regression-20260819
+CONSUMER_DYNAMIC_CONTEXT_FIELDS: tuple[str, ...] = (
+    "consumer_accept_token",
+    "consumer_brand_name",
+    "consumer_enterprise_eligibility",
+    "consumer_feature_scope",
+    "consumer_mint_fee",
+    "consumer_minimum_mint_amount",
+    "consumer_official_community_link",
+    "consumer_official_support_channel",
+    "consumer_price_comparison",
+    "consumer_redemption_benefit",
+    "consumer_redemption_code_expiry",
+    "consumer_redemption_code_value",
+    "consumer_redemption_entry",
+    "consumer_redemption_threshold",
+    "consumer_refund_fee",
+    "consumer_support_email",
+)
 
 MarketplaceComputeMetric = Literal[
     "share_price_change",

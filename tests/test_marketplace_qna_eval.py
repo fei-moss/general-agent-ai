@@ -29,10 +29,10 @@ def test_marketplace_qna_sources_have_expected_shape():
 
     bundle = build_fixture_bundle()
 
-    assert len(bundle.sources) == 24
-    assert sum(source.language == "zh-CN" for source in bundle.sources) == 12
-    assert sum(source.language == "en" for source in bundle.sources) == 12
-    assert sum(len(source.questions) for source in bundle.sources) == 218
+    assert len(bundle.sources) == 32
+    assert sum(source.language == "zh-CN" for source in bundle.sources) == 16
+    assert sum(source.language == "en" for source in bundle.sources) == 16
+    assert sum(len(source.questions) for source in bundle.sources) == 316
     assert {len(source.questions) for source in bundle.sources if source.order == 4} == {16}
 
 
@@ -66,6 +66,268 @@ def test_marketplace_qna_v5_contains_stable_ballot_mechanisms_without_target_val
     assert re.search(r"\b0x[a-fA-F0-9]{40}\b", zh + en) is None
 
 
+def test_marketplace_qna_v7_contains_bilingual_consumer_mechanisms_without_dynamic_values():
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
+
+    sources = {source.id: source.text for source in build_fixture_bundle().sources}
+    new_document_ids = {
+        f"marketplace_qna_{language}_{order:02d}"
+        for language in ("zh_cn", "en")
+        for order in range(13, 17)
+    }
+
+    assert new_document_ids <= set(sources)
+    zh = "\n".join(sources[f"marketplace_qna_zh_cn_{order:02d}"] for order in range(13, 17))
+    en = "\n".join(sources[f"marketplace_qna_en_{order:02d}"] for order in range(13, 17))
+    combined = zh + "\n" + en
+
+    for stable_zh_fact in (
+        "标准 ERC-20",
+        "不是投资产品",
+        "Pending",
+        "Claimable",
+        "Paused by owner",
+        "榜单会更新，以最新为准",
+        "177 个国家",
+        "Freepik",
+        "Replicate",
+    ):
+        assert stable_zh_fact in zh
+    for stable_en_fact in (
+        "standard ERC-20",
+        "not an investment product",
+        "Pending",
+        "Claimable",
+        "Paused by owner",
+        "Rankings change; always use the latest available ranking",
+        "177 countries",
+        "Freepik",
+        "Replicate",
+    ):
+        assert stable_en_fact in en
+    for owner_pending_summary in (
+        "未经批准的兑换码找回、转让和有效期问题保持待产品 owner 输入",
+        "尚无答案的费用、额外收益和持有时长问题保持待产品 owner 输入",
+    ):
+        assert owner_pending_summary in zh
+    assert "待产品 owner 输入" in zh
+    assert "current Agent page" in en
+    assert re.search(r"\b0x[a-fA-F0-9]{40}\b", combined) is None
+    assert re.search(r"https?://|[\w.+-]+@[\w.-]+", combined) is None
+    assert "%" not in combined
+    for dynamic_literal in (
+        "bnbUSDC",
+        "USDC",
+        "USDT",
+        "Ethereum",
+        "Arbitrum",
+        "Solana",
+        "BNB Chain",
+        "Telegram",
+        "Discord",
+    ):
+        assert dynamic_literal not in combined
+
+
+def test_marketplace_qna_round_two_structural_anchors_partition_confused_topics():
+    from tests.rag_eval.marketplace_qna_fixture_builder import (
+        build_fixture_bundle,
+        load_case_definitions,
+    )
+
+    bundle = build_fixture_bundle()
+    sources = {source.id: source.text for source in bundle.sources}
+    cases = load_case_definitions(bundle)
+
+    assert "Marketplace listing eligibility requires a live Agent" in sources[
+        "marketplace_qna_en_02"
+    ]
+    assert "Marketplace 上架资格要求 Agent 正在实盘运行" in sources[
+        "marketplace_qna_zh_cn_02"
+    ]
+    assert "countries or regions are unable to use Moss Agent Marketplace" in sources[
+        "marketplace_qna_en_08"
+    ]
+    assert "哪些国家或地区无法使用 Moss Agent Marketplace" in sources[
+        "marketplace_qna_zh_cn_08"
+    ]
+
+    en_10 = sources["marketplace_qna_en_10"]
+    en_12 = sources["marketplace_qna_en_12"]
+    zh_10 = sources["marketplace_qna_zh_cn_10"]
+    zh_12 = sources["marketplace_qna_zh_cn_12"]
+    assert "Mechanically, how do governance shares differ" in en_10
+    assert "locks and accumulated rewards work when I exit governance shares" in en_10
+    assert "share price move up and down like a Trading Agent's" in en_12
+    assert "share price behavior" not in en_10.casefold()
+    assert "直接拿项目币和换成治理份额，机制上差在哪" in zh_10
+    assert "退出治理份额时，锁定期和累计奖励怎么处理" in zh_10
+    assert "份额单价会不会像交易 Agent 一样涨跌" in zh_12
+    assert "份额价格表现" not in zh_10
+
+    assert "submitted Mint waits for Executor settlement; shares are issued only after" in sources[
+        "marketplace_qna_en_11"
+    ]
+    assert "several redeem requests do not require separate claims" in sources[
+        "marketplace_qna_en_11"
+    ]
+    assert "Mint 提交后要等一段时间，Executor 完成结算后才发放份额" in sources[
+        "marketplace_qna_zh_cn_11"
+    ]
+    assert "多次赎回申请无需逐笔操作" in sources[
+        "marketplace_qna_zh_cn_11"
+    ]
+
+    assert "代币化并募集完成后，策略与参数是不是不能随时调整" in sources[
+        "marketplace_qna_zh_cn_06"
+    ]
+    assert "after tokenization and fundraising, are strategy and parameters no longer freely adjustable" in sources[
+        "marketplace_qna_en_06"
+    ].casefold()
+    assert cases["marketplace_qna_zh_cn_15_q06"].query.startswith(
+        "Consumer Agent 里用户 Mint 的本金"
+    )
+    assert cases["marketplace_qna_en_15_q06"].query.startswith(
+        "In a Consumer Agent, who holds the principal"
+    )
+    assert "我的份额余额不含已换码部分" in sources["marketplace_qna_zh_cn_15"]
+    assert "My Shares balance excludes shares already converted into codes" in sources[
+        "marketplace_qna_en_15"
+    ]
+
+    en_consumer = "\n".join(sources[f"marketplace_qna_en_{order:02d}"] for order in range(13, 16))
+    zh_consumer = "\n".join(
+        sources[f"marketplace_qna_zh_cn_{order:02d}"] for order in range(13, 16)
+    )
+    assert re.search(r"\b(available|availability|service|region|country|territor)", en_consumer, re.I) is None
+    assert not any(term in zh_consumer for term in ("可用", "服务", "地区", "国家", "地域"))
+    assert "PixVerse's brand business spans 177 countries" in sources[
+        "marketplace_qna_en_16"
+    ]
+    assert "PixVerse 的品牌业务遍及 177 个国家" in sources[
+        "marketplace_qna_zh_cn_16"
+    ]
+
+
+def test_marketplace_qna_final_trim_removes_neighbor_attractors_without_losing_owned_topics():
+    from app.rag.chunker import chunk_text
+    from tests.rag_eval.marketplace_qna_fixture_builder import (
+        build_fixture_bundle,
+        load_case_definitions,
+    )
+
+    bundle = build_fixture_bundle()
+    sources = {source.id: source.text for source in bundle.sources}
+    cases = load_case_definitions(bundle)
+
+    en_04 = sources["marketplace_qna_en_04"]
+    assert "When will my funds become accessible, and what is the typical duration for Redeem?" in en_04
+    assert "Which cryptocurrency is accepted for Mint payments, and must it be ETH?" in en_04
+
+    en_06 = sources["marketplace_qna_en_06"]
+    assert "Accept Tokens that Minters bring in" not in en_06
+    assert "Other Minters supply the Agent's main capital" in en_06
+
+    en_10 = sources["marketplace_qna_en_10"]
+    zh_10 = sources["marketplace_qna_zh_cn_10"]
+    assert (
+        "Mechanically, how do governance shares differ from simply keeping the project token in my wallet?"
+        in en_10
+    )
+    assert "if I redeem after the snapshot, could my submitted governance ballot stop counting?" in en_10
+    assert "快照后赎回份额，会不会让已提交的治理票失效" in zh_10
+    assert "share price behavior" not in en_10.casefold()
+    assert "份额价格表现" not in zh_10
+
+    en_11 = sources["marketplace_qna_en_11"]
+    zh_11 = sources["marketplace_qna_zh_cn_11"]
+    assert "Contract row and Share Token row show identical addresses" in en_11
+    assert "多次赎回申请无需逐笔操作" in zh_11
+    assert "长时间未结算时，资金仍由 Agent 合约持有" in zh_11
+
+    en_12 = sources["marketplace_qna_en_12"]
+    zh_12 = sources["marketplace_qna_zh_cn_12"]
+    for attractor in (
+        "processing queue",
+        "when the status permits",
+        "settlement timing",
+        "Contract row",
+        "Share Token",
+        "contract address",
+    ):
+        assert attractor.casefold() not in en_12.casefold()
+    assert "治理 Agent 的份额单价会不会像交易 Agent 一样涨跌" in zh_12
+    assert "治理 Agent 的份额单价不会像交易 Agent 一样随交易表现涨跌" in zh_12
+
+    en_13 = sources["marketplace_qna_en_13"]
+    zh_13 = sources["marketplace_qna_zh_cn_13"]
+    assert "settlement token" not in en_13.split("**Q:", 1)[0].casefold()
+    assert "结算代币" not in zh_13.split("**Q：", 1)[0]
+    assert "put funds into a smart contract" not in en_13
+    assert "funds first enter the contract" not in en_13
+    assert "等待结算" not in zh_13
+    assert "结算完成后" not in zh_13
+
+    en_14 = sources["marketplace_qna_en_14"]
+    zh_14 = sources["marketplace_qna_zh_cn_14"]
+    assert "My Shares" not in en_14
+    assert "My Shares" not in zh_14
+    assert "余额" not in zh_14
+    assert "If I redeem only some benefits, what happens to the Consumer shares I leave unused?" in en_14
+    assert "如果只想换一部分权益，剩余 Consumer 份额会怎样" in zh_14
+    assert "partnership" not in en_14.casefold()
+    assert "fund safety" not in en_14.casefold()
+
+    en_15 = sources["marketplace_qna_en_15"]
+    zh_15 = sources["marketplace_qna_zh_cn_15"]
+    assert (
+        "For a Consumer Agent, the smart contract holds user Mint principal; it never enters the Consumer Agent brand's wallet"
+        in en_15
+    )
+    assert "My Shares balance excludes shares already converted into codes" in en_15
+    assert "我的份额余额不含已换码部分" in zh_15
+    assert cases["marketplace_qna_en_15_q13"].document_id == "marketplace_qna_en_15"
+    assert cases["marketplace_qna_zh_cn_15_q13"].document_id == "marketplace_qna_zh_cn_15"
+    for attractor in ("逐笔", "单独领取", "批量", "多笔"):
+        assert attractor not in zh_15
+        assert attractor not in sources["marketplace_qna_zh_cn_16"]
+
+    en_16 = sources["marketplace_qna_en_16"]
+    assert (
+        "If the PixVerse partnership ends, how do unredeemed-fund safety and issued-code usability differ?"
+        in en_16
+    )
+
+    chunk_limits = {
+        "marketplace_qna_en_12": 10,
+        "marketplace_qna_zh_cn_12": 4,
+        "marketplace_qna_en_13": 12,
+        "marketplace_qna_zh_cn_13": 5,
+        "marketplace_qna_en_14": 8,
+        "marketplace_qna_zh_cn_14": 3,
+        "marketplace_qna_en_15": 15,
+        "marketplace_qna_zh_cn_15": 8,
+    }
+    for document_id, maximum in chunk_limits.items():
+        assert len(chunk_text(sources[document_id], chunk_size=400, overlap=80)) <= maximum
+
+    en_10_chunks = chunk_text(en_10, chunk_size=400, overlap=80)
+    assert any(
+        "Mechanically, how do governance shares differ" in chunk.text
+        and "Holding the project token directly" in chunk.text
+        for chunk in en_10_chunks
+    )
+
+    # These four anchors were rescued by the preceding round and must survive trimming.
+    for anchor in (
+        "What does a proposal snapshot do to voter eligibility",
+        "Are extra incentives automatic when someone casts a governance vote",
+        "How does a project benefit from launching a Governance Agent",
+    ):
+        assert anchor in (en_10 + en_12)
+    assert "模板/链选好之后还能修改吗" in sources["marketplace_qna_zh_cn_06"]
+
+
 def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_paraphrases():
     from tests.rag_eval.marketplace_qna_fixture_builder import (
         build_fixture_bundle,
@@ -80,8 +342,8 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for question in source.questions
     }
 
-    assert len(cases) == 218
-    assert Counter(case.language for case in cases.values()) == {"zh-CN": 109, "en": 109}
+    assert len(cases) == 316
+    assert Counter(case.language for case in cases.values()) == {"zh-CN": 158, "en": 158}
     assert set(cases) == set(source_questions)
     assert all(case.query.strip() for case in cases.values())
     assert all(
@@ -96,7 +358,7 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for fact in case.required_facts
     )
     assert all(case.review_reason for case in cases.values())
-    assert sum(case.representative_chat for case in cases.values()) == 24
+    assert sum(case.representative_chat for case in cases.values()) == 32
     assert Counter(
         case.document_id for case in cases.values() if case.representative_chat
     ) == {source.id: 1 for source in bundle.sources}
@@ -122,10 +384,10 @@ def test_marketplace_qna_generated_fixture_rows_are_complete_and_traceable():
 
     rows = build_fixture_rows()
 
-    assert len(rows.corpus) == 24
-    assert len(rows.golden_queries) == 218
-    assert len(rows.review_evidence) == 218
-    assert len(rows.chat_cases) == 24
+    assert len(rows.corpus) == 32
+    assert len(rows.golden_queries) == 316
+    assert len(rows.review_evidence) == 316
+    assert len(rows.chat_cases) == 32
     assert {row["id"] for row in rows.corpus} == {
         row["relevant_doc_ids"][0] for row in rows.golden_queries
     }
@@ -150,17 +412,17 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     chat = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
     assert coverage["contract_id"] == "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE"
-    assert len(coverage["topic_groups"]) == 24
+    assert len(coverage["topic_groups"]) == 32
     assert {group["language"] for group in coverage["topic_groups"]} == {"zh-CN", "en"}
     assert {query_id for group in coverage["topic_groups"] for query_id in group["query_ids"]} == {
         row["id"] for row in golden
     }
     assert acceptance["thresholds"] == {
-        "source_documents": 24,
-        "golden_queries": 218,
-        "chat_cases": 24,
-        "promptfoo_required_passes": 218,
-        "live_required_passes": 218,
+        "source_documents": 32,
+        "golden_queries": 316,
+        "chat_cases": 32,
+        "promptfoo_required_passes": 316,
+        "live_required_passes": 316,
         "minimum_top1_rate": 0.8,
         "maximum_degraded_cases": 0,
         "maximum_failed_ingestion_jobs": 0,
@@ -175,7 +437,7 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
 
 
-def test_marketplace_qna_v6_expected_chunk_count_matches_production_chunking():
+def test_marketplace_qna_v7_expected_chunk_count_matches_production_chunking():
     from app.rag.chunker import chunk_text
 
     acceptance = json.loads(
@@ -219,7 +481,7 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
             assert entry["row_count"] == len(_read_jsonl(path))
 
 
-def test_marketplace_qna_v6_seed_is_explicitly_versioned():
+def test_marketplace_qna_v7_seed_is_explicitly_versioned():
     from tests.rag_eval.marketplace_qna_fixture_builder import CORPUS_VERSION
 
     manifest = json.loads(
@@ -231,10 +493,10 @@ def test_marketplace_qna_v6_seed_is_explicitly_versioned():
         )
     )
 
-    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-08-03-v6"
-    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v6"
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-08-19-v7"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v7"
     assert manifest["source_set"] == CORPUS_VERSION
-    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V6"
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V7"
     assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
     assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
 
@@ -245,14 +507,14 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
 
     payloads = build_document_payloads(knowledge_base_id="kb_marketplace_qna")
 
-    assert len(payloads) == 24
+    assert len(payloads) == 32
     assert {payload["metadata"]["doc_id"] for payload in payloads} == {
         row["id"] for row in _read_jsonl(EVAL_DIR / "marketplace_qna_corpus.jsonl")
     }
     assert {payload["source_uri"] for payload in payloads} == {
         f"urn:moss:marketplace-qna:{language}:{order:02d}"
         for language in ("cn", "en")
-        for order in range(1, 13)
+        for order in range(1, 17)
     }
     for payload in payloads:
         parsed = RAGDocumentCreate(**payload)
@@ -261,7 +523,7 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.mime_type == "text/markdown"
         assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-08-03-v6"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-08-19-v7"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
@@ -270,10 +532,10 @@ def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_s
     cases = generate_tests()
     config = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(encoding="utf-8")
 
-    assert len(cases) == 218
+    assert len(cases) == 316
     assert all(case["vars"]["max_rank"] == 5 for case in cases)
     assert all(case["vars"]["top_k"] == 5 for case in cases)
-    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 109, "en": 109}
+    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 158, "en": 158}
     assert all(case["assert"] == [{"type": "python", "value": "file://assert_retrieval.py"}] for case in cases)
     for expected in (
         'corpus_path: "marketplace_qna_corpus.jsonl"',
@@ -289,16 +551,17 @@ def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_s
 
 def test_marketplace_qna_golden_query_audit_reports_full_coverage():
     from tests.rag_eval.marketplace_qna_golden_query_audit import build_audit_report
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
 
     report = build_audit_report()
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "source_documents": 24,
-        "golden_queries": 218,
-        "review_rows": 218,
-        "chat_cases": 24,
-        "source_questions": 218,
+        "source_documents": 32,
+        "golden_queries": 316,
+        "review_rows": 316,
+        "chat_cases": 32,
+        "source_questions": 316,
     }
     assert report["gaps"] == {
         "missing_query_ids": [],
@@ -308,6 +571,24 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
         "missing_topic_groups": [],
         "invalid_source_evidence": [],
     }
+    anchors = report["structural_anchor_audit"]
+    target_orders = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16}
+    bundle = build_fixture_bundle()
+    expected_questions = {
+        question.id: (source, question)
+        for source in bundle.sources
+        if source.order in target_orders
+        for question in source.questions
+    }
+
+    assert set(anchors) == set(expected_questions)
+    assert len(anchors) == 248
+    for query_id, (source, question) in expected_questions.items():
+        anchor = anchors[query_id]
+        assert anchor["expected_doc_id"] == source.id
+        assert anchor["section_heading"] == question.question
+        assert anchor["source_path"].endswith(source.filename)
+        assert anchor["answer_lines"] == f"{question.answer_start_line}-{question.answer_end_line}"
 
 
 @pytest.mark.asyncio
@@ -402,7 +683,7 @@ async def test_rag_eval_provider_can_use_deployed_strict_retrieval():
 def test_marketplace_qna_chat_cases_define_deterministic_fact_groups():
     rows = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
-    assert len(rows) == 24
+    assert len(rows) == 32
     assert all(row["required_fact_groups"] for row in rows)
     assert all(
         alternatives
@@ -588,7 +869,7 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
             "relevant_doc_ids": ["doc"],
             "tags": ["en"],
         }
-        for index in range(218)
+        for index in range(316)
     ]
     monkeypatch.setattr(live_eval, "_read_jsonl", lambda _path: cases)
     monkeypatch.setattr(
@@ -611,10 +892,10 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "total": 218,
-        "passed": 218,
+        "total": 316,
+        "passed": 316,
         "failed": 0,
-        "top1": 218,
+        "top1": 316,
         "degraded": 0,
     }
 
@@ -700,11 +981,11 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "source_documents": 24,
-                "golden_queries": 218,
-                "review_rows": 218,
-                "chat_cases": 24,
-                "source_questions": 218,
+                "source_documents": 32,
+                "golden_queries": 316,
+                "review_rows": 316,
+                "chat_cases": 32,
+                "source_questions": 316,
             },
             "errors": [],
         },
@@ -721,9 +1002,9 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
     write(
         "ingestion",
         {
-            "submitted_documents": 24,
-            "persisted_documents": 24,
-            "succeeded_jobs": 24,
+            "submitted_documents": 32,
+            "persisted_documents": 32,
+            "succeeded_jobs": 32,
             "failed_jobs": 0,
             "persisted_chunks": contract["ingestion"]["expected_chunks"],
             "embedding_provider": "gemini",
@@ -736,7 +1017,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         "promptfoo",
         {
             "results": {
-                "stats": {"successes": 218, "failures": 0, "errors": 0},
+                "stats": {"successes": 316, "failures": 0, "errors": 0},
                 "results": [
                     {
                         "response": {
@@ -748,7 +1029,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                             "vars": {"relevant_doc_ids": f"doc{index}"}
                         },
                     }
-                    for index in range(218)
+                    for index in range(316)
                 ],
             }
         },
@@ -758,16 +1039,16 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "total": 218,
-                "passed": 218,
+                "total": 316,
+                "passed": 316,
                 "failed": 0,
-                "top1": 175,
+                "top1": 253,
                 "degraded": 0,
             },
-            "top1_rate": 175 / 218,
+            "top1_rate": 253 / 316,
             "results": [
                 {"case_id": f"q{index}", "passed": True, "matched_rank": 1}
-                for index in range(218)
+                for index in range(316)
             ],
         },
     )
@@ -776,7 +1057,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "server_default_knowledge_base": True,
-            "counts": {"total": 24, "passed": 24, "failed": 0},
+            "counts": {"total": 32, "passed": 32, "failed": 0},
             "results": [
                 {
                     "case_id": f"chat{index}",
@@ -787,7 +1068,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                     "fact_groups": [True],
                     "forbidden_claims": [],
                 }
-                for index in range(24)
+                for index in range(32)
             ],
         },
     )

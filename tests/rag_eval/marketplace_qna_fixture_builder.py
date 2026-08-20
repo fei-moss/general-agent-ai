@@ -11,14 +11,31 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-03-v6"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-19-v7"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
     "review_evidence": Path(__file__).parent / "marketplace_qna_golden_query_review.jsonl",
     "chat_cases": Path(__file__).parent / "marketplace_qna_chat_cases.jsonl",
 }
-EXPECTED_QUESTION_COUNTS = (5, 7, 2, 16, 4, 9, 4, 7, 3, 18, 22, 12)
+EXPECTED_QUESTION_COUNTS = (
+    5,
+    7,
+    2,
+    16,
+    4,
+    9,
+    4,
+    7,
+    3,
+    18,
+    22,
+    12,
+    12,
+    8,
+    18,
+    11,
+)
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
 # Representative chat cases use deterministic semantic fact groups instead of
@@ -68,6 +85,32 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("proposal went live", "proposal creation", "proposal is created"),
         ("holdings", "held", "shares"),
     ),
+    "marketplace_qna_en_13": (
+        ("Consumer Agent",),
+        ("benefits supplied by the brand", "brand benefits"),
+        ("shares",),
+        ("redeem a code", "redemption code"),
+        ("Refund", "recover their current principal value"),
+    ),
+    "marketplace_qna_en_14": (
+        ("Redeem",),
+        ("shares are consumed", "corresponding shares are consumed"),
+        ("generates a code",),
+    ),
+    "marketplace_qna_en_15": (
+        ("still held", "held by the user"),
+        ("not yet redeemed", "unredeemed"),
+        ("Refund",),
+    ),
+    "marketplace_qna_en_16": (
+        ("AI video generation company",),
+        ("video foundation models",),
+        ("text-to-video",),
+        ("image-to-video",),
+        ("Marketing Hub",),
+        ("Canvas",),
+        ("CLI",),
+    ),
     "marketplace_qna_zh_cn_01": (("FAT Protocol",), ("不需要", "无需", "不必")),
     "marketplace_qna_zh_cn_02": (("完整保留", "完整迁移", "保留完整"),),
     "marketplace_qna_zh_cn_03": (("Perp Trading", "永续交易"), ("Governance", "治理"), ("Consumer", "消费者")),
@@ -104,6 +147,32 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("快照",),
         ("提案创建", "创建时"),
         ("持仓", "份额"),
+    ),
+    "marketplace_qna_zh_cn_13": (
+        ("Consumer Agent",),
+        ("品牌方", "品牌权益"),
+        ("标准份额", "份额"),
+        ("兑换码",),
+        ("Refund", "取回当时对应的本金价值"),
+    ),
+    "marketplace_qna_zh_cn_14": (
+        ("去兑换",),
+        ("份额被消耗", "相应份额被消耗"),
+        ("生成兑换码",),
+    ),
+    "marketplace_qna_zh_cn_15": (
+        ("仍由用户持有", "用户持有"),
+        ("尚未兑换", "未兑换"),
+        ("Refund",),
+    ),
+    "marketplace_qna_zh_cn_16": (
+        ("AI 视频生成公司",),
+        ("视频基础模型",),
+        ("文生视频",),
+        ("图生视频",),
+        ("Marketing Hub",),
+        ("Canvas",),
+        ("CLI",),
     ),
 }
 CHAT_QUERY_OVERRIDES = {

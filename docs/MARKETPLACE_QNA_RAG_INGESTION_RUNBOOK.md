@@ -3,7 +3,7 @@
 ## Purpose
 
 This runbook is the repeatable operator flow for `SPEC-RAG-EVAL-002`. It covers
-the 12 Chinese and 12 English Marketplace QnA Markdown files, persistent pgvector
+the 16 Chinese and 16 English Marketplace QnA Markdown files, persistent pgvector
 ingestion, local semantic evaluation, live DockerHost retrieval, and live chat
 acceptance through the server-owned default knowledge base.
 
@@ -51,15 +51,15 @@ then stops at the first failed gate.
 
 ## Reviewed Seed
 
-Current manifest: `marketplace-qna-rag-seed-v6`; source set:
-`marketplace-qna-bilingual-2026-08-03-v6`.
+Current manifest: `marketplace-qna-rag-seed-v7`; source set:
+`marketplace-qna-bilingual-2026-08-19-v7`.
 
 | Role | Path | Rows |
 | --- | --- | ---: |
-| Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 24 |
-| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 218 |
-| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 218 |
-| Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 24 |
+| Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 32 |
+| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 316 |
+| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 316 |
+| Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 32 |
 
 The standard preflight validates required values, the ingestion summary,
 fixture hashes, Golden Query coverage, and focused contracts:
@@ -76,7 +76,7 @@ The file hashes must match
 1. Read the administrator ID from Keychain into the process environment without
    printing it.
 2. Create one internal knowledge base through `POST /rag/knowledge-bases`.
-3. Generate the 24 schema-valid request bodies:
+3. Generate the 32 schema-valid request bodies:
 
 ```bash
 .venv/bin/python -m tests.rag_eval.marketplace_qna_import_payloads \
@@ -85,7 +85,7 @@ The file hashes must match
 
 4. Submit every body through `POST /rag/documents` as the RAG administrator.
 5. Poll `GET /rag/ingestion-jobs/{job_id}` until every job is terminal.
-6. Require 24 `SUCCEEDED`, 0 failed, 24 persisted documents, 241 chunks, and
+6. Require 32 `SUCCEEDED`, 0 failed, 32 persisted documents, 289 chunks, and
    equality between uploaded SHA-256 metadata and the source manifest.
 7. Save the redacted result as
    `.artifacts/release/marketplace_qna_ingestion_summary.json`.
@@ -101,14 +101,14 @@ window as a worker/reaper incident rather than submitting a different document.
 
 ## Local Semantic Evaluation
 
-Run Gemini preflight and the 218-case Promptfoo suite with production embedding
+Run Gemini preflight and the 316-case Promptfoo suite with production embedding
 and chunk settings:
 
 ```bash
 make marketplace-qna-local
 ```
 
-Acceptance requires 218/218 top-5 passes, no degraded cases, and Top-1 at least
+Acceptance requires 316/316 top-5 passes, no degraded cases, and Top-1 at least
 80%. Retrieval is filtered to the query language so mirrored Chinese and
 English documents do not compete with each other.
 
@@ -151,7 +151,7 @@ make marketplace-qna-live
 ```
 
 The chat payload intentionally contains no `knowledge_base_id`. Every one of
-the 24 chat cases must reach `SUCCEEDED`, emit `RETRIEVAL_STARTED` and
+the 32 chat cases must reach `SUCCEEDED`, emit `RETRIEVAL_STARTED` and
 `RETRIEVAL_FINISHED`, include all required fact groups, and contain no forbidden
 claim.
 

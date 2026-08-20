@@ -20,9 +20,9 @@
 
 一个账号最多创建 6 个 Agent，且不分 Agent 类型，六个名额通用。
 
-**Q: 只有实盘 agent 才能上 Marketplace/ 才能被别人 mint 吗？模拟盘的能展示吗？**
+**Q: Marketplace 上架资格：必须是实盘 Agent，还是回测/模拟盘也能上架并被别人 Mint？**
 
-只有实盘 Agent 可以上架 Marketplace，回测（模拟盘）不能上架。 也就是说，能被别人 Mint 的都是真实在跑的实盘 Agent。
+Marketplace 上架资格要求 Agent 正在实盘运行。只有实盘 Agent 可以上架 Marketplace，回测（模拟盘）不能上架。 也就是说，能被别人 Mint 的都是真实在跑的实盘 Agent。
 
 **Q: 从「用 AI 建 agent」→「Tokenize 上架」→「别人 mint 份额」，完整链路走一遍是怎样的？入口怎么衔接？**
 

@@ -12,6 +12,7 @@ from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = Path(".artifacts/release/marketplace_qna_golden_query_audit.json")
 _LINES_RE = re.compile(r"^\d+-\d+$")
+STRUCTURAL_ANCHOR_ORDERS = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -36,6 +37,12 @@ def build_audit_report(*, eval_dir: Path = EVAL_DIR) -> dict[str, Any]:
 
     expected_query_ids = {
         question.id for source in bundle.sources for question in source.questions
+    }
+    source_by_id = {source.id: source for source in bundle.sources}
+    question_by_id = {
+        question.id: question
+        for source in bundle.sources
+        for question in source.questions
     }
     query_ids = {row["id"] for row in queries}
     review_ids = {row["id"] for row in reviews}
@@ -86,14 +93,28 @@ def build_audit_report(*, eval_dir: Path = EVAL_DIR) -> dict[str, Any]:
         "source_questions": len(expected_query_ids),
     }
     expected_counts = {
-        "source_documents": 24,
-        "golden_queries": 218,
-        "review_rows": 218,
-        "chat_cases": 24,
-        "source_questions": 218,
+        "source_documents": 32,
+        "golden_queries": 316,
+        "review_rows": 316,
+        "chat_cases": 32,
+        "source_questions": 316,
     }
     if counts != expected_counts:
         errors.append("count_mismatch")
+    structural_anchor_audit: dict[str, dict[str, Any]] = {}
+    for query in sorted(queries, key=lambda row: str(row["id"])):
+        expected_doc_id = str(query["relevant_doc_ids"][0])
+        source = source_by_id.get(expected_doc_id)
+        question = question_by_id.get(str(query["id"]))
+        if source is None or question is None or source.order not in STRUCTURAL_ANCHOR_ORDERS:
+            continue
+        structural_anchor_audit[str(query["id"])] = {
+            "query": str(query["query"]),
+            "expected_doc_id": expected_doc_id,
+            "section_heading": question.question,
+            "source_path": source.path.relative_to(Path(__file__).parents[2]).as_posix(),
+            "answer_lines": f"{question.answer_start_line}-{question.answer_end_line}",
+        }
     return {
         "status": "passed" if not errors else "failed",
         "spec_id": "SPEC-RAG-EVAL-002",
@@ -101,6 +122,7 @@ def build_audit_report(*, eval_dir: Path = EVAL_DIR) -> dict[str, Any]:
         "counts": counts,
         "gaps": gaps,
         "errors": errors,
+        "structural_anchor_audit": structural_anchor_audit,
     }
 
 
