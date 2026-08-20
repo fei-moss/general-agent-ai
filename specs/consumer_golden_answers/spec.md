@@ -226,6 +226,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   available brand fact, `bnbUSDC` satisfies the accepted-token fact, and
   `结算代币` alone does not. Existing Ballot and Hyperliquid dynamic-fact tests
   remain unchanged and green.
+- Live-baseline evidence broadened fact-group alternatives only for
+  paraphrase-equivalent wording; the asserted semantics are unchanged.
 - Full pytest and the repository spec gates are required on the final tree; no
   live replay or product/runtime acceptance is claimed by this harness-only
   phase.
