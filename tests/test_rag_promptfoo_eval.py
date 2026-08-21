@@ -144,7 +144,7 @@ def test_moss_rag_seed_manifest_matches_reviewed_fixtures():
     assert manifest["embedding_target"] == {
         "provider": "gemini",
         "model": "gemini-embedding-2",
-        "dimension": 256,
+        "dimension": 1536,
         "requires_allowed_network": True,
     }
 
@@ -221,7 +221,7 @@ def test_moss_acceptance_validator_accepts_complete_synthetic_evidence(tmp_path)
                 "status": contract["gemini_preflight"]["required_status"],
                 "http_status": 200,
                 "embedding_model": contract["gemini_preflight"]["embedding_model"],
-                "embedding_dimension": 256,
+                "embedding_dimension": 1536,
             },
             sort_keys=True,
         ),
@@ -429,7 +429,7 @@ def test_moss_gemini_preflight_accepts_deployed_strict_rag_path(monkeypatch):
         "status": "passed",
         "http_status": 200,
         "embedding_model": "gemini-embedding-2",
-        "embedding_dimension": 256,
+        "embedding_dimension": 1536,
         "mode": "dockerhost_strict_rag_query",
     }
 
@@ -458,7 +458,7 @@ async def test_moss_rag_seed_can_be_ingested_by_local_retriever():
             embedding_provider="hash",
             embedding_model="hash",
             rag_vector_store="memory",
-            embedding_dim=256,
+            embedding_dim=1536,
         )
     )
 

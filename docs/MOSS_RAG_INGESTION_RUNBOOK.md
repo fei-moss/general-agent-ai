@@ -18,7 +18,7 @@ Acceptance evidence contract:
 - Runtime embedding config matches the seed manifest:
   - `EMBEDDING_PROVIDER=gemini`
   - `EMBEDDING_MODEL=gemini-embedding-2`
-  - `EMBEDDING_DIM=256`
+  - `EMBEDDING_DIM=1536`
 - Gemini API key is injected through local/secret-manager environment; never commit or print it.
 - The caller IP is allowed by Gemini for the configured key.
 
@@ -77,7 +77,7 @@ HTTP_STATUS:%{http_code}
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent' \
   -H 'Content-Type: application/json' \
   -H "x-goog-api-key: ${GEMINI_API_KEY}" \
-  -d '{"model":"models/gemini-embedding-2","content":{"parts":[{"text":"MOSS RAG eval smoke"}]},"outputDimensionality":256}'
+  -d '{"model":"models/gemini-embedding-2","content":{"parts":[{"text":"MOSS RAG eval smoke"}]},"outputDimensionality":1536}'
 ```
 
 If the result contains `API_KEY_IP_ADDRESS_BLOCKED`, fix the Gemini key/IP restriction and rerun preflight. Do not substitute hash embeddings for acceptance.

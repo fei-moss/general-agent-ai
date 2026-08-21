@@ -29,10 +29,10 @@ def test_marketplace_qna_sources_have_expected_shape():
 
     bundle = build_fixture_bundle()
 
-    assert len(bundle.sources) == 32
-    assert sum(source.language == "zh-CN" for source in bundle.sources) == 16
-    assert sum(source.language == "en" for source in bundle.sources) == 16
-    assert sum(len(source.questions) for source in bundle.sources) == 316
+    assert len(bundle.sources) == 34
+    assert sum(source.language == "zh-CN" for source in bundle.sources) == 17
+    assert sum(source.language == "en" for source in bundle.sources) == 17
+    assert sum(len(source.questions) for source in bundle.sources) == 350
     assert {len(source.questions) for source in bundle.sources if source.order == 4} == {16}
 
 
@@ -127,6 +127,101 @@ def test_marketplace_qna_v7_contains_bilingual_consumer_mechanisms_without_dynam
         "Discord",
     ):
         assert dynamic_literal not in combined
+
+
+def test_marketplace_qna_v8_contains_only_rave_specific_facts_and_keeps_shared_governance_anchors():
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
+
+    sources = {source.id: source.text for source in build_fixture_bundle().sources}
+    zh = sources["marketplace_qna_zh_cn_17"]
+    en = sources["marketplace_qna_en_17"]
+    combined = zh + "\n" + en
+
+    assert zh.count("6%") == 1
+    assert en.count("6%") == 1
+    assert zh.count("50,000 $RAVE") == 1
+    assert en.count("50,000 $RAVE") == 1
+    assert zh.count("50%") == 1
+    assert en.count("50%") == 1
+    for stable_fact in (
+        "vRAVE",
+        "RaveDAO",
+        "Moss Agent Marketplace",
+        "没有最低 Mint 门槛",
+        "不代替持有人投票",
+        "钻石",
+        "不可转让",
+        "链上验证",
+    ):
+        assert stable_fact in zh
+    for stable_fact in (
+        "vRAVE",
+        "RaveDAO",
+        "Moss Agent Marketplace",
+        "no minimum Mint amount",
+        "never votes on a holder's behalf",
+        "Diamonds",
+        "non-transferable",
+        "verified onchain",
+    ):
+        assert stable_fact in en
+    for pending_topic in ("中途赎回", "锁定期", "赎回等待时长", "部分赎回"):
+        assert pending_topic in zh
+    for pending_topic in (
+        "early redemption",
+        "lock period",
+        "redemption wait time",
+        "partial redemption",
+    ):
+        assert pending_topic in en
+    assert "尚未由 owner 明确" in zh
+    assert "not yet specified by the owner" in en
+    assert re.search(r"\b0x[a-fA-F0-9]{40}\b", combined) is None
+    assert not any(chain in combined for chain in ("Ethereum", "Arbitrum", "Solana", "BNB Chain"))
+
+    for duplicated_mechanic in (
+        "不是投资产品",
+        "不在 RaveDAO 手上",
+        "连接钱包",
+        "提交赎回申请",
+        "对已经进场的用户不会改变",
+    ):
+        assert duplicated_mechanic not in zh
+    assert "赎回会销毁相应治理份额，并结束这些份额之后的投票权" in sources[
+        "marketplace_qna_zh_cn_10"
+    ]
+    assert "Redeem burns the corresponding governance shares and ends their future voting power" in sources[
+        "marketplace_qna_en_10"
+    ]
+
+
+def test_marketplace_qna_v8_embedding_contract_is_1536():
+    acceptance = json.loads(
+        (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    manifest = json.loads(
+        (EVAL_DIR / "marketplace_qna_rag_seed_manifest.json").read_text(encoding="utf-8")
+    )
+    promptfoo = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(
+        encoding="utf-8"
+    )
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    env_example = Path(".env.example").read_text(encoding="utf-8")
+    runbook = Path("docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert acceptance["gemini_preflight"]["embedding_dimension"] == 1536
+    assert acceptance["ingestion"]["required_embedding_dimension"] == 1536
+    assert manifest["embedding_target"]["dimension"] == 1536
+    assert "embedding_dim: 1536" in promptfoo
+    assert "--dimension 1536" in makefile
+    assert "EMBEDDING_DIM=1536" in env_example
+    assert "301/316" in runbook and "80.4%" in runbook
+    assert "measured at 256 dimensions" in runbook
+    assert "must be re-baselined at 1536 dimensions" in runbook
 
 
 def test_marketplace_qna_round_two_structural_anchors_partition_confused_topics():
@@ -342,8 +437,8 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for question in source.questions
     }
 
-    assert len(cases) == 316
-    assert Counter(case.language for case in cases.values()) == {"zh-CN": 158, "en": 158}
+    assert len(cases) == 350
+    assert Counter(case.language for case in cases.values()) == {"zh-CN": 175, "en": 175}
     assert set(cases) == set(source_questions)
     assert all(case.query.strip() for case in cases.values())
     assert all(
@@ -358,7 +453,7 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for fact in case.required_facts
     )
     assert all(case.review_reason for case in cases.values())
-    assert sum(case.representative_chat for case in cases.values()) == 32
+    assert sum(case.representative_chat for case in cases.values()) == 34
     assert Counter(
         case.document_id for case in cases.values() if case.representative_chat
     ) == {source.id: 1 for source in bundle.sources}
@@ -384,10 +479,10 @@ def test_marketplace_qna_generated_fixture_rows_are_complete_and_traceable():
 
     rows = build_fixture_rows()
 
-    assert len(rows.corpus) == 32
-    assert len(rows.golden_queries) == 316
-    assert len(rows.review_evidence) == 316
-    assert len(rows.chat_cases) == 32
+    assert len(rows.corpus) == 34
+    assert len(rows.golden_queries) == 350
+    assert len(rows.review_evidence) == 350
+    assert len(rows.chat_cases) == 34
     assert {row["id"] for row in rows.corpus} == {
         row["relevant_doc_ids"][0] for row in rows.golden_queries
     }
@@ -412,17 +507,20 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     chat = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
     assert coverage["contract_id"] == "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE"
-    assert len(coverage["topic_groups"]) == 32
+    assert coverage["required_document_count"] == 34
+    assert coverage["required_query_count"] == 350
+    assert coverage["required_chat_case_count"] == 34
+    assert len(coverage["topic_groups"]) == 34
     assert {group["language"] for group in coverage["topic_groups"]} == {"zh-CN", "en"}
     assert {query_id for group in coverage["topic_groups"] for query_id in group["query_ids"]} == {
         row["id"] for row in golden
     }
     assert acceptance["thresholds"] == {
-        "source_documents": 32,
-        "golden_queries": 316,
-        "chat_cases": 32,
-        "promptfoo_required_passes": 316,
-        "live_required_passes": 316,
+        "source_documents": 34,
+        "golden_queries": 350,
+        "chat_cases": 34,
+        "promptfoo_required_passes": 350,
+        "live_required_passes": 350,
         "minimum_top1_rate": 0.8,
         "maximum_degraded_cases": 0,
         "maximum_failed_ingestion_jobs": 0,
@@ -433,11 +531,11 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
         "artifact_path": ".artifacts/release/marketplace_qna_gemini_preflight.json",
         "required_status": "passed",
         "embedding_model": "gemini-embedding-2",
-        "embedding_dimension": 256,
+        "embedding_dimension": 1536,
     }
 
 
-def test_marketplace_qna_v7_expected_chunk_count_matches_production_chunking():
+def test_marketplace_qna_v8_expected_chunk_count_matches_production_chunking():
     from app.rag.chunker import chunk_text
 
     acceptance = json.loads(
@@ -462,7 +560,7 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
     assert manifest["embedding_target"] == {
         "provider": "gemini",
         "model": "gemini-embedding-2",
-        "dimension": 256,
+        "dimension": 1536,
         "requires_allowed_network": True,
     }
     assert {entry["role"] for entry in manifest["source_files"]} == {
@@ -481,7 +579,7 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
             assert entry["row_count"] == len(_read_jsonl(path))
 
 
-def test_marketplace_qna_v7_seed_is_explicitly_versioned():
+def test_marketplace_qna_v8_seed_is_explicitly_versioned():
     from tests.rag_eval.marketplace_qna_fixture_builder import CORPUS_VERSION
 
     manifest = json.loads(
@@ -493,10 +591,10 @@ def test_marketplace_qna_v7_seed_is_explicitly_versioned():
         )
     )
 
-    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-08-19-v7"
-    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v7"
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-08-21-v8"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v8"
     assert manifest["source_set"] == CORPUS_VERSION
-    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V7"
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V8"
     assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
     assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
 
@@ -507,14 +605,14 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
 
     payloads = build_document_payloads(knowledge_base_id="kb_marketplace_qna")
 
-    assert len(payloads) == 32
+    assert len(payloads) == 34
     assert {payload["metadata"]["doc_id"] for payload in payloads} == {
         row["id"] for row in _read_jsonl(EVAL_DIR / "marketplace_qna_corpus.jsonl")
     }
     assert {payload["source_uri"] for payload in payloads} == {
         f"urn:moss:marketplace-qna:{language}:{order:02d}"
         for language in ("cn", "en")
-        for order in range(1, 17)
+        for order in range(1, 18)
     }
     for payload in payloads:
         parsed = RAGDocumentCreate(**payload)
@@ -523,7 +621,7 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.mime_type == "text/markdown"
         assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-08-19-v7"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-08-21-v8"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
@@ -532,16 +630,16 @@ def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_s
     cases = generate_tests()
     config = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(encoding="utf-8")
 
-    assert len(cases) == 316
+    assert len(cases) == 350
     assert all(case["vars"]["max_rank"] == 5 for case in cases)
     assert all(case["vars"]["top_k"] == 5 for case in cases)
-    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 158, "en": 158}
+    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 175, "en": 175}
     assert all(case["assert"] == [{"type": "python", "value": "file://assert_retrieval.py"}] for case in cases)
     for expected in (
         'corpus_path: "marketplace_qna_corpus.jsonl"',
         'embedding_provider: "gemini"',
         'embedding_model: "gemini-embedding-2"',
-        "embedding_dim: 256",
+        "embedding_dim: 1536",
         "rag_chunk_size: 400",
         "rag_chunk_overlap: 80",
         "retrieval_top_k: 5",
@@ -557,11 +655,11 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "source_documents": 32,
-        "golden_queries": 316,
-        "review_rows": 316,
-        "chat_cases": 32,
-        "source_questions": 316,
+        "source_documents": 34,
+        "golden_queries": 350,
+        "review_rows": 350,
+        "chat_cases": 34,
+        "source_questions": 350,
     }
     assert report["gaps"] == {
         "missing_query_ids": [],
@@ -572,7 +670,7 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
         "invalid_source_evidence": [],
     }
     anchors = report["structural_anchor_audit"]
-    target_orders = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16}
+    target_orders = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17}
     bundle = build_fixture_bundle()
     expected_questions = {
         question.id: (source, question)
@@ -582,7 +680,7 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
     }
 
     assert set(anchors) == set(expected_questions)
-    assert len(anchors) == 248
+    assert len(anchors) == 282
     for query_id, (source, question) in expected_questions.items():
         anchor = anchors[query_id]
         assert anchor["expected_doc_id"] == source.id
@@ -683,7 +781,7 @@ async def test_rag_eval_provider_can_use_deployed_strict_retrieval():
 def test_marketplace_qna_chat_cases_define_deterministic_fact_groups():
     rows = _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
 
-    assert len(rows) == 32
+    assert len(rows) == 34
     assert all(row["required_fact_groups"] for row in rows)
     assert all(
         alternatives
@@ -869,7 +967,7 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
             "relevant_doc_ids": ["doc"],
             "tags": ["en"],
         }
-        for index in range(316)
+        for index in range(350)
     ]
     monkeypatch.setattr(live_eval, "_read_jsonl", lambda _path: cases)
     monkeypatch.setattr(
@@ -892,10 +990,10 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "total": 316,
-        "passed": 316,
+        "total": 350,
+        "passed": 350,
         "failed": 0,
-        "top1": 316,
+        "top1": 350,
         "degraded": 0,
     }
 
@@ -981,11 +1079,11 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "source_documents": 32,
-                "golden_queries": 316,
-                "review_rows": 316,
-                "chat_cases": 32,
-                "source_questions": 316,
+                "source_documents": 34,
+                "golden_queries": 350,
+                "review_rows": 350,
+                "chat_cases": 34,
+                "source_questions": 350,
             },
             "errors": [],
         },
@@ -995,21 +1093,21 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "embedding_model": "gemini-embedding-2",
-            "embedding_dimension": 256,
+            "embedding_dimension": 1536,
             "http_status": 200,
         },
     )
     write(
         "ingestion",
         {
-            "submitted_documents": 32,
-            "persisted_documents": 32,
-            "succeeded_jobs": 32,
+            "submitted_documents": 34,
+            "persisted_documents": 34,
+            "succeeded_jobs": 34,
             "failed_jobs": 0,
             "persisted_chunks": contract["ingestion"]["expected_chunks"],
             "embedding_provider": "gemini",
             "embedding_model": "gemini-embedding-2",
-            "embedding_dim": 256,
+            "embedding_dim": 1536,
             "source_hash_audit": {"hash_maps_equal": True},
         },
     )
@@ -1017,7 +1115,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         "promptfoo",
         {
             "results": {
-                "stats": {"successes": 316, "failures": 0, "errors": 0},
+                "stats": {"successes": 350, "failures": 0, "errors": 0},
                 "results": [
                     {
                         "response": {
@@ -1029,7 +1127,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                             "vars": {"relevant_doc_ids": f"doc{index}"}
                         },
                     }
-                    for index in range(316)
+                    for index in range(350)
                 ],
             }
         },
@@ -1039,16 +1137,16 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "total": 316,
-                "passed": 316,
+                "total": 350,
+                "passed": 350,
                 "failed": 0,
-                "top1": 253,
+                "top1": 280,
                 "degraded": 0,
             },
-            "top1_rate": 253 / 316,
+            "top1_rate": 280 / 350,
             "results": [
                 {"case_id": f"q{index}", "passed": True, "matched_rank": 1}
-                for index in range(316)
+                for index in range(350)
             ],
         },
     )
@@ -1057,7 +1155,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "server_default_knowledge_base": True,
-            "counts": {"total": 32, "passed": 32, "failed": 0},
+            "counts": {"total": 34, "passed": 34, "failed": 0},
             "results": [
                 {
                     "case_id": f"chat{index}",
@@ -1068,7 +1166,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                     "fact_groups": [True],
                     "forbidden_claims": [],
                 }
-                for index in range(32)
+                for index in range(34)
             ],
         },
     )

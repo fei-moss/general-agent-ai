@@ -606,7 +606,7 @@ def _set_production_env(monkeypatch) -> None:
         "RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID": "false",
         "EMBEDDING_PROVIDER": "gemini",
         "EMBEDDING_MODEL": "gemini-embedding-2",
-        "EMBEDDING_DIM": "256",
+        "EMBEDDING_DIM": "1536",
         "PROVIDER_DEFAULT_RPM": "60",
         "PROVIDER_DEFAULT_TPM": "60000",
         "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS": "4096",

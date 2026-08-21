@@ -183,7 +183,7 @@ async def _build_retriever(
         _env_file=None,
         embedding_provider=_config_value(config, "embedding_provider", "hash"),
         embedding_model=_config_value(config, "embedding_model", "hash"),
-        embedding_dim=int(_config_value(config, "embedding_dim", "256")),
+        embedding_dim=int(_config_value(config, "embedding_dim", "1536")),
         rag_vector_store="memory",
         rag_chunk_size=int(_config_value(config, "rag_chunk_size", "512")),
         rag_chunk_overlap=int(_config_value(config, "rag_chunk_overlap", "80")),

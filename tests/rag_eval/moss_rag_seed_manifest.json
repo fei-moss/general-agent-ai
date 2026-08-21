@@ -14,7 +14,7 @@
   },
   "coverage_contract_id": "SPEC-RAG-EVAL-001-MOSS-COVERAGE",
   "embedding_target": {
-    "dimension": 256,
+    "dimension": 1536,
     "model": "gemini-embedding-2",
     "provider": "gemini",
     "requires_allowed_network": true

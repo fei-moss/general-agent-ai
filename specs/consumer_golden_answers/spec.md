@@ -36,6 +36,15 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 - The remaining 58 questions are an incremental approved regression batch, not
   an exhaustive statement of Consumer, Redemption, PixVerse, or Marketplace
   behavior.
+- The product-owner Rave Governance Agent source dated 2026-08-21 is vendored
+  verbatim at
+  `tests/chat_eval/fixtures/rave_governance_golden_source_20260821.md`, with
+  SHA-256
+  `47c20ff3f536263f34089b20e7e72006c4f61300d6d1a543db6ffc162d2b0eb5`.
+  It contains 43 supplied Q&As. Four answers are literal
+  `【按实际规则填】` blanks and remain pending owner input: treatment of accrued
+  rewards on early redemption, lock period, redemption wait time, and partial
+  redemption support.
 
 ### Behavior
 
@@ -99,7 +108,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   addresses, and network values to the current Agent page or typed context. It
   never hardcodes an Agent ID, address, target-specific value, or an answer for
   any of the eight owner-excluded questions.
-- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R10`: the V7 QnA knowledge base is imported
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R10`: the V8 QnA knowledge base is imported
   as a blue-green version and selected only after ingestion, semantic
   retrieval, live chat, and release acceptance pass. The prior knowledge base
   remains retained and selectable for rollback.
@@ -125,6 +134,74 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   only code-redemption actions. The English geographic-restriction case and
   Chinese Trading Agent Mint-delay case remain unchanged as owner-reviewed
   embedding-drift waiver candidates.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R14`: V8 adds exactly one bilingual Rave
+  Governance Agent document pair at order 17. It contains only Rave-specific
+  approved facts and one compact cross-reference to shared documents
+  04/10/11/12. Every new retrieval question names Rave, RaveDAO, or vRAVE so
+  existing generic Governance Golden Queries remain assigned to documents
+  10/12.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R15`: stable numeric facts are confined to
+  the Rave document pair: the fixed reward rate, per-account cap, and proposal
+  pass threshold each appear once per language. Fee rates, voting entry,
+  proposal deadline, contract address, and network remain current-page,
+  proposal-page, or typed-context facts. The four blank owner answers are
+  explicitly unspecified and never receive inferred defaults.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R16`: Marketplace and MOSS evaluation and
+  ingestion contracts use Gemini `gemini-embedding-2` at dimension 1536. V8
+  requires a full re-ingest into a new knowledge base. An old-dimension
+  knowledge base degrades while the server produces 1536-dimensional query
+  vectors; promotion and rollback therefore change `EMBEDDING_DIM` and
+  `RAG_DEFAULT_KNOWLEDGE_BASE_ID` as one coordinated pair. The previous
+  316-query `301/316` and Top-1 `80.4%` measurements remain historical
+  256-dimensional evidence and require a 1536-dimensional re-baseline.
+
+### V8 Owner-Mandated Dedup Decision Table
+
+| Owner question | Disposition |
+| --- | --- |
+| 这个 agent 是做什么的？ | New document 17, Rave purpose anchor |
+| vRAVE 是什么？ | New document 17, vRAVE definition anchor |
+| 和直接持有 $RAVE 有什么区别？ | New document 17, Rave-specific comparison |
+| 这是投资产品吗？ | Shared document 04 product/risk framing; not repeated in 17 |
+| 这是 RaveDAO 发的吗？ | New document 17, Moss/RaveDAO partnership |
+| 怎么开始？ | Shared documents 04/11 Mint and settlement flow; not repeated in 17 |
+| 最少要 mint 多少？ | New document 17, combined Mint-limits anchor |
+| 有上限吗？ | New document 17, combined Mint-limits anchor |
+| 为什么设上限？ | New document 17, combined anti-concentration rationale |
+| mint 之后马上能投票吗？ | New document 17, Rave settlement-plus-Claim eligibility |
+| mint 要收费吗？ | New document 17 dynamic-fields anchor; current page only |
+| 可以用别的币 mint 吗？ | New document 17, contract-fixed $RAVE token |
+| 可以分多次 mint 吗？ | New document 17, combined Mint-limits anchor |
+| 怎么投票？ | New document 17 dynamic-fields anchor; current Agent page or typed context |
+| 投票权怎么算？ | New document 17, vRAVE-balance rule |
+| 一个提案怎么才算通过？ | New document 17, RaveDAO threshold rule |
+| 任意金额都能投票吗？ | New document 17, combined voting-weight anchor |
+| 不投票会怎样？ | New document 17, combined holder-control anchor |
+| 自己投还是 agent 代投？ | New document 17, combined holder-control anchor |
+| 投票之后可以赎回吗？ | Strengthened shared document 10 post-vote Redeem rule |
+| 投票有截止时间吗？ | New document 17 dynamic-fields anchor; proposal page only |
+| 6% 是什么意思？ | New document 17, combined Rave reward anchor |
+| 6% 会变吗？ | Strengthened shared document 10 existing-holder terms |
+| 奖励什么时候到手？ | New document 17, combined Rave reward anchor |
+| 中途赎回，已累积奖励还有吗？ | Pending owner; document 17 explicitly marks unspecified |
+| 为什么不能随时提取奖励？ | New document 17, combined Rave reward rationale |
+| 这算理财产品吗？ | Shared document 04 product/risk framing; not repeated in 17 |
+| 钻石有什么用？ | New document 17, combined Diamonds anchor |
+| 钻石和 6% 奖励冲突吗？ | New document 17, combined Diamonds anchor |
+| 怎么把 $RAVE 拿回来？ | Shared document 12 Request Redeem flow; not repeated in 17 |
+| 有锁定期吗？ | Pending owner; document 17 explicitly marks unspecified |
+| 赎回也要等吗？ | Pending owner; document 17 explicitly marks unspecified |
+| 赎回之后投票权还在吗？ | Strengthened shared document 10 burn/voting-power rule |
+| 可以只赎回一部分吗？ | Pending owner; document 17 explicitly marks unspecified |
+| 赎回要收费吗？ | New document 17 dynamic-fields anchor; current page only |
+| 我的 $RAVE 在谁那里？ | Shared document 10 contract-custody rule; not repeated in 17 |
+| 规则会不会中途改？ | Strengthened shared document 10 existing-holder terms |
+| 我怎么验证？ | New document 17, onchain-verification anchor |
+| vRAVE 可以转给别人吗？ | New document 17, non-transferability anchor |
+| vRAVE 会涨价吗？ | New document 17, backing/value-boundary anchor |
+| 6% 是浮动的吗？ | New document 17 reward anchor plus shared document 10 immutability rule |
+| 可以一边投票一边把钱拿回来吗？ | Strengthened shared document 10 burn/voting-power rule |
+| 这是保本的吗？ | New document 17, $RAVE-denominated mechanism and market-price boundary |
 
 ### Invariants
 
@@ -138,8 +215,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   authorized by `owner-request:consumer-golden-regression-20260819`; it does not
   alter runtime behavior.
 - Runtime Prompt assembly, tools, validators, orchestration, Go Marketplace
-  code, persistence, API behavior, and deployment configuration are out of
-  scope and unchanged.
+  code, persistence schema, and API behavior are unchanged. Environment
+  templates, DockerHost defaults, evaluation fixtures, and operator guidance
+  move the configured embedding dimension to 1536.
 - No Mint, Refund, Redeem, code generation, signature, wallet write, payment,
   trade, or other mutating action is introduced by this regression harness.
 
@@ -147,10 +225,10 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 
 - Existing approved cases without brand scope retain their previous behavior.
   Existing Agent-type and dynamic-fact contracts remain compatible.
-- Code rollback removes the Consumer adapter, Consumer registry entries, tests,
-  and this spec/index entry. Data rollback restores
-  `RAG_DEFAULT_KNOWLEDGE_BASE_ID` to the retained V6 knowledge base; neither
-  knowledge base is deleted. There is no schema migration or data migration.
+- V8 rollback restores both `EMBEDDING_DIM` and
+  `RAG_DEFAULT_KNOWLEDGE_BASE_ID` to values matching the retained prior
+  knowledge base; neither knowledge base is deleted. There is no DDL or DML
+  migration.
 
 ## Implementation Plan
 
@@ -188,6 +266,16 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
     payment-token, custody, batch-claim, and balance-display attractors; retain
     document 15 as the bilingual owner of `My Shares` balance semantics; and
     leave the two owner waiver candidates unchanged.
+11. Add RED regressions for the hash-pinned Rave owner fixture, bilingual Rave
+    document boundary, pending-owner topics, dedup ownership, V8 counts, and
+    dimension 1536 contracts.
+12. Add the order-17 bilingual Rave pair, strengthen shared document 10 where
+    the owner supplied generic Redeem/immutability precision, and add one
+    Rave-specific semantic query plus review evidence for every new Q&A and one
+    representative chat case per language.
+13. Rebuild and hash-pin V8 fixtures, record the deterministic production chunk
+    count, update operational dimension migration/rollback guidance, and run
+    focused plus full repository verification without upload or deployment.
 
 ## Closeout Evidence
 
@@ -228,6 +316,21 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   remain unchanged and green.
 - Live-baseline evidence broadened fact-group alternatives only for
   paraphrase-equivalent wording; the asserted semantics are unchanged.
-- Full pytest and the repository spec gates are required on the final tree; no
-  live replay or product/runtime acceptance is claimed by this harness-only
-  phase.
+- Marketplace QnA V8 contains 34 bilingual documents and 350 reviewed Golden
+  Queries. The new Rave pair contributes 17 questions per language and one
+  representative chat case per language; all Rave retrieval questions are
+  scoped by Rave, RaveDAO, or vRAVE terminology. The production chunker emits
+  313 chunks at size 400 and overlap 80.
+- The four owner blanks remain one explicit pending-owner Q&A per language.
+  Fees, voting entry, proposal deadline, contract address, and network remain
+  dynamic. Generic product framing, custody, Mint/Redeem flow, and post-vote
+  share-burning semantics remain owned by the existing shared documents.
+- Evaluation/ingestion manifests, preflight, Promptfoo configs, environment
+  guidance, and operator runbooks use dimension 1536; runtime application code
+  and persistence schema are unchanged.
+- Final local verification passes the focused Marketplace/Promptfoo/Consumer/
+  Rave suites, full pytest (with one pre-existing skip), the legacy spec
+  contract, the production deployment contract, Golden Query audit, and
+  `git diff --check`. The spec-registry check was attempted but could not fetch
+  `harnessctl` because sandbox DNS could not resolve `proxy.golang.org`. No live
+  replay, upload, deployment, or product/runtime acceptance is claimed.

@@ -33,8 +33,8 @@ help:
 	@echo "  make chat-eval-live 对 DockerHost/API 执行可选 live eval 回放"
 	@echo "  make verify-release 运行发布前 Harness 验证并写入 .artifacts/release"
 	@echo "  make marketplace-qna-preflight 校验输入、摄取证据和本地契约"
-	@echo "  make marketplace-qna-local 运行 Gemini preflight 和 150 条本地检索"
-	@echo "  make marketplace-qna-live 运行 150 条线上检索和 20 条聊天"
+	@echo "  make marketplace-qna-local 运行 Gemini preflight 和 350 条本地检索"
+	@echo "  make marketplace-qna-live 运行 350 条线上检索和 34 条聊天"
 	@echo "  make marketplace-qna-final 运行 release gate 和最终验收器"
 	@echo "  make marketplace-qna-acceptance 按顺序运行完整 Marketplace QnA 验收"
 
@@ -94,7 +94,7 @@ marketplace-qna-preflight:
 
 marketplace-qna-local:
 	@test -n "$$GEMINI_API_KEY" || (echo "GEMINI_API_KEY is required" >&2; exit 1)
-	$(PY) -m tests.rag_eval.moss_gemini_preflight --output "$(MARKETPLACE_QNA_PREFLIGHT_OUTPUT)" --model gemini-embedding-2 --dimension 256
+	$(PY) -m tests.rag_eval.moss_gemini_preflight --output "$(MARKETPLACE_QNA_PREFLIGHT_OUTPUT)" --model gemini-embedding-2 --dimension 1536
 	PROMPTFOO_PYTHON=$(PY) npx --yes promptfoo@latest eval -c tests/rag_eval/marketplace_qna_promptfooconfig.yaml --no-cache --output "$(MARKETPLACE_QNA_PROMPTFOO_OUTPUT)"
 
 marketplace-qna-live:

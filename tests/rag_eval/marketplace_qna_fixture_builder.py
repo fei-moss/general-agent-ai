@@ -11,7 +11,7 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-19-v7"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-21-v8"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
@@ -35,6 +35,7 @@ EXPECTED_QUESTION_COUNTS = (
     8,
     18,
     11,
+    17,
 )
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
@@ -111,6 +112,12 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Canvas",),
         ("CLI",),
     ),
+    "marketplace_qna_en_17": (
+        ("$RAVE",),
+        ("vRAVE",),
+        ("RaveDAO",),
+        ("fixed reward",),
+    ),
     "marketplace_qna_zh_cn_01": (("FAT Protocol",), ("不需要", "无需", "不必")),
     "marketplace_qna_zh_cn_02": (("完整保留", "完整迁移", "保留完整"),),
     "marketplace_qna_zh_cn_03": (("Perp Trading", "永续交易"), ("Governance", "治理"), ("Consumer", "消费者")),
@@ -173,6 +180,12 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Marketing Hub",),
         ("Canvas",),
         ("CLI",),
+    ),
+    "marketplace_qna_zh_cn_17": (
+        ("$RAVE",),
+        ("vRAVE",),
+        ("RaveDAO",),
+        ("固定奖励",),
     ),
 }
 CHAT_QUERY_OVERRIDES = {

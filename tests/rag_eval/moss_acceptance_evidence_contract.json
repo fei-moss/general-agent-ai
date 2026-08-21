@@ -10,7 +10,7 @@
   "gemini_preflight": {
     "artifact_path": ".artifacts/release/moss_gemini_preflight.json",
     "command": ".venv/bin/python -m tests.rag_eval.moss_gemini_preflight --output .artifacts/release/moss_gemini_preflight.json",
-    "embedding_dimension": 256,
+    "embedding_dimension": 1536,
     "embedding_model": "gemini-embedding-2",
     "required_status": "passed"
   },

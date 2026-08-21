@@ -11,7 +11,7 @@ import httpx
 
 
 DEFAULT_MODEL = "gemini-embedding-2"
-DEFAULT_DIMENSION = 256
+DEFAULT_DIMENSION = 1536
 DEFAULT_OUTPUT = Path(".artifacts/release/moss_gemini_preflight.json")
 ENDPOINT_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"

@@ -9,15 +9,15 @@
     "artifact_path": ".artifacts/release/marketplace_qna_gemini_preflight.json",
     "required_status": "passed",
     "embedding_model": "gemini-embedding-2",
-    "embedding_dimension": 256
+    "embedding_dimension": 1536
   },
   "ingestion": {
     "summary_artifact_path": ".artifacts/release/marketplace_qna_ingestion_summary.json",
-    "knowledge_base_name": "Moss Agent Marketplace QnA V7",
-    "expected_chunks": 289,
+    "knowledge_base_name": "Moss Agent Marketplace QnA V8",
+    "expected_chunks": 313,
     "required_embedding_provider": "gemini",
     "required_embedding_model": "gemini-embedding-2",
-    "required_embedding_dimension": 256
+    "required_embedding_dimension": 1536
   },
   "promptfoo": {
     "artifact_path": ".artifacts/release/marketplace_qna_promptfoo_eval.json",
@@ -38,11 +38,11 @@
     "must_pass": true
   },
   "thresholds": {
-    "source_documents": 32,
-    "golden_queries": 316,
-    "chat_cases": 32,
-    "promptfoo_required_passes": 316,
-    "live_required_passes": 316,
+    "source_documents": 34,
+    "golden_queries": 350,
+    "chat_cases": 34,
+    "promptfoo_required_passes": 350,
+    "live_required_passes": 350,
     "minimum_top1_rate": 0.8,
     "maximum_degraded_cases": 0,
     "maximum_failed_ingestion_jobs": 0

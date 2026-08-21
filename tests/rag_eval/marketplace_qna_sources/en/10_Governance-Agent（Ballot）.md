@@ -60,11 +60,11 @@ Principal Minted into the Agent does not enter the project's personal wallet. It
 
 **Q: In a Governance Agent, if I redeem after the snapshot, could my submitted governance ballot stop counting?**
 
-That depends on the current proposal's snapshot and Redeem interaction rules. A snapshot usually fixes eligibility and weight, but whether the vote remains counted after Redeem must come from current Agent context or proposal rules, not a demo assumption.
+A holder may request Redeem after voting under the current Agent rules. Redeem burns the corresponding governance shares and ends their future voting power; a holder cannot retain both the redeemed principal and those shares' future voting power. A snapshot usually fixes eligibility and weight, but whether the vote remains counted after Redeem must come from current Agent context or proposal rules, not a demo assumption.
 
 **Q: Can the fixed APY change later?**
 
-The Governance Agent fixed APY is set and disclosed at launch and enforced by contract rules; it should not be rewritten retroactively during the holding period. A concrete Agent's actual rate must still come from current Agent context, never a demo number.
+The Governance Agent fixed APY is set and disclosed at launch and enforced by contract rules. The holding cap and Redeem terms likewise follow the contract rules disclosed at launch; none should be rewritten retroactively for holders who already entered. A concrete Agent's actual rate, cap, and terms must still come from current Agent context, never demo values.
 
 **Q: What tokens pay the yield and airdrops?**
 

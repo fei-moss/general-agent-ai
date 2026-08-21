@@ -12,7 +12,7 @@ from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = Path(".artifacts/release/marketplace_qna_golden_query_audit.json")
 _LINES_RE = re.compile(r"^\d+-\d+$")
-STRUCTURAL_ANCHOR_ORDERS = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16}
+STRUCTURAL_ANCHOR_ORDERS = {2, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -93,11 +93,11 @@ def build_audit_report(*, eval_dir: Path = EVAL_DIR) -> dict[str, Any]:
         "source_questions": len(expected_query_ids),
     }
     expected_counts = {
-        "source_documents": 32,
-        "golden_queries": 316,
-        "review_rows": 316,
-        "chat_cases": 32,
-        "source_questions": 316,
+        "source_documents": 34,
+        "golden_queries": 350,
+        "review_rows": 350,
+        "chat_cases": 34,
+        "source_questions": 350,
     }
     if counts != expected_counts:
         errors.append("count_mismatch")

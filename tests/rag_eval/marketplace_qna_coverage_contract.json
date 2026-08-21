@@ -1,12 +1,12 @@
 {
   "contract_id": "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE",
-  "required_chat_case_count": 32,
-  "required_document_count": 32,
+  "required_chat_case_count": 34,
+  "required_document_count": 34,
   "required_languages": [
     "zh-CN",
     "en"
   ],
-  "required_query_count": 316,
+  "required_query_count": 350,
   "spec_id": "SPEC-RAG-EVAL-002",
   "topic_groups": [
     {
@@ -547,6 +547,54 @@
         "marketplace_qna_en_16_q09",
         "marketplace_qna_en_16_q10",
         "marketplace_qna_en_16_q11"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_zh_cn_17",
+      "language": "zh-CN",
+      "name": "zh-CN-topic-17",
+      "query_ids": [
+        "marketplace_qna_zh_cn_17_q01",
+        "marketplace_qna_zh_cn_17_q02",
+        "marketplace_qna_zh_cn_17_q03",
+        "marketplace_qna_zh_cn_17_q04",
+        "marketplace_qna_zh_cn_17_q05",
+        "marketplace_qna_zh_cn_17_q06",
+        "marketplace_qna_zh_cn_17_q07",
+        "marketplace_qna_zh_cn_17_q08",
+        "marketplace_qna_zh_cn_17_q09",
+        "marketplace_qna_zh_cn_17_q10",
+        "marketplace_qna_zh_cn_17_q11",
+        "marketplace_qna_zh_cn_17_q12",
+        "marketplace_qna_zh_cn_17_q13",
+        "marketplace_qna_zh_cn_17_q14",
+        "marketplace_qna_zh_cn_17_q15",
+        "marketplace_qna_zh_cn_17_q16",
+        "marketplace_qna_zh_cn_17_q17"
+      ]
+    },
+    {
+      "document_id": "marketplace_qna_en_17",
+      "language": "en",
+      "name": "en-topic-17",
+      "query_ids": [
+        "marketplace_qna_en_17_q01",
+        "marketplace_qna_en_17_q02",
+        "marketplace_qna_en_17_q03",
+        "marketplace_qna_en_17_q04",
+        "marketplace_qna_en_17_q05",
+        "marketplace_qna_en_17_q06",
+        "marketplace_qna_en_17_q07",
+        "marketplace_qna_en_17_q08",
+        "marketplace_qna_en_17_q09",
+        "marketplace_qna_en_17_q10",
+        "marketplace_qna_en_17_q11",
+        "marketplace_qna_en_17_q12",
+        "marketplace_qna_en_17_q13",
+        "marketplace_qna_en_17_q14",
+        "marketplace_qna_en_17_q15",
+        "marketplace_qna_en_17_q16",
+        "marketplace_qna_en_17_q17"
       ]
     }
   ]
