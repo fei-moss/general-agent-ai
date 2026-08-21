@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.rag.vector_store import InMemoryVectorStore, get_vector_store
+from app.core.config import Settings
+from app.rag.vector_store import (
+    InMemoryVectorStore,
+    PgVectorStore,
+    get_vector_store,
+)
 
 
 async def test_search_returns_most_similar_doc_first():
@@ -120,6 +125,87 @@ async def test_search_raises_on_dimension_mismatch():
     # Act / Assert
     with pytest.raises(ValueError):
         await store.search([1.0, 0.0], top_k=1)
+
+
+async def test_search_filters_mixed_dimensions_by_knowledge_base_before_distance():
+    store = InMemoryVectorStore()
+    await store.add(
+        [
+            {
+                "id": "v7",
+                "text": "old dimension",
+                "vector": [1.0] * 256,
+                "owner_user_id": "rag-admin",
+                "knowledge_base_id": "kb-v7",
+                "index_version": "v1",
+            },
+            {
+                "id": "v8",
+                "text": "new dimension",
+                "vector": [1.0] * 1536,
+                "owner_user_id": "rag-admin",
+                "knowledge_base_id": "kb-v8",
+                "index_version": "v1",
+            },
+        ]
+    )
+
+    results = await store.search(
+        [1.0] * 1536,
+        top_k=1,
+        owner_user_id="rag-admin",
+        knowledge_base_id="kb-v8",
+        index_version="v1",
+    )
+
+    assert [item[0]["id"] for item in results] == ["v8"]
+
+
+async def test_pgvector_search_casts_vectors_and_filters_kb_before_ordering(
+    monkeypatch,
+):
+    from app.db import session as db_session
+
+    captured: dict[str, object] = {}
+
+    class _Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return []
+
+    class _Session:
+        async def execute(self, statement, parameters):
+            captured["sql"] = " ".join(str(statement).lower().split())
+            captured["parameters"] = parameters
+            return _Result()
+
+    class _SessionContext:
+        async def __aenter__(self):
+            return _Session()
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    monkeypatch.setattr(db_session, "async_session_factory", _SessionContext)
+    store = PgVectorStore(Settings(_env_file=None, embedding_dim=1536))
+
+    results = await store.search(
+        [1.0] * 1536,
+        top_k=3,
+        owner_user_id="rag-admin",
+        knowledge_base_id="kb-v8",
+        index_version="v1",
+    )
+
+    sql = str(captured["sql"])
+    assert results == []
+    assert sql.count("cast(:query_vec as vector)") == 2
+    assert sql.index("knowledge_base_id = :knowledge_base_id") < sql.index("order by")
+    parameters = captured["parameters"]
+    assert isinstance(parameters, dict)
+    assert parameters["knowledge_base_id"] == "kb-v8"
 
 
 async def test_add_copies_doc_to_prevent_external_mutation():

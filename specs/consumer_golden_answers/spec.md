@@ -148,12 +148,25 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   explicitly unspecified and never receive inferred defaults.
 - `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R16`: Marketplace and MOSS evaluation and
   ingestion contracts use Gemini `gemini-embedding-2` at dimension 1536. V8
-  requires a full re-ingest into a new knowledge base. An old-dimension
-  knowledge base degrades while the server produces 1536-dimensional query
-  vectors; promotion and rollback therefore change `EMBEDDING_DIM` and
-  `RAG_DEFAULT_KNOWLEDGE_BASE_ID` as one coordinated pair. The previous
-  316-query `301/316` and Top-1 `80.4%` measurements remain historical
-  256-dimensional evidence and require a 1536-dimensional re-baseline.
+  requires `EMBEDDING_DIM=1536` explicitly on every deploy because the runtime
+  default remains 256, plus a full re-ingest into a new knowledge base. An
+  old-dimension knowledge base degrades while the server produces
+  1536-dimensional query vectors; promotion and rollback therefore change
+  `EMBEDDING_DIM` and `RAG_DEFAULT_KNOWLEDGE_BASE_ID` as one coordinated pair.
+  The previous 316-query `301/316` and Top-1 `80.4%` measurements remain
+  historical 256-dimensional evidence and require a 1536-dimensional
+  re-baseline.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R17`: owner approval
+  `owner-request:rave-kb-v8-1536-20260821` changes the pgvector column from
+  `vector(256)` to dimensionless `vector` through migration
+  `20260821_001_rag_embedding_dimensionless`, after first dropping the
+  dimension-typed HNSW index. The migration preserves retained 256-dimensional
+  chunks. Fresh installs use the same dimensionless schema. Application checks
+  enforce the active embedding dimension, each knowledge base remains
+  dimension-uniform, and retrieval filters by `knowledge_base_id` before
+  distance comparison, allowing old and new dimensions in different knowledge
+  bases. Sequential scan is accepted at the current corpus scale; a
+  dimension-typed ANN strategy is deferred to a future scale change.
 
 ### V8 Owner-Mandated Dedup Decision Table
 
@@ -211,13 +224,14 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   default, inferred value, successful fact check, or fabricated daily report.
 - Current-Agent identity, threshold, amount, fee, code, entry, support, address,
   or network values are never copied into the fixed QnA corpus.
-- The only `app/` change is the typed consumer dynamic-field registry constant,
-  authorized by `owner-request:consumer-golden-regression-20260819`; it does not
-  alter runtime behavior.
+- Application changes are limited to the typed consumer dynamic-field registry
+  constant authorized by `owner-request:consumer-golden-regression-20260819`
+  and the dimensionless pgvector schema migration authorized by
+  `owner-request:rave-kb-v8-1536-20260821`.
 - Runtime Prompt assembly, tools, validators, orchestration, Go Marketplace
-  code, persistence schema, and API behavior are unchanged. Environment
-  templates, DockerHost defaults, evaluation fixtures, and operator guidance
-  move the configured embedding dimension to 1536.
+  code, and API behavior are unchanged. The persistence schema becomes
+  dimensionless while environment templates, DockerHost defaults, evaluation
+  fixtures, and operator guidance use embedding dimension 1536.
 - No Mint, Refund, Redeem, code generation, signature, wallet write, payment,
   trade, or other mutating action is introduced by this regression harness.
 
@@ -227,8 +241,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   Existing Agent-type and dynamic-fact contracts remain compatible.
 - V8 rollback restores both `EMBEDDING_DIM` and
   `RAG_DEFAULT_KNOWLEDGE_BASE_ID` to values matching the retained prior
-  knowledge base; neither knowledge base is deleted. There is no DDL or DML
-  migration.
+  knowledge base; neither knowledge base is deleted. The forward DDL migration
+  remains applied because its dimensionless column preserves and can query the
+  retained 256-dimensional chunks after the coordinated runtime rollback.
 
 ## Implementation Plan
 
@@ -276,6 +291,11 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 13. Rebuild and hash-pin V8 fixtures, record the deterministic production chunk
     count, update operational dimension migration/rollback guidance, and run
     focused plus full repository verification without upload or deployment.
+14. Add RED schema-contract tests, migrate the chunk embedding column to
+    dimensionless pgvector without rewriting existing rows, remove the typed
+    HNSW index from migrated and fresh schemas, cover mixed-dimension
+    knowledge-base isolation, and document failed-import cleanup before the V8
+    retry.
 
 ## Closeout Evidence
 
@@ -326,8 +346,10 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   dynamic. Generic product framing, custody, Mint/Redeem flow, and post-vote
   share-burning semantics remain owned by the existing shared documents.
 - Evaluation/ingestion manifests, preflight, Promptfoo configs, environment
-  guidance, and operator runbooks use dimension 1536; runtime application code
-  and persistence schema are unchanged.
+  guidance, and operator runbooks use dimension 1536. Migration
+  `20260821_001_rag_embedding_dimensionless` and fresh-install SQL use an
+  untyped pgvector column with no fixed-dimension HNSW index, preserving the
+  retained 256-dimensional knowledge bases for rollback.
 - Final local verification passes the focused Marketplace/Promptfoo/Consumer/
   Rave suites, full pytest (with one pre-existing skip), the legacy spec
   contract, the production deployment contract, Golden Query audit, and

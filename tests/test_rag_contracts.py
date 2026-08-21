@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from sqlalchemy import UniqueConstraint
@@ -56,5 +57,32 @@ def test_init_sql_enables_pgvector_and_rag_tables():
     assert "create table if not exists knowledge_base" in sql
     assert "create table if not exists rag_document" in sql
     assert "create table if not exists rag_document_chunk" in sql
-    assert "embedding vector(" in sql
+    assert re.search(r"\bembedding\s+vector\s+not null\b", sql)
+    assert "vector(256)" not in sql
+    assert "ix_rag_chunk_embedding_hnsw" not in sql
+    assert "knowledge_base_id" in sql
+    assert "sequential scan" in sql
+    assert "dimension-typed ann index" in sql
     assert "create table if not exists rag_retrieval_log" in sql
+
+
+def test_rag_embedding_dimensionless_migration_preserves_existing_rows():
+    from app.db.migrate import MIGRATIONS
+
+    migration = next(
+        item
+        for item in MIGRATIONS
+        if item.version == "20260821_001_rag_embedding_dimensionless"
+    )
+    statements = [
+        " ".join(statement.lower().split()) for statement in migration.statements
+    ]
+
+    assert statements == [
+        "drop index if exists ix_rag_chunk_embedding_hnsw",
+        "alter table rag_document_chunk alter column embedding type vector",
+    ]
+    assert not any(
+        re.search(r"\b(delete|truncate|update)\b", statement)
+        for statement in statements
+    )

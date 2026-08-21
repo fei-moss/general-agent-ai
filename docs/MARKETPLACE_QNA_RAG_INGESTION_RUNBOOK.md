@@ -42,7 +42,9 @@ then stops at the first failed gate.
 - The project DockerHost adapter validates successfully.
 - API, worker, PostgreSQL/pgvector, and Redis are healthy.
 - `RAG_ENABLED=true`, `RAG_VECTOR_STORE=pgvector`.
-- Embeddings use Gemini `gemini-embedding-2` with dimension `1536`.
+- Embeddings use Gemini `gemini-embedding-2`, and `EMBEDDING_DIM=1536` is
+  explicitly present on every deploy. The application runtime default remains
+  `256`; never rely on that default for V8.
 - The internal administrator is included in `RAG_ADMIN_USER_IDS`.
 - `RAG_DEFAULT_KNOWLEDGE_BASE_ID` and `RAG_INTERNAL_OWNER_USER_ID` are set on
   the server; `RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID=false`.
@@ -99,6 +101,32 @@ reaper also redispatches stale `PENDING` jobs and stale `RUNNING` jobs left by a
 lost worker. Treat a job that remains non-terminal beyond the configured stale
 window as a worker/reaper incident rather than submitting a different document.
 
+A terminal `FAILED` import is different. `POST /rag/documents` finds an existing
+document by `(knowledge_base_id, content_hash)`, returns its latest job, and
+enqueues only when that job is `PENDING`. Resubmitting the same payload therefore
+does **not** retry or replace a `FAILED` job, even though chunk writes themselves
+use an idempotent upsert. After the dimension migration has succeeded, inspect
+the affected V8 knowledge base and delete only its failed document rows before
+resubmitting:
+
+```sql
+SELECT status, count(*)
+FROM rag_document
+WHERE knowledge_base_id = '<V8_KNOWLEDGE_BASE_ID>'
+GROUP BY status;
+
+DELETE FROM rag_document
+WHERE knowledge_base_id = '<V8_KNOWLEDGE_BASE_ID>'
+  AND status = 'FAILED'
+RETURNING id;
+```
+
+For the failed 34-document attempt, require the inspection and `RETURNING` count
+to be exactly 34. The `ON DELETE CASCADE` foreign key removes the associated
+failed ingestion jobs and any partial chunks; it does not touch the knowledge
+base or any retained V6/V7 knowledge base. The next submission then creates new
+document and job rows.
+
 ## Local Semantic Evaluation
 
 Run Gemini preflight and the 350-case Promptfoo suite with production embedding
@@ -117,10 +145,27 @@ It is historical V7 evidence, not a V8 acceptance result, and must be re-baselin
 
 ## Embedding-Dimension Migration
 
-Changing the seed contract to 1536 dimensions requires the server
-`EMBEDDING_DIM=1536` setting and a full V8 re-ingest into a **new** knowledge
-base. Do not append 1536-dimensional chunks to a knowledge base created with a
-different dimension.
+The normal DockerHost deploy must run the fail-closed `migrate` service before
+the API or worker starts. Migration
+`20260821_001_rag_embedding_dimensionless` drops the fixed-dimension HNSW index
+and changes `rag_document_chunk.embedding` from `vector(256)` to dimensionless
+`vector`; it preserves all existing 256-dimensional rows. Confirm that the
+migration service completed successfully **before** retrying a 1536-dimensional
+import. At the current scale of hundreds of chunks per knowledge base,
+sequential scan is the accepted retrieval plan; a dimension-typed ANN index is
+a future scale follow-up.
+
+Changing the seed contract to 1536 dimensions also requires
+`EMBEDDING_DIM=1536` to be explicitly supplied to the server on every deploy
+and a full V8 re-ingest into a **new** knowledge base. The runtime setting still
+defaults to 256. Do not append 1536-dimensional chunks to a knowledge base
+created with a different dimension.
+
+The dimensionless column permits retained knowledge bases to use different
+dimensions. Application ingestion and query checks enforce the configured
+dimension, and distance queries filter by `knowledge_base_id` before comparing
+vectors, so each knowledge base must remain dimension-uniform and vectors from
+different knowledge bases never meet in one comparison.
 
 While the server runs with the new dimension, old-dimension knowledge bases are
 unreachable for successful retrieval: the query vector and stored chunk vector
@@ -181,8 +226,9 @@ make marketplace-qna-final
 
 - Dimension rollback is atomic: revert `EMBEDDING_DIM` and
   `RAG_DEFAULT_KNOWLEDGE_BASE_ID` together so the query-vector dimension matches
-  the retained knowledge base. Do not delete either knowledge base or the
-  managed PostgreSQL volume.
+  the retained knowledge base. The dimensionless schema migration remains in
+  place and the retained 256-dimensional chunks need no rewrite. Do not delete
+  either knowledge base or the managed PostgreSQL volume.
 - Keep the previous knowledge base and both evidence sets until the replacement
   corpus has passed the same contract and its rollback window has closed.
 - Branch spaces have platform TTLs. Check and extend the environment within the

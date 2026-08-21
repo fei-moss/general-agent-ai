@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS rag_document_chunk (
     page_number        INTEGER,
     section_title      TEXT,
     metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
-    embedding vector(256) NOT NULL,
+    embedding vector NOT NULL,
     embedding_provider VARCHAR(64) NOT NULL,
     embedding_model    VARCHAR(128) NOT NULL,
     embedding_dim      INTEGER NOT NULL,
@@ -199,8 +199,11 @@ CREATE INDEX IF NOT EXISTS ix_rag_chunk_document_id
     ON rag_document_chunk (document_id);
 CREATE INDEX IF NOT EXISTS ix_rag_chunk_metadata
     ON rag_document_chunk USING GIN (metadata);
-CREATE INDEX IF NOT EXISTS ix_rag_chunk_embedding_hnsw
-    ON rag_document_chunk USING hnsw (embedding vector_cosine_ops);
+-- The application enforces one embedding dimension per knowledge base and
+-- rejects query/chunk dimension mismatches. Distance queries always filter by
+-- knowledge_base_id, so vectors from different dimensions are never compared.
+-- Sequential scan is acceptable at the current scale (hundreds of chunks per
+-- KB); a dimension-typed ANN index is a future scale follow-up.
 
 CREATE TABLE IF NOT EXISTS rag_ingestion_job (
     id                VARCHAR(64) PRIMARY KEY,

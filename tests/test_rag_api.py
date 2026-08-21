@@ -124,3 +124,64 @@ async def test_duplicate_pending_document_requeues_after_previous_enqueue_failur
 
     assert accepted.replayed is True
     assert enqueued == [("job-1", "doc-1")]
+
+
+async def test_duplicate_failed_document_is_replayed_without_a_new_retry(monkeypatch):
+    from app.api.routers import rag
+    from app.core.enums import RAGDocumentStatus, RAGIngestionJobStatus
+    from app.core.schemas import RAGDocumentCreate
+
+    document = SimpleNamespace(
+        id="doc-failed",
+        knowledge_base_id="kb-v8",
+        owner_user_id="rag-admin",
+        status=RAGDocumentStatus.FAILED,
+    )
+    job = SimpleNamespace(
+        id="job-failed",
+        document_id="doc-failed",
+        status=RAGIngestionJobStatus.FAILED,
+    )
+    enqueued: list[tuple[str, str]] = []
+
+    class _DocumentRepo:
+        def __init__(self, session):
+            pass
+
+        async def create_or_get(self, **kwargs):
+            return document, False
+
+    class _JobRepo:
+        def __init__(self, session):
+            pass
+
+        async def get_latest_for_document(self, document_id):
+            return job
+
+    async def _kb(*args, **kwargs):
+        return SimpleNamespace(status="ACTIVE")
+
+    monkeypatch.setattr(rag, "RAGDocumentRepository", _DocumentRepo)
+    monkeypatch.setattr(rag, "RAGIngestionJobRepository", _JobRepo)
+    monkeypatch.setattr(rag, "_get_kb_or_error", _kb)
+    monkeypatch.setattr(
+        rag,
+        "_enqueue_ingestion",
+        lambda job_id, document_id: enqueued.append((job_id, document_id)),
+    )
+
+    accepted = await rag.create_document(
+        RAGDocumentCreate(
+            knowledge_base_id="kb-v8",
+            source_type="manual",
+            content="same failed content",
+        ),
+        user="rag-admin",
+        repos=SimpleNamespace(session=object()),
+        settings=Settings(_env_file=None, rag_admin_user_ids="rag-admin"),
+    )
+
+    assert accepted.replayed is True
+    assert accepted.document_id == "doc-failed"
+    assert accepted.job_id == "job-failed"
+    assert enqueued == []

@@ -68,6 +68,20 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        version="20260821_001_rag_embedding_dimensionless",
+        statements=(
+            # Drop first so ALTER TYPE never attempts to rebuild a
+            # dimension-typed ANN index against the dimensionless column.
+            """
+            DROP INDEX IF EXISTS ix_rag_chunk_embedding_hnsw
+            """,
+            """
+            ALTER TABLE rag_document_chunk
+            ALTER COLUMN embedding TYPE vector
+            """,
+        ),
+    ),
 )
 
 
