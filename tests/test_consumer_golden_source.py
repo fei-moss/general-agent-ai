@@ -11,6 +11,7 @@ from tests.chat_eval.approved_case_workflow import (
     _CONSUMER_DYNAMIC_FIELD_TERMS,
     _contains_forbidden_claim,
     _group_matches,
+    _normalize_text,
     build_optimization_report,
     build_preflight_contract,
     build_target_truth_from_marketplace_context,
@@ -108,6 +109,127 @@ def test_vendored_source_batch_is_complete_and_metadata_is_self_consistent():
         ("最低金额", "consumer_minimum_mint_amount"),
         ("Threshold", "consumer_redemption_threshold"),
     ]
+
+
+def test_consumer_fact_terms_never_normalize_to_only_missing_fact_sentinel():
+    rows = parse_consumer_golden_markdown(_VENDORED_SOURCE).rows
+
+    assert [
+        (row["id"], group_index, alternative)
+        for row in rows
+        for group_index, group in enumerate(row["required_fact_groups"])
+        for alternative in group
+        if _normalize_text(alternative) == "missingfactmarker"
+    ] == []
+
+
+def test_v8_1536_recording_paraphrase_alternatives_are_preserved():
+    additions = {
+        "consumer_redemption_q01_zh": [(1, "提供的特定服务")],
+        "consumer_redemption_q02_zh": [
+            (1, "在兑换权益之前"),
+            (2, "选择将手中的份额退款"),
+        ],
+        "consumer_redemption_q03_zh": [
+            (0, "用于兑换特定的商品或服务权益"),
+            (2, "获取其背后链接的权益"),
+        ],
+        "consumer_redemption_q04_zh": [(2, "每个份额之间没有区别，可以互换")],
+        "consumer_redemption_q05_zh": [(1, "参与确实需要用到加密货币")],
+        "consumer_redemption_q08_zh": [(2, "需要您在获得份额后主动发起")],
+        "consumer_redemption_q10_zh": [(0, "在创建时都会设定一种固定的代币")],
+        "consumer_redemption_q12_zh": [(3, "选择您希望兑换的兑换码数量")],
+        "consumer_redemption_q14_zh": [
+            (0, "份额一旦成功用于兑换，就会被消耗掉"),
+            (1, "被消耗掉，不能再恢复"),
+            (2, "不能再恢复或用于赎回"),
+        ],
+        "consumer_redemption_q15_zh": [
+            (2, "会继续由您持有"),
+        ],
+        "consumer_redemption_q20_zh": [(0, "成功将 Agent 份额兑换成兑换码")],
+        "consumer_redemption_q21_zh": [
+            (4, "通过当前 Agent 页面上提供的支持方式")
+        ],
+        "consumer_redemption_q22_zh": [
+            (0, "尚未兑换成码的份额"),
+            (2, "Refund 功能来拿回资金"),
+        ],
+        "consumer_redemption_q23_zh": [
+            (0, "未消耗的份额"),
+            (1, "AI 视频生成码"),
+            (2, "这部分份额就被消耗掉了"),
+            (3, "不能再被赎回 (Refund)"),
+        ],
+        "consumer_redemption_q27_zh": [
+            (1, "赎回（Refund）操作没有明确的次数限制")
+        ],
+        "consumer_redemption_q29_zh": [
+            (0, "受到智能合约规则的严格限制"),
+            (1, "负责管理和维护 Agent"),
+            (2, "不能随意动用您投入的资金"),
+        ],
+        "consumer_redemption_q31_zh": [
+            (2, "核心条款在发布时就已确定，并且不能随意更改")
+        ],
+        "consumer_redemption_q32_zh": [
+            (2, "仍然可以通过 Refund 功能按当时的兑换率赎回您的资金")
+        ],
+        "consumer_redemption_q33_zh": [(1, "从您的钱包转到另一个人的钱包")],
+        "consumer_redemption_q34_zh": [
+            (2, "用于兑换产品或服务"),
+            (3, "不是通过市场交易涨价"),
+        ],
+        "consumer_redemption_q39_zh": [
+            (0, "当前仍然持有"),
+            (2, "兑换成代码"),
+            (3, "这个余额不包含您已经消耗或兑换成代码的部分"),
+        ],
+        "consumer_redemption_q40_zh": [
+            (1, "显示该 Agent 的 Mint 记录"),
+            (3, "显示该 Agent 的换码记录"),
+        ],
+        "consumer_redemption_q41_zh": [
+            (0, "钱包地址中尚未持有该 Agent 的份额")
+        ],
+        "consumer_redemption_q42_zh": [(5, "已经持有的份额仍然属于您")],
+        "consumer_redemption_q43_zh": [
+            (1, "这部分份额就会被消耗掉"),
+            (2, "不能再用于申请 Refund"),
+            (
+                3,
+                "如果您只兑换了一部分份额，那么剩余未兑换的份额仍然在您这里，"
+                "可以用于未来的 Refund 操作",
+            ),
+        ],
+        "consumer_redemption_q44_zh": [(0, "手动发起兑换流程")],
+        "consumer_redemption_q45_zh": [(2, "不保本")],
+        "pixverse_q01_zh": [
+            (1, "研发自己的视频基础模型"),
+            (5, "对话式创作"),
+        ],
+        "pixverse_q04_zh": [
+            (0, "人工智能（AI）视频生成公司"),
+            (2, "利用区块链技术来完成其品牌权益的付费和兑换结算"),
+            (3, "品牌权益的付费和兑换结算"),
+        ],
+        "pixverse_q16_zh": [
+            (3, "PixVerse 权益码"),
+            (4, "依赖于 PixVerse 是否按照其条款继续履约"),
+        ],
+        "pixverse_q17_zh": [(1, "PixVerse AI Agent 的 ERC-20 份额")],
+        "pixverse_q18_zh": [(0, "可供兑换的 AI 服务权益")],
+    }
+    rows = {
+        row["id"]: row
+        for row in parse_consumer_golden_markdown(_VENDORED_SOURCE).rows
+    }
+
+    for case_id, case_additions in additions.items():
+        alternatives = [alternative for _, alternative in case_additions]
+        assert len(alternatives) == len(set(alternatives)), case_id
+        for group_index, alternative in case_additions:
+            assert alternative in rows[case_id]["required_fact_groups"][group_index]
 
 
 def test_adapter_preserves_bare_colon_answer_and_consumer_scope(tmp_path):

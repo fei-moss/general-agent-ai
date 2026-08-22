@@ -336,6 +336,8 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   remain unchanged and green.
 - Live-baseline evidence broadened fact-group alternatives only for
   paraphrase-equivalent wording; the asserted semantics are unchanged.
+  A second pass against the V8@1536 recording reaches 14/43 hard passes while
+  preserving the V7 recording at 16/43; the asserted semantics remain unchanged.
 - Marketplace QnA V8 contains 34 bilingual documents and 350 reviewed Golden
   Queries. The new Rave pair contributes 17 questions per language and one
   representative chat case per language; all Rave retrieval questions are
