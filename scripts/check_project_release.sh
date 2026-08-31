@@ -2,6 +2,12 @@
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ "${1:-}" != --managed-test-resources ]]; then
+  exec "$ROOT_DIR/scripts/with_test_resources.sh" --mode fresh -- python3 "$ROOT_DIR/scripts/test_resource_env.py" "$0" --managed-test-resources "$@"
+fi
+[[ "${HARNESS_RESOURCE_MODE:-}" == fresh && -n "${HARNESS_RESOURCE_RUN_ID:-}" ]] || { printf 'fresh managed test resources are required\n' >&2; exit 1; }
+shift
 ARTIFACT_DIR="${HARNESS_ARTIFACT_DIR:-${VERIFY_ARTIFACT_DIR:-$ROOT_DIR/.artifacts/release}}"
 PYTHON_BIN="${PYTHON:-${PY:-$ROOT_DIR/.venv/bin/python}}"
 SUMMARY="$ARTIFACT_DIR/project_release_summary.json"

@@ -86,7 +86,7 @@ for file in ${changed[@]+"${changed[@]}"}; do
       spec_changed=1
       spec_files+=("$file")
       ;;
-    scripts/check_ai_boundaries.sh|scripts/check_project_release.sh|scripts/check_spec_contract.sh|scripts/check_spec_registry.sh|scripts/harnessctl.sh|scripts/verify_candidate.sh|scripts/verify_change.sh|scripts/verify_release.sh)
+    scripts/check_ai_boundaries.sh|scripts/check_project_release.sh|scripts/check_project_spec_contract.sh|scripts/check_spec_registry.sh|scripts/harnessctl.sh|scripts/verify_candidate.sh|scripts/verify_change.sh|scripts/verify_release.sh)
       ;;
     app/*|dockerhost/*|requirements.txt|docker-compose.yml|scripts/*|Makefile)
       requires_spec_change=1

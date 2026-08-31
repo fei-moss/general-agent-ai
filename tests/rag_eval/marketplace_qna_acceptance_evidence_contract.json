@@ -34,7 +34,7 @@
   },
   "release_gate": {
     "artifact_path": ".artifacts/release/summary.json",
-    "command": "scripts/verify_release.sh",
+    "command": "harness/repository_verification.py verify release",
     "must_pass": true
   },
   "thresholds": {

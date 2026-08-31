@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from uuid import uuid4
 
 import pytest
@@ -21,6 +22,8 @@ async def _require_postgres_schema() -> None:
     try:
         await asyncio.wait_for(_ensure_tables(), timeout=3)
     except Exception as exc:  # pragma: no cover - depends on local services
+        if os.environ.get("HARNESS_RESOURCE_RUN_ID"):
+            pytest.fail("managed PostgreSQL schema is unavailable", pytrace=False)
         pytest.skip(f"Postgres is not reachable: {exc}")
 
 

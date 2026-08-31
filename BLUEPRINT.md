@@ -9,7 +9,7 @@ This Blueprint maps the compact shared Harness architecture onto this mature Pyt
 | Repository guidance | `AGENTS.md`, `.ai-boundaries.yml` | Boundary check and `CLAUDE.md` symlink gate |
 | Task routing | `docs/harness-workflows.md` | Compact workflow manifest and registry gate |
 | New governed behavior | `specs/<module>/spec.md` | `specs/index.json` and tests |
-| Legacy governed behavior | `docs/specifications/`, `docs/implementation-plans/` | `scripts/check_spec_contract.sh` and tests |
+| Legacy governed behavior | `docs/specifications/`, `docs/implementation-plans/` | `scripts/check_project_spec_contract.sh` and tests |
 | Runtime/deployment facts | Code, project docs, runbooks, `dockerhost/` | Project-native checks and smoke evidence |
 | Release and sync safety | `harness/harness.lock`, `harness/harness_profiles.json`, `harness/scaffold_manifest.json` | Versioned `harnessctl` evidence and semantic comparison |
 
@@ -39,4 +39,4 @@ This Blueprint maps the compact shared Harness architecture onto this mature Pyt
 
 - Existing product specs and plans remain valid historical contracts; new governed work uses the consolidated `specs/<module>/spec.md` shape.
 - Preserve project-native checks and unknown project-owned content during future refreshes.
-- `docs/harness-adoption.md` owns semantic merge rules, and `harness/scaffold_manifest.json` records managed and retired surfaces.
+- `harness/scaffold_manifest.json` owns semantic merge rules, and `harness/scaffold_manifest.json` records managed and retired surfaces.

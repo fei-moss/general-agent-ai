@@ -14,7 +14,7 @@ Direct project checks:
 
 ```bash
 .venv/bin/python -m pytest -q
-scripts/check_spec_contract.sh
+scripts/check_project_spec_contract.sh
 scripts/check_project_release.sh
 ```
 
@@ -26,7 +26,7 @@ scripts/check_project_release.sh
 - `app/bus/` owns event streaming and replay behavior.
 - `app/db/` owns persistence setup and database access.
 - New governed behavior uses one `specs/<module>/spec.md` for Specification, Implementation Plan, and Closeout Evidence; `specs/index.json` must match those modules exactly.
-- Existing `docs/specifications/` and `docs/implementation-plans/` are retained legacy contracts and remain protected by `scripts/check_spec_contract.sh`.
+- Existing `docs/specifications/` and `docs/implementation-plans/` are retained legacy contracts and remain protected by `scripts/check_project_spec_contract.sh`.
 - Logs and errors must not expose provider secrets, API keys, raw tokens, or private credentials.
 
 ## Runtime Boundaries
@@ -44,17 +44,11 @@ scripts/check_project_release.sh
 - API/streaming changes need owner/auth, idempotency, disconnect/replay, and error-path coverage.
 - Provider-limit changes need quota, backoff, fail-closed, and usage-settlement tests.
 - Secret-management changes need redaction and missing-secret tests.
-- Release readiness is proven through `scripts/verify_release.sh`; the project-native checks it invokes are owned by `scripts/check_project_release.sh`.
+- Release readiness is proven through `make verify-release`; the project-native checks it invokes are owned by `scripts/check_project_release.sh`.
 
 ## Harness Workflows
 
-`BLUEPRINT.md` maps repository authority. `docs/harness-workflows.md` owns task routing, and `docs/harness-workflows.json` is its compact machine-readable registry.
-
-- Use `HARNESS-FOCUSED-CHANGE` for bounded restoration or behavior-preserving refactors.
-- Use `HARNESS-SPEC-FIRST-FEATURE` for new or intentionally changed semantics.
-- Use `HARNESS-VERIFICATION-INCIDENT` for read-only diagnosis or independent verification; reroute before mutation.
-- Use `HARNESS-MAINTENANCE` for Harness, skill, eval, template, or process maintenance; do not create self-referential product specs.
-- Harness maintenance must be net-zero or net-negative across the maintained Harness surface.
+`docs/harness-workflows.md` owns task routing. Template Delivery starts at the canonical Scaffold Source; after `harness/repository_verification.py ready`, use Harness Driven Development. Branch handling follows `docs/branch-collaboration.md`.
 
 ## Mandatory Ops Reference
 

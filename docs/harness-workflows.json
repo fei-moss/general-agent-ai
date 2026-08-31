@@ -1,37 +1,9 @@
 {
-  "version": 2,
+  "version": 3,
   "workflow_classes": [
-    {
-      "id": "HARNESS-FOCUSED-CHANGE",
-      "use_when": "A bounded correction or behavior-preserving refactor has unambiguous target truth.",
-      "artifact_policy": "No formal spec; keep only a lightweight checklist when the change needs one.",
-      "verification": "Run task-specific checks and scripts/verify_change.sh.",
-      "stop_rule": "Stop when the target truth is met and focused checks pass; escalate if semantics become ambiguous or protected.",
-      "evidence": ["focused test output", "verify-change evidence"]
-    },
-    {
-      "id": "HARNESS-SPEC-FIRST-FEATURE",
-      "use_when": "New or intentionally changed product, API, data, provider, security, prompt, or rollout semantics are requested.",
-      "artifact_policy": "Create or update one specs/<module>/spec.md containing Specification, Implementation Plan, and Closeout Evidence.",
-      "verification": "Test first, obtain required review, and run scripts/verify_release.sh.",
-      "stop_rule": "Stop on unresolved contract ambiguity, missing approval, or a failing release gate.",
-      "evidence": ["approved spec.md", "tests", "release evidence"]
-    },
-    {
-      "id": "HARNESS-VERIFICATION-INCIDENT",
-      "use_when": "Read-only diagnosis, incident triage, security review, or independent verification is the primary job.",
-      "artifact_policy": "Use existing logs, traces, tests, and a concise findings record; do not manufacture a product spec for diagnosis.",
-      "verification": "Reproduce or disprove the claim against the real runtime, code path, or authoritative evidence.",
-      "stop_rule": "Stop when the claim or cause is supported, disproved, or blocked by explicitly named missing evidence; reroute before mutation.",
-      "evidence": ["diagnostic evidence chain", "remaining uncertainty"]
-    },
-    {
-      "id": "HARNESS-MAINTENANCE",
-      "use_when": "Maintaining the Harness, skills, evals, templates, or other engineering-process assets.",
-      "artifact_policy": "Use a focused checklist; framework work does not require a self-referential spec, plan, or ledger.",
-      "verification": "Run the affected checker tests and the proportional repository gate.",
-      "stop_rule": "Stop if the change adds net Harness lines, duplicates an existing rule, or lacks measured value.",
-      "evidence": ["before-and-after size", "focused checker output", "diff review"]
-    }
+    "HARNESS-FOCUSED-CHANGE",
+    "HARNESS-MAINTENANCE",
+    "HARNESS-SPEC-FIRST-FEATURE",
+    "HARNESS-VERIFICATION-INCIDENT"
   ]
 }

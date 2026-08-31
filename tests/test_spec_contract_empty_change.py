@@ -12,7 +12,7 @@ def test_spec_contract_accepts_empty_change_snapshot(tmp_path: Path):
     artifact_dir = tmp_path / "artifacts"
 
     completed = subprocess.run(
-        ["bash", str(root / "scripts/check_spec_contract.sh")],
+        ["bash", str(root / "scripts/check_project_spec_contract.sh")],
         cwd=root,
         env={
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
@@ -41,7 +41,7 @@ def test_spec_contract_reports_approved_exemption_as_passed(tmp_path: Path):
     artifact_dir = tmp_path / "artifacts"
 
     completed = subprocess.run(
-        ["bash", str(root / "scripts/check_spec_contract.sh")],
+        ["bash", str(root / "scripts/check_project_spec_contract.sh")],
         cwd=root,
         env={
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",

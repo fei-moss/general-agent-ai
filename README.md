@@ -89,7 +89,7 @@ tests/       pytest 用例
 - `BLUEPRINT.md`: 项目事实、规格、运行证据和 Harness 配置的权威映射。
 - `.ai-boundaries.yml`: AI 可编辑、需审批、禁止触碰路径边界。
 - `docs/harness-workflows.md`: 四类任务路由与 Loop Contract。
-- `docs/harness-adoption.md`: 成熟仓库同步、ownership 与瘦身规则。
+- `CONTEXT.md`: Scaffold Source、Template Delivery 与仓库验证入口。
 - `harness/`: 固定的 `harnessctl` 版本、项目 profile 和 scaffold 清单。
 - `specs/<module>/spec.md`: 新增 governed behavior 的 Specification、Implementation Plan 与 Closeout Evidence；历史契约继续保留在 `docs/specifications/` 与 `docs/implementation-plans/`。
 

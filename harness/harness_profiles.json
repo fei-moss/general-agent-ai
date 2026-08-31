@@ -1,14 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "custom_gates": {
-    "legacy_spec_contract": {"run": "scripts/check_spec_contract.sh"},
-    "project_release": {"run": "scripts/check_project_release.sh"}
+    "legacy_spec_contract": {
+      "run": "scripts/check_project_spec_contract.sh"
+    },
+    "project_release": {
+      "run": "scripts/check_project_release.sh"
+    }
   },
   "symlinks": [
-    {"link": "CLAUDE.md", "target": "AGENTS.md"}
+    {
+      "link": "CLAUDE.md",
+      "target": "AGENTS.md"
+    }
   ],
   "coverage_threshold": 0.0,
-  "unsealed_artifacts": ["gates.tsv"],
+  "unsealed_artifacts": [
+    "gates.tsv"
+  ],
   "gate_sets": {
     "change": [
       "change_scope",
@@ -29,22 +38,23 @@
   },
   "profiles": {
     "change": {
-      "evidence_modes": ["change"],
+      "evidence_modes": [
+        "change"
+      ],
       "gate_set": "change",
       "skippable_gates": []
     },
     "pull_request": {
-      "evidence_modes": ["candidate"],
-      "gate_set": "release",
-      "skippable_gates": []
-    },
-    "nightly": {
-      "evidence_modes": ["release"],
+      "evidence_modes": [
+        "candidate"
+      ],
       "gate_set": "release",
       "skippable_gates": []
     },
     "release": {
-      "evidence_modes": ["release"],
+      "evidence_modes": [
+        "release"
+      ],
       "gate_set": "release",
       "skippable_gates": []
     }
@@ -92,9 +102,16 @@
     "release": "release"
   },
   "gate_artifacts": {
-    "legacy_spec_contract": {"artifacts": ["spec_contract.json"]},
+    "legacy_spec_contract": {
+      "artifacts": [
+        "spec_contract.json"
+      ]
+    },
     "project_release": {
-      "artifacts": ["project_release_summary.json", "chat_eval_scorecard.json"]
+      "artifacts": [
+        "project_release_summary.json",
+        "chat_eval_scorecard.json"
+      ]
     }
   },
   "machine_status_artifacts": [

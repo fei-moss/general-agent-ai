@@ -14,6 +14,7 @@ allowed:
 
 approval_required:
   - AGENTS.md
+  - CONTEXT.md
   - CLAUDE.md
   - .*
   - .github/

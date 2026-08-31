@@ -14,7 +14,7 @@ MARKETPLACE_QNA_PREFLIGHT_OUTPUT ?= .artifacts/release/marketplace_qna_gemini_pr
 MARKETPLACE_QNA_PROMPTFOO_OUTPUT ?= .artifacts/release/marketplace_qna_promptfoo_eval.json
 MARKETPLACE_QNA_STATUS_OUTPUT ?= .artifacts/release/marketplace_qna_acceptance_status.json
 
-.PHONY: help up down venv install run-api run-worker test seed check-spec-registry verify-change chat-eval chat-eval-report chat-eval-live verify-release marketplace-qna-preflight marketplace-qna-local marketplace-qna-live marketplace-qna-final marketplace-qna-acceptance
+.PHONY: help up down venv install run-api run-worker test seed check-spec-registry verify-change verify-candidate verify-suite chat-eval chat-eval-report chat-eval-live verify-release marketplace-qna-preflight marketplace-qna-local marketplace-qna-live marketplace-qna-final marketplace-qna-acceptance
 
 help:
 	@echo "可用目标:"
@@ -57,16 +57,16 @@ run-worker:
 	$(PY) -m celery -A $(CELERY_APP) worker -l info -Q q.run,q.intent,q.rag,q.tool,q.llm,q.compose
 
 test:
-	$(PY) -m pytest -q
+	scripts/with_test_resources.sh -- python3 scripts/test_resource_env.py $(PY) -m pytest -q
 
 seed:
 	$(PY) scripts/seed.py
 
 check-spec-registry:
-	scripts/check_spec_registry.sh
+	scripts/harnessctl.sh check spec-registry
 
 verify-change:
-	PY="$(PY)" scripts/verify_change.sh
+	PY="$(PY)" harness/repository_verification.py verify change
 
 chat-eval:
 	$(PY) -m pytest tests/test_chat_behavior_eval.py tests/test_chat_eval_closure.py -q
@@ -81,7 +81,7 @@ chat-eval-live:
 	$(PY) -m tests.chat_eval.live_runner --base-url "$$CHAT_EVAL_BASE_URL" --marketplace-user-id "$$CHAT_EVAL_MARKETPLACE_USER_ID" --marketplace-wallet "$$CHAT_EVAL_MARKETPLACE_WALLET" --output .artifacts/release/chat_eval_live.json
 
 verify-release:
-	PY="$(PY)" scripts/verify_release.sh
+	PY="$(PY)" harness/repository_verification.py verify release
 
 marketplace-qna-preflight:
 	@test -n "$$GEMINI_API_KEY" || (echo "GEMINI_API_KEY is required" >&2; exit 1)
@@ -112,3 +112,9 @@ marketplace-qna-acceptance:
 	$(MAKE) marketplace-qna-local
 	$(MAKE) marketplace-qna-live
 	$(MAKE) marketplace-qna-final
+
+verify-candidate:
+	PY="$(PY)" harness/repository_verification.py verify candidate
+
+verify-suite:
+	harness/suite_conformance.py gate
