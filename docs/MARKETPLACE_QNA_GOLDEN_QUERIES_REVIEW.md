@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The current V9 seed (`marketplace-qna-rag-seed-v9`, source set `marketplace-qna-bilingual-2026-09-16-v9`) contains 17 Chinese and 17 English Marketplace QnA Markdown files. It covers 336 source questions with one same-language semantic retrieval case per question and 34 representative end-to-end chat cases. V9 applies the 2026-09-16 owner directive: 「消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint」. The Consumer corpus is brand-independent; the bilingual Rave pair added in V8 and all non-Consumer Refund/Redeem semantics remain unchanged. Generic governance, custody, Mint/Redeem, and immutability mechanics remain owned by documents 04/10/11/12; current fees, voting entry, proposal deadline, contract identity, network, and the four owner-pending Rave redemption fields remain outside fixed answers.
+This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The current V9 seed (`marketplace-qna-rag-seed-v9`, source set `marketplace-qna-bilingual-2026-09-16-v9`) contains 18 Chinese and 18 English Marketplace QnA Markdown files. It covers 346 source questions with one same-language semantic retrieval case per question and 36 representative end-to-end chat cases. V9 applies the 2026-09-16 owner directive: 「消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint」. The Consumer corpus is brand-independent; the bilingual Rave pair added in V8 and all non-Consumer Refund/Redeem semantics remain unchanged. Generic governance, custody, Mint/Redeem, and immutability mechanics remain owned by documents 04/10/11/12; current fees, voting entry, proposal deadline, contract identity, network, and the four owner-pending Rave redemption fields remain outside fixed answers.
 
 Machine-readable authorities:
 
@@ -12,16 +12,23 @@ Machine-readable authorities:
 - `tests/rag_eval/marketplace_qna_golden_query_review.jsonl`
 - `tests/rag_eval/marketplace_qna_chat_cases.jsonl`
 
+The 2026-09-16 Model Max extension adds document pair 18 to the same unshipped
+V9 source set. The verbatim, hash-pinned bilingual owner introduction is its
+only brand-fact authority. Five Q&As per language cover identity, V1 model
+coverage, Codex protocol/tool calls/multi-turn context, one endpoint/quota,
+and current-page/typed-context routing for Agent-specific facts. Documents
+01-17 remain byte-identical during this extension.
+
 ## Review Conclusion
 
-The fixture family has complete source-question coverage: 34 documents, 336 Golden Queries, 336 review rows, and 34 chat cases. Chinese and English each contribute 168 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
+The fixture family has complete source-question coverage: 36 documents, 346 Golden Queries, 346 review rows, and 36 chat cases. Chinese and English each contribute 173 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
 
 The current acceptance target is deliberately strict:
 
-- local Promptfoo: 336/336 top-5, zero degraded, Top-1 at least 80%;
-- DockerHost `/rag/query`: 336/336 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
-- live chat: 34/34 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
-- persistent ingestion: 34 documents, 34 successful jobs, 305 chunks, zero failed jobs, exact source-hash equality at embedding dimension 1536.
+- local Promptfoo: 346/346 top-5, zero degraded, Top-1 at least 80%;
+- DockerHost `/rag/query`: 346/346 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
+- live chat: 36/36 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
+- persistent ingestion: 36 documents, 36 successful jobs, 310 chunks, zero failed jobs, exact source-hash equality at embedding dimension 1536.
 
 ## Corpus Quality Finding
 
@@ -69,13 +76,16 @@ V2 now states the layer distinction, explicitly rejects official endorsement or 
 | `marketplace_qna_zh_cn_16` | 11 | `marketplace_qna_zh_cn_16_q01`, `marketplace_qna_zh_cn_16_q02`, `marketplace_qna_zh_cn_16_q03`, `marketplace_qna_zh_cn_16_q04`, `marketplace_qna_zh_cn_16_q05`, `marketplace_qna_zh_cn_16_q06`, `marketplace_qna_zh_cn_16_q07`, `marketplace_qna_zh_cn_16_q08`, `marketplace_qna_zh_cn_16_q09`, `marketplace_qna_zh_cn_16_q10`, `marketplace_qna_zh_cn_16_q11` |
 | `marketplace_qna_en_17` | 17 | `marketplace_qna_en_17_q01`, `marketplace_qna_en_17_q02`, `marketplace_qna_en_17_q03`, `marketplace_qna_en_17_q04`, `marketplace_qna_en_17_q05`, `marketplace_qna_en_17_q06`, `marketplace_qna_en_17_q07`, `marketplace_qna_en_17_q08`, `marketplace_qna_en_17_q09`, `marketplace_qna_en_17_q10`, `marketplace_qna_en_17_q11`, `marketplace_qna_en_17_q12`, `marketplace_qna_en_17_q13`, `marketplace_qna_en_17_q14`, `marketplace_qna_en_17_q15`, `marketplace_qna_en_17_q16`, `marketplace_qna_en_17_q17` |
 | `marketplace_qna_zh_cn_17` | 17 | `marketplace_qna_zh_cn_17_q01`, `marketplace_qna_zh_cn_17_q02`, `marketplace_qna_zh_cn_17_q03`, `marketplace_qna_zh_cn_17_q04`, `marketplace_qna_zh_cn_17_q05`, `marketplace_qna_zh_cn_17_q06`, `marketplace_qna_zh_cn_17_q07`, `marketplace_qna_zh_cn_17_q08`, `marketplace_qna_zh_cn_17_q09`, `marketplace_qna_zh_cn_17_q10`, `marketplace_qna_zh_cn_17_q11`, `marketplace_qna_zh_cn_17_q12`, `marketplace_qna_zh_cn_17_q13`, `marketplace_qna_zh_cn_17_q14`, `marketplace_qna_zh_cn_17_q15`, `marketplace_qna_zh_cn_17_q16`, `marketplace_qna_zh_cn_17_q17` |
+| `marketplace_qna_en_18` | 5 | `marketplace_qna_en_18_q01`, `marketplace_qna_en_18_q02`, `marketplace_qna_en_18_q03`, `marketplace_qna_en_18_q04`, `marketplace_qna_en_18_q05` |
+| `marketplace_qna_zh_cn_18` | 5 | `marketplace_qna_zh_cn_18_q01`, `marketplace_qna_zh_cn_18_q02`, `marketplace_qna_zh_cn_18_q03`, `marketplace_qna_zh_cn_18_q04`, `marketplace_qna_zh_cn_18_q05` |
 
 ## Evaluation Notes
 
 - The Chinese and English documents mirror the same subjects. Same-language metadata filtering is part of the intended retrieval contract and prevents equivalent translations from competing for rank.
-- The Golden Query audit emits a 268-row structural-anchor map for every bilingual query targeting documents 02, 06, 08, and 10-17. Each row records `query id -> expected document -> matching Q&A section heading -> answer lines`, providing the per-query anchor audit for the deterministic retrieval-disambiguation pass.
+- The Golden Query audit emits a 278-row structural-anchor map for every bilingual query targeting documents 02, 06, 08, and 10-18. Each row records `query id -> expected document -> matching Q&A section heading -> answer lines`, providing the per-query anchor audit for the deterministic retrieval-disambiguation pass.
 - V9 keeps document 14 focused on code redemption and document 15 focused on the no-Refund answer, custody, balances, and UI states. Document 15 is renamed to `15_资金安全与界面状态.md` / `15_Fund-Safety-and-UI-States.md` and contains 11 Q&As per language, replacing the former 18-question Refund-mechanism inventory. Documents 13 and 16 remove refundability promises without adding an alternative exit mechanism. The en_08_q04 and zh_cn_11_q19 source answers are unchanged pending an owner decision on embedding-drift waivers.
 - The V8 Rave boundaries remain in force for V9: Rave queries always name Rave, RaveDAO, or vRAVE; generic governance queries remain assigned to documents 10/12, and the four unspecified Rave redemption topics remain explicit owner-pending boundaries rather than invented answers.
+- Every document-18 query explicitly names Model Max. Brand identity stays separate from PixVerse and generic Consumer mechanics; pricing, quota numbers, redemption details, account requirements, partnership boundaries, and availability are not inferred from the introduction. Agent-specific values require the current Model Max Agent page or typed context.
 - Chat fact checks use OR alternatives inside a required fact group and require every group. This accepts normal paraphrases without accepting missing concepts.
 - The share-sale chat cases explicitly request both branches: DEX trading when a pair exists and Redeem when it does not. This removes model-composition ambiguity while preserving the source question's meaning.
 - Live evidence stores only bounded answer previews and redacts runtime admin, Marketplace user, wallet, and bearer values.

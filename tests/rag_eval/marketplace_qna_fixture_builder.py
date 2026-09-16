@@ -36,6 +36,7 @@ EXPECTED_QUESTION_COUNTS = (
     11,
     11,
     17,
+    5,
 )
 _QUESTION_RE = re.compile(r"^\*\*Q[:：]\s*(.+?)\*\*\s*$")
 
@@ -118,6 +119,19 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("RaveDAO",),
         ("fixed reward",),
     ),
+    "marketplace_qna_en_18": (
+        ("unified AI gateway",),
+        ("coding agents",),
+        ("one endpoint", "single endpoint"),
+        ("one endpoint and quota", "unified quota", "shared quota"),
+        ("multiple upstream providers",),
+        ("native Codex protocol", "natively supports the Codex protocol"),
+        ("tool calls",),
+        ("multi-turn context intact", "preserves multi-turn context"),
+        ("V1", "first version"),
+        ("OpenAI models",),
+        ("Astra",),
+    ),
     "marketplace_qna_zh_cn_01": (("FAT Protocol",), ("不需要", "无需", "不必")),
     "marketplace_qna_zh_cn_02": (("完整保留", "完整迁移", "保留完整"),),
     "marketplace_qna_zh_cn_03": (("Perp Trading", "永续交易"), ("Governance", "治理"), ("Consumer", "消费者")),
@@ -186,6 +200,19 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("vRAVE",),
         ("RaveDAO",),
         ("固定奖励",),
+    ),
+    "marketplace_qna_zh_cn_18": (
+        ("统一网关", "统一 AI 网关"),
+        ("AI coding agent", "编程代理"),
+        ("单一入口", "统一入口"),
+        ("统一额度",),
+        ("多个上游供应商",),
+        ("原生支持 Codex 协议",),
+        ("工具调用",),
+        ("多轮上下文完整透传", "完整保留多轮上下文"),
+        ("第一版", "V1"),
+        ("OpenAI 系列模型", "OpenAI 模型"),
+        ("Astra",),
     ),
 }
 CHAT_QUERY_OVERRIDES = {

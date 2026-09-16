@@ -124,7 +124,7 @@ def test_marketplace_qna_runbook_uses_make_as_the_canonical_entrypoint():
     runbook = RUNBOOK.read_text(encoding="utf-8")
 
     assert "marketplace-qna-rag-seed-v9" in runbook
-    assert "305 chunks" in runbook
+    assert "310 chunks" in runbook
     assert "make marketplace-qna-acceptance" in runbook
     assert "make marketplace-qna-preflight" in runbook
     assert "make marketplace-qna-local" in runbook

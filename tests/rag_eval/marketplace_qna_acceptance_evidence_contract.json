@@ -14,7 +14,7 @@
   "ingestion": {
     "summary_artifact_path": ".artifacts/release/marketplace_qna_ingestion_summary.json",
     "knowledge_base_name": "Moss Agent Marketplace QnA V9",
-    "expected_chunks": 305,
+    "expected_chunks": 310,
     "required_embedding_provider": "gemini",
     "required_embedding_model": "gemini-embedding-2",
     "required_embedding_dimension": 1536
@@ -38,11 +38,11 @@
     "must_pass": true
   },
   "thresholds": {
-    "source_documents": 34,
-    "golden_queries": 336,
-    "chat_cases": 34,
-    "promptfoo_required_passes": 336,
-    "live_required_passes": 336,
+    "source_documents": 36,
+    "golden_queries": 346,
+    "chat_cases": 36,
+    "promptfoo_required_passes": 346,
+    "live_required_passes": 346,
     "minimum_top1_rate": 0.8,
     "maximum_degraded_cases": 0,
     "maximum_failed_ingestion_jobs": 0

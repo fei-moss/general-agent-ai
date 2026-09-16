@@ -17,38 +17,38 @@
     {
       "path": "tests/rag_eval/marketplace_qna_corpus.jsonl",
       "role": "corpus",
-      "row_count": 34,
-      "sha256": "473184215f6e87e31701c7b1f4821a7a8507be3330e859452f6d0fd44fdf5668"
+      "row_count": 36,
+      "sha256": "e24046a068461b0925d0bca2efa1e810d5e54bbcb2b519a4524384dc2b02df50"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_queries.jsonl",
       "role": "golden_queries",
-      "row_count": 336,
-      "sha256": "45fcb7310c806f4181b6f1eeae1e4d60a03bec6345b9d5b392a58827aa153662"
+      "row_count": 346,
+      "sha256": "7f0d4ca91b14df08e2ea02c9ac20c32f3091b26672f7817570aac8a78bc28a7f"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_golden_query_review.jsonl",
       "role": "review_evidence",
-      "row_count": 336,
-      "sha256": "e07695abe318a4f36fe47581d358e092a6dae89778566599255b6180ea730ec4"
+      "row_count": 346,
+      "sha256": "2265bd969de95c6370d4a630b71f59602d1b0eca32dde0d3a81c06bcf0499f05"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_chat_cases.jsonl",
       "role": "chat_cases",
-      "row_count": 34,
-      "sha256": "8d3c4ccec063ddccc568c86e3d8e7716811966d3646fbe1c75bdea36a8f925a3"
+      "row_count": 36,
+      "sha256": "9fe7b456477420f5107d768c2e18d2870f51890475afc86ad7644b9125f9d56c"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_coverage_contract.json",
       "role": "coverage_contract",
       "row_count": null,
-      "sha256": "8636b28873f92c041e6395722b870ead30a66a705cb92cc561ce34d479ac6df1"
+      "sha256": "bf4a7a2fd3f711018b064ebaa1f12a659d1db3381819a2089ecd69c1329dacbd"
     },
     {
       "path": "tests/rag_eval/marketplace_qna_acceptance_evidence_contract.json",
       "role": "acceptance_contract",
       "row_count": null,
-      "sha256": "f6e40b50a765ebca6fd00da7ce2b1a98db10ecb93d7aaa13364873273b62c50a"
+      "sha256": "326229ef77ffae436d1e5d17b68e94e11d6da141c43930885a4cde8bbf71ede5"
     }
   ],
   "source_set": "marketplace-qna-bilingual-2026-09-16-v9",

@@ -3,7 +3,7 @@
 ## Purpose
 
 This runbook is the repeatable operator flow for `SPEC-RAG-EVAL-002`. It covers
-the 17 Chinese and 17 English Marketplace QnA Markdown files, persistent pgvector
+the 18 Chinese and 18 English Marketplace QnA Markdown files, persistent pgvector
 ingestion, local semantic evaluation, live DockerHost retrieval, and live chat
 acceptance through the server-owned default knowledge base.
 
@@ -58,10 +58,10 @@ Current manifest: `marketplace-qna-rag-seed-v9`; source set:
 
 | Role | Path | Rows |
 | --- | --- | ---: |
-| Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 34 |
-| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 336 |
-| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 336 |
-| Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 34 |
+| Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 36 |
+| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 346 |
+| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 346 |
+| Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 36 |
 
 V9 applies the 2026-09-16 owner directive to the brand-independent Consumer
 corpus: 「消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint」.
@@ -69,7 +69,15 @@ Document 15 is renamed to `15_资金安全与界面状态.md` /
 `15_Fund-Safety-and-UI-States.md` and reduced from 18 to 11 Q&As per language,
 with one no-Refund answer and retained custody/UI content. Documents 13, 14,
 and 16 remove refundability promises; non-Consumer Refund/Redeem answers remain
-unchanged. There are 168 Golden Queries per language and 268 structural anchors.
+unchanged. There are 173 Golden Queries per language and 278 structural anchors.
+
+The same unshipped V9 seed also includes document 18, the bilingual Model Max
+brand-facts pair approved on 2026-09-16. Its five Q&As per language cover only
+the owner introduction: the coding-agent gateway, V1 OpenAI models and Astra,
+native Codex protocol, and a single endpoint/quota across upstream providers.
+Agent-specific thresholds, benefits, and fees are referred to the current
+Model Max Agent page or typed context. Every new retrieval query names
+Model Max; documents 01-17 remain byte-identical during this extension.
 
 The vendored 2026-08-19 Consumer golden batch remains unchanged. Its 43-case
 deterministic scores are stale pending a new owner batch; see the OUTDATED
@@ -91,7 +99,7 @@ The file hashes must match
 1. Read the administrator ID from Keychain into the process environment without
    printing it.
 2. Create one internal knowledge base through `POST /rag/knowledge-bases`.
-3. Generate the 34 schema-valid request bodies:
+3. Generate the 36 schema-valid request bodies:
 
 ```bash
 .venv/bin/python -m tests.rag_eval.marketplace_qna_import_payloads \
@@ -100,7 +108,7 @@ The file hashes must match
 
 4. Submit every body through `POST /rag/documents` as the RAG administrator.
 5. Poll `GET /rag/ingestion-jobs/{job_id}` until every job is terminal.
-6. Require 34 `SUCCEEDED`, 0 failed, 34 persisted documents, 305 chunks, and
+6. Require 36 `SUCCEEDED`, 0 failed, 36 persisted documents, 310 chunks, and
    equality between uploaded SHA-256 metadata and the source manifest.
 7. Save the redacted result as
    `.artifacts/release/marketplace_qna_ingestion_summary.json`.
@@ -143,20 +151,20 @@ document and job rows.
 
 ## Local Semantic Evaluation
 
-Run Gemini preflight and the 336-case Promptfoo suite with production embedding
+Run Gemini preflight and the 346-case Promptfoo suite with production embedding
 and chunk settings:
 
 ```bash
 make marketplace-qna-local
 ```
 
-Acceptance requires 336/336 top-5 passes, no degraded cases, and Top-1 at least
+Acceptance requires 346/346 top-5 passes, no degraded cases, and Top-1 at least
 80%. Retrieval is filtered to the query language so mirrored Chinese and
 English documents do not compete with each other.
 
 The earlier 316-query benchmark (`301/316`, Top-1 `80.4%`) was measured at 256 dimensions.
 It is historical V7 evidence, not a V9 acceptance result. V9 requires its own
-336-case evaluation at 1536 dimensions before promotion.
+346-case evaluation at 1536 dimensions before promotion.
 
 ## Embedding-Dimension Migration
 
@@ -231,7 +239,7 @@ make marketplace-qna-live
 ```
 
 The chat payload intentionally contains no `knowledge_base_id`. Every one of
-the 34 chat cases must reach `SUCCEEDED`, emit `RETRIEVAL_STARTED` and
+the 36 chat cases must reach `SUCCEEDED`, emit `RETRIEVAL_STARTED` and
 `RETRIEVAL_FINISHED`, include all required fact groups, and contain no forbidden
 claim.
 

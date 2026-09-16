@@ -102,6 +102,49 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   43-case deterministic scores against the old batch are stale until that
   refresh and cannot establish V9 answer correctness.
 
+### V9 Model Max Brand Extension (2026-09-16)
+
+- The owner-supplied bilingual `model-max-brand-intro-20260916.md` is the
+  sole authority for Model Max brand facts. Vendor it verbatim at
+  `tests/chat_eval/fixtures/model_max_brand_intro_20260916.md`, pinned to
+  SHA-256
+  `804c810f8167941da76927d5962c19ee1b7fb7634a8b69b1b6a660c705d53bd4`.
+  The approved Chinese and English introductions are:
+
+  > 面向 AI coding agent 的统一网关。单一入口与统一额度，后面接多个上游供应商。原生支持 Codex 协议，工具调用与多轮上下文完整透传。第一版覆盖 OpenAI 系列模型与 Astra。
+
+  > A unified AI gateway built for coding agents. One endpoint and quota across multiple upstream providers. Native Codex protocol support with tool calls and multi-turn context intact. V1 covers OpenAI models and Astra.
+
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R21`: extend the not-yet-shipped source
+  set `marketplace-qna-bilingual-2026-09-16-v9` with document pair 18,
+  `zh-CN/18_Model-Max-品牌事实.md` and `en/18_Model-Max-Brand-Facts.md`.
+  These documents carry Model Max brand identity only. Their five Q&As per
+  language cover the complete introduction, V1 OpenAI models and Astra,
+  native Codex protocol with intact tool calls and multi-turn context, one
+  endpoint and quota across multiple upstream providers, and current-page
+  routing for Agent-specific facts. The current Model Max Consumer Agent
+  identity (#212) is task context, not a fixed corpus identifier.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R22`: every document-18 question,
+  Golden Query, and representative chat case uses Model Max branding to
+  separate these facts from PixVerse and generic Consumer content. The
+  identity answer preserves the complete approved introduction verbatim;
+  subsequent answers retain Model Max vocabulary. Do not
+  infer pricing, quota numbers, code-redemption details, account requirements,
+  partnership boundaries, availability, or any other unsupported capability.
+  Agent-specific thresholds, benefits, and fees are resolved only through the
+  current Model Max Agent page or typed context; absent values are not
+  invented. Document 18 contains no `Refund` mention; the existing generic
+  Consumer policy stays in document 15.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R23`: documents 01-17 remain
+  byte-identical to baseline `3d048d6` in this extension. Preserve the old
+  Consumer and Rave fixtures, source adapters, regression harness, and
+  OUTDATED-case list. Rebuild corpus, Golden Queries, review evidence, and
+  chat cases through the existing builder; preserve V9 identifiers, refresh
+  hashes and chunk counts, and extend coverage to 36 documents, 346 queries
+  and review rows (173 per language), 36 chat cases, and 278 structural
+  anchors. A RED-first fixture test must verify the new verbatim source hash.
+  This extension authorizes no upload, deployment, commit, or push.
+
 ### OUTDATED Consumer Golden Cases Pending New Owner Batch
 
 Question numbers below follow each part's original source order, including the
@@ -345,8 +388,9 @@ truth in R18-R20.
 
 ## Implementation Plan
 
-Steps 1-14 record the historical V7/V8 implementation. The V9 work is scoped
-by the 2026-09-16 reversal above, which supersedes conflicting refund claims.
+Steps 1-14 record the historical V7/V8 implementation. Steps 15-17 record
+the initial V9 reversal, which supersedes conflicting refund claims. Steps
+18-20 extend the same unshipped V9 seed with approved Model Max brand facts.
 
 1. Add RED tests for the bare-colon source quirk, eight explicit exclusion
    blockers and CLI status, placeholder extraction, PixVerse brand scope,
@@ -409,6 +453,17 @@ by the 2026-09-16 reversal above, which supersedes conflicting refund claims.
     Consumer/Rave tests, full pytest, spec contract, and diff check; attempt the
     spec-registry gate and record any environment blocker. No upload,
     deployment, commit, or push is in scope.
+18. Record R21-R23 before corpus implementation, then add meaningful RED
+    tests for the exact Model Max source hash, approved-only bilingual brand
+    facts, Model Max-scoped query coverage, and expanded V9 counts.
+19. Vendor the owner material without edits, add the five-question document-18
+    pair and corresponding query/review/chat definitions, and rebuild the
+    existing fixture family. Recompute production chunks and hashes; update
+    current runbook/review counts without changing documents 01-17.
+20. Run the builder, Golden Query audit, focused Marketplace/Promptfoo/source
+    tests including the new fixture test, full pytest, spec contract, and diff
+    check; attempt the spec-registry gate. Record local-only evidence and
+    preserve the user's existing `CLAUDE.md` deletion.
 
 ## Closeout Evidence
 
@@ -479,12 +534,17 @@ for V9 until the owner refreshes the golden batch.
   `harnessctl` because sandbox DNS could not resolve `proxy.golang.org`. No live
   replay, upload, deployment, or product/runtime acceptance is claimed.
 
-### V9 Closeout (2026-09-16)
+### Historical V9 Reversal Closeout (2026-09-16)
+
+This evidence describes the completed initial V9 reversal before the Model Max
+extension. Its 34-document counts and original working-tree baseline are
+historical; the committed baseline for the extension is `3d048d6`.
 
 - Approved scope and exact owner wording were recorded before corpus
-  implementation. Work remains uncommitted on `feat/consumer-golden-answers`
-  at `7dfa463`; the user's pre-existing `CLAUDE.md` deletion is preserved.
-  No commits, pushes, uploads, deployment, or provider-backed evaluation ran.
+  implementation. At that closeout, work was uncommitted on
+  `feat/consumer-golden-answers` at `7dfa463`; the user's pre-existing
+  `CLAUDE.md` deletion was preserved. No commits, pushes, uploads, deployment,
+  or provider-backed evaluation ran during that implementation phase.
 - V9 contains 34 bilingual documents, 336 Golden Queries and review rows
   (168 per language), 34 representative chat cases, and 268 structural anchors.
   The production chunker emits **305 chunks** at size 400 / overlap 80, down
@@ -533,6 +593,69 @@ Changed-file inventory (excluding the user's untouched `CLAUDE.md` deletion):
   → `15_Fund-Safety-and-UI-States.md`.
 - `tests/rag_eval/marketplace_qna_sources/zh-CN/16_PixVerse-品牌与合作边界.md`
   and `en/16_PixVerse-Brand-and-Partnership-Boundaries.md`.
+- Under `tests/rag_eval/`: `marketplace_qna_fixture_builder.py`,
+  `marketplace_qna_case_definitions.jsonl`, `marketplace_qna_corpus.jsonl`,
+  `marketplace_qna_golden_queries.jsonl`,
+  `marketplace_qna_golden_query_review.jsonl`, `marketplace_qna_chat_cases.jsonl`,
+  `marketplace_qna_coverage_contract.json`,
+  `marketplace_qna_acceptance_evidence_contract.json`,
+  `marketplace_qna_golden_query_audit.py`,
+  `marketplace_qna_rag_seed_manifest.json`.
+- `tests/test_marketplace_qna_eval.py`, `tests/test_marketplace_qna_workflow.py`,
+  `docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md`,
+  `docs/MARKETPLACE_QNA_GOLDEN_QUERIES_REVIEW.md`, `Makefile` (help counts only),
+  and this specification.
+
+### V9 Model Max Extension Closeout (2026-09-16)
+
+- R21-R23 and the exact bilingual source/hash were recorded before corpus
+  implementation. The extension uses baseline `3d048d6` on
+  `feat/consumer-golden-answers` and remains uncommitted; the user's existing
+  `CLAUDE.md` deletion is preserved. No upload, deployment, commit, push, live
+  retrieval, or provider-backed acceptance ran.
+- Final V9 totals: **36 documents, 346 Golden Queries, 346 review rows,
+  36 chat cases, 278 structural anchors, 310 chunks**. Each language has
+  18 documents and 173 queries. Doc 18 adds 2 Chinese and 3 English chunks
+  under production size 400 / overlap 80; the preceding 305 chunks remain
+  unchanged. Source set, manifest ID, and knowledge-base name stay V9.
+- Owner fixture bytes match the supplied file and pinned SHA exactly. All
+  34 source files for documents 01-17 are byte-identical to `3d048d6`. All
+  existing generated rows also remain identical: 34 corpus rows, 336 queries,
+  336 review rows, and 34 chat cases. The four generated JSONL files exactly
+  match builder output, and all six manifest fixture hashes verify.
+- All five new questions in each language and their retrieval/chat queries
+  explicitly name Model Max. The first answer preserves the complete owner
+  paragraph verbatim; the remaining brand answers restate only approved facts.
+  The final question routes Agent-specific values to the current page or typed
+  context. Doc 18 contains no Refund reference or alternative exit mechanism.
+
+| Doc 18 question (faithful English mirror included) | Answer boundary |
+| --- | --- |
+| Model Max 是什么，主要面向谁？ | Full verbatim bilingual owner introduction |
+| Model Max 第一版覆盖哪些模型？ | OpenAI models and Astra |
+| Model Max 支持什么协议，怎样处理工具调用与多轮上下文？ | Native Codex protocol; tool calls and multi-turn context intact |
+| Model Max 的单一入口与统一额度是什么意思？ | One endpoint and quota across multiple upstream providers |
+| Model Max Agent 的兑换门槛、权益内容和费用要在哪里确认？ | Current Model Max Agent page or typed context; never inferred from the brand introduction |
+
+| Verification | Result |
+| --- | --- |
+| RED: `.venv/bin/python -m pytest -q tests/test_model_max_brand_source.py` | Five expected failures before implementation: missing owner fixture, bilingual document 18, and bilingual chat cases |
+| `.venv/bin/python -m tests.rag_eval.marketplace_qna_fixture_builder --write` | Passed; 36 / 346 / 346 / 36 rows |
+| `.venv/bin/python -m tests.rag_eval.marketplace_qna_golden_query_audit --output /private/tmp/model-max-v9-golden-query-audit.json` | Passed; no coverage or evidence gaps |
+| Focused pytest: Marketplace QnA eval/workflow, Promptfoo, Consumer source, Rave source, and Model Max source suites | 88 passed; five new regressions GREEN |
+| `.venv/bin/python -m pytest -q --junitxml=/private/tmp/model-max-v9-full-pytest.xml` | 767 passed, 1 skipped; no errors or failures |
+| `SPEC_CONTRACT_ARTIFACT_DIR=/private/tmp/model-max-v9-spec-contract scripts/check_spec_contract.sh` | Passed; 29 legacy specs and 29 legacy plans |
+| `git diff --check` | Passed |
+| `HARNESS_ARTIFACT_DIR=/private/tmp/model-max-v9-spec-registry scripts/check_spec_registry.sh` | Attempted; pinned harnessctl fetch blocked because sandbox DNS could not resolve `proxy.golang.org` |
+| Independent read-only review | No actionable findings; approved-fact scope, prior source/case-row preservation, hashes, deterministic artifacts, and counts verified |
+
+Changed-file inventory for this extension (excluding the untouched user
+`CLAUDE.md` deletion):
+
+- New: `tests/chat_eval/fixtures/model_max_brand_intro_20260916.md`,
+  `tests/test_model_max_brand_source.py`,
+  `tests/rag_eval/marketplace_qna_sources/zh-CN/18_Model-Max-品牌事实.md`,
+  `tests/rag_eval/marketplace_qna_sources/en/18_Model-Max-Brand-Facts.md`.
 - Under `tests/rag_eval/`: `marketplace_qna_fixture_builder.py`,
   `marketplace_qna_case_definitions.jsonl`, `marketplace_qna_corpus.jsonl`,
   `marketplace_qna_golden_queries.jsonl`,
