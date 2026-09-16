@@ -9,6 +9,17 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 
 ## Specification
 
+On 2026-09-16, owner approval `owner-request:rag-timeout-4000-20260916`
+raises the `RAG_QUERY_TIMEOUT_MS` / `Settings.rag_query_timeout_ms` default
+from 1500 to 4000 ms across runtime, environment templates, and DockerHost
+Compose. The production incident showed that typical 1536-dimensional
+retrieval takes about 1.4 seconds, leaving insufficient margin at 1500 ms:
+platform-knowledge prefetch silently degrades and consumer refund answers can
+fall back to generic model priors. The 4000 ms value was validated on dev
+during V8; explicit deployment configuration remains recommended. This
+owner-directed correction only changes the default timeout and supersedes
+the original no-configuration-change scope for this setting.
+
 ### Behavior
 
 - `SPEC-AGENT-CHAT-KNOWLEDGE-PREFETCH-001-R1`: after provider admission and

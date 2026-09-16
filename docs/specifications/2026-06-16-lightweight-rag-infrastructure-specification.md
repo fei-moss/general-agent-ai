@@ -280,7 +280,7 @@
   - Query path must not hold DB connections while calling query embedding provider.
   - pgvector search should be one bounded query over a single knowledge base and index version.
   - Retrieval logs should be written after query result assembly, not inside the vector search transaction.
-  - Online RAG query timeout target is configurable and defaults to 1500ms for Agent tool calls.
+  - Online RAG query timeout target is configurable and defaults to 4000ms for Agent tool calls.
 
 ## Architecture
 

@@ -37,6 +37,20 @@ def test_provider_output_budget_is_repository_owned_across_redeploys(monkeypatch
     assert "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=4096" in env_example
 
 
+def test_rag_query_timeout_defaults_to_4000_across_deployments(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.setattr("os.environ", {})
+    settings = Settings(_env_file=None)
+
+    assert settings.rag_query_timeout_ms == 4000
+    for path in (".env.example", "env.local.example", "dockerhost/env.example"):
+        assert "RAG_QUERY_TIMEOUT_MS=4000" in _read(path).splitlines(), path
+    assert _read("dockerhost/compose.yaml").count(
+        "RAG_QUERY_TIMEOUT_MS: ${RAG_QUERY_TIMEOUT_MS:-4000}"
+    ) == 2
+
+
 def test_marketplace_ai_base_url_fails_closed_without_private_override(monkeypatch):
     from app.core.config import Settings
 

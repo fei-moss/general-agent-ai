@@ -42,6 +42,10 @@ then stops at the first failed gate.
 - The project DockerHost adapter validates successfully.
 - API, worker, PostgreSQL/pgvector, and Redis are healthy.
 - `RAG_ENABLED=true`, `RAG_VECTOR_STORE=pgvector`.
+- Environment templates, DockerHost Compose, and the runtime now default
+  `RAG_QUERY_TIMEOUT_MS` to `4000` ms. Explicitly setting
+  `RAG_QUERY_TIMEOUT_MS=4000` on deployment remains recommended to give
+  1536-dimensional retrieval enough margin and avoid silent prefetch degradation.
 - Embeddings use Gemini `gemini-embedding-2`, and `EMBEDDING_DIM=1536` is
   explicitly present on every deploy. The application runtime default remains
   `256`; never rely on that default for V9.

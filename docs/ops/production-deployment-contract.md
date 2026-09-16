@@ -88,6 +88,8 @@ api healthcheck 请求容器内 http://localhost:8080/healthz，间隔 10 秒、
 
 非敏感且明确的生产默认值可以直接写入。provider/model 选择和其他随环境变化的值应由 Jenkins 渲染。
 
+`RAG_QUERY_TIMEOUT_MS` 的环境模板、DockerHost Compose 和运行时默认值现均为 `4000` ms。仍建议部署时显式设置 `RAG_QUERY_TIMEOUT_MS=4000`，并确认 Jenkins 渲染后的 `.env` 使用该值，为 1536 维检索保留足够余量，避免平台知识预取超时后静默降级。
+
 真实 .env 不得进入 Git。.gitignore 必须包含：
 
     .env

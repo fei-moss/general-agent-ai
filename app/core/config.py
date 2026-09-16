@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     rag_vector_store: str = "memory"  # memory | pgvector
     rag_default_top_k: int = 5
     rag_max_top_k: int = 10
-    rag_query_timeout_ms: int = 1500
+    rag_query_timeout_ms: int = 4000
     rag_score_threshold: float = 0.0
     rag_max_context_chars: int = 6000
     rag_chunk_size: int = 400
