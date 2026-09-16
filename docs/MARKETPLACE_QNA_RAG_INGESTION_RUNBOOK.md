@@ -44,7 +44,7 @@ then stops at the first failed gate.
 - `RAG_ENABLED=true`, `RAG_VECTOR_STORE=pgvector`.
 - Embeddings use Gemini `gemini-embedding-2`, and `EMBEDDING_DIM=1536` is
   explicitly present on every deploy. The application runtime default remains
-  `256`; never rely on that default for V8.
+  `256`; never rely on that default for V9.
 - The internal administrator is included in `RAG_ADMIN_USER_IDS`.
 - `RAG_DEFAULT_KNOWLEDGE_BASE_ID` and `RAG_INTERNAL_OWNER_USER_ID` are set on
   the server; `RAG_ALLOW_CLIENT_KNOWLEDGE_BASE_ID=false`.
@@ -53,15 +53,28 @@ then stops at the first failed gate.
 
 ## Reviewed Seed
 
-Current manifest: `marketplace-qna-rag-seed-v8`; source set:
-`marketplace-qna-bilingual-2026-08-21-v8`.
+Current manifest: `marketplace-qna-rag-seed-v9`; source set:
+`marketplace-qna-bilingual-2026-09-16-v9`.
 
 | Role | Path | Rows |
 | --- | --- | ---: |
 | Corpus | `tests/rag_eval/marketplace_qna_corpus.jsonl` | 34 |
-| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 350 |
-| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 350 |
+| Golden queries | `tests/rag_eval/marketplace_qna_golden_queries.jsonl` | 336 |
+| Review evidence | `tests/rag_eval/marketplace_qna_golden_query_review.jsonl` | 336 |
 | Chat cases | `tests/rag_eval/marketplace_qna_chat_cases.jsonl` | 34 |
+
+V9 applies the 2026-09-16 owner directive to the brand-independent Consumer
+corpus: 「消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint」.
+Document 15 is renamed to `15_资金安全与界面状态.md` /
+`15_Fund-Safety-and-UI-States.md` and reduced from 18 to 11 Q&As per language,
+with one no-Refund answer and retained custody/UI content. Documents 13, 14,
+and 16 remove refundability promises; non-Consumer Refund/Redeem answers remain
+unchanged. There are 168 Golden Queries per language and 268 structural anchors.
+
+The vendored 2026-08-19 Consumer golden batch remains unchanged. Its 43-case
+deterministic scores are stale pending a new owner batch; see the OUTDATED
+question list in `specs/consumer_golden_answers/spec.md`. Historical V7/V8
+results do not establish V9 acceptance.
 
 The standard preflight validates required values, the ingestion summary,
 fixture hashes, Golden Query coverage, and focused contracts:
@@ -87,7 +100,7 @@ The file hashes must match
 
 4. Submit every body through `POST /rag/documents` as the RAG administrator.
 5. Poll `GET /rag/ingestion-jobs/{job_id}` until every job is terminal.
-6. Require 34 `SUCCEEDED`, 0 failed, 34 persisted documents, 313 chunks, and
+6. Require 34 `SUCCEEDED`, 0 failed, 34 persisted documents, 305 chunks, and
    equality between uploaded SHA-256 metadata and the source manifest.
 7. Save the redacted result as
    `.artifacts/release/marketplace_qna_ingestion_summary.json`.
@@ -105,8 +118,9 @@ A terminal `FAILED` import is different. `POST /rag/documents` finds an existing
 document by `(knowledge_base_id, content_hash)`, returns its latest job, and
 enqueues only when that job is `PENDING`. Resubmitting the same payload therefore
 does **not** retry or replace a `FAILED` job, even though chunk writes themselves
-use an idempotent upsert. After the dimension migration has succeeded, inspect
-the affected V8 knowledge base and delete only its failed document rows before
+use an idempotent upsert. The following cleanup example records the historical
+V8 failed import. After the dimension migration has succeeded, inspect the
+affected V8 knowledge base and delete only its failed document rows before
 resubmitting:
 
 ```sql
@@ -129,21 +143,26 @@ document and job rows.
 
 ## Local Semantic Evaluation
 
-Run Gemini preflight and the 350-case Promptfoo suite with production embedding
+Run Gemini preflight and the 336-case Promptfoo suite with production embedding
 and chunk settings:
 
 ```bash
 make marketplace-qna-local
 ```
 
-Acceptance requires 350/350 top-5 passes, no degraded cases, and Top-1 at least
+Acceptance requires 336/336 top-5 passes, no degraded cases, and Top-1 at least
 80%. Retrieval is filtered to the query language so mirrored Chinese and
 English documents do not compete with each other.
 
 The earlier 316-query benchmark (`301/316`, Top-1 `80.4%`) was measured at 256 dimensions.
-It is historical V7 evidence, not a V8 acceptance result, and must be re-baselined at 1536 dimensions before V8 promotion.
+It is historical V7 evidence, not a V9 acceptance result. V9 requires its own
+336-case evaluation at 1536 dimensions before promotion.
 
 ## Embedding-Dimension Migration
+
+This section records the V8 dimension migration and its operational safeguards.
+V9 retains the same 1536-dimensional contract and requires its own ingestion
+and acceptance evidence before knowledge-base promotion.
 
 The normal DockerHost deploy must run the fail-closed `migrate` service before
 the API or worker starts. Migration

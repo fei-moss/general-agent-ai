@@ -6,7 +6,7 @@
     "zh-CN",
     "en"
   ],
-  "required_query_count": 350,
+  "required_query_count": 336,
   "spec_id": "SPEC-RAG-EVAL-002",
   "topic_groups": [
     {
@@ -444,14 +444,7 @@
         "marketplace_qna_zh_cn_15_q08",
         "marketplace_qna_zh_cn_15_q09",
         "marketplace_qna_zh_cn_15_q10",
-        "marketplace_qna_zh_cn_15_q11",
-        "marketplace_qna_zh_cn_15_q12",
-        "marketplace_qna_zh_cn_15_q13",
-        "marketplace_qna_zh_cn_15_q14",
-        "marketplace_qna_zh_cn_15_q15",
-        "marketplace_qna_zh_cn_15_q16",
-        "marketplace_qna_zh_cn_15_q17",
-        "marketplace_qna_zh_cn_15_q18"
+        "marketplace_qna_zh_cn_15_q11"
       ]
     },
     {
@@ -521,14 +514,7 @@
         "marketplace_qna_en_15_q08",
         "marketplace_qna_en_15_q09",
         "marketplace_qna_en_15_q10",
-        "marketplace_qna_en_15_q11",
-        "marketplace_qna_en_15_q12",
-        "marketplace_qna_en_15_q13",
-        "marketplace_qna_en_15_q14",
-        "marketplace_qna_en_15_q15",
-        "marketplace_qna_en_15_q16",
-        "marketplace_qna_en_15_q17",
-        "marketplace_qna_en_15_q18"
+        "marketplace_qna_en_15_q11"
       ]
     },
     {

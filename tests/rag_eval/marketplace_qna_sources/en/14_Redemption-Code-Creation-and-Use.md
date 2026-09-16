@@ -12,11 +12,11 @@ Shares required per code are not a platform-wide constant. Read the current Agen
 
 **Q: What happens to the shares after successful code redemption?**
 
-Redemption consumes those shares; they cannot be restored or used for Refund.
+Redemption consumes those shares; they cannot be restored.
 
 **Q: During code redemption: If I redeem only some benefits, what happens to the Consumer shares I leave unused?**
 
-Shares not included in that redemption remain held and may later use Consumer Agent Refund.
+The remaining shares continue to be held by the user.
 
 **Q: How do I consume the benefit after a code is generated?**
 

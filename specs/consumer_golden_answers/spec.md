@@ -19,6 +19,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `/private/tmp/claude-501/-Users-renfei-Documents-GitHub/d813e659-4174-41fd-a7ad-d6a4cc302f68/scratchpad/consumer-pixverse-golden-source-20260819.md`.
   The adapter preserves the supplied question and ideal-answer text; the
   vendored fixture is the durable provenance authority and is not runtime data.
+  Consumer refund claims in this historical batch are superseded by the
+  2026-09-16 owner directive below; preservation does not make them current
+  product truth.
 - The batch contains 48 generic Redemption questions and 18 PixVerse-specific
   questions. It is Chinese-only. English translation and English Golden Cases
   are outside this batch and require later product-owner approval.
@@ -33,7 +36,7 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   - `持有份额有额外收益吗？`: the supplied ideal answer is empty.
   - `持有越久越好吗？`: the supplied ideal answer is empty.
   - `兑换码多久过期？`: the supplied ideal answer is empty.
-- The remaining 58 questions are an incremental approved regression batch, not
+- The remaining 58 questions are a historically approved regression batch, not
   an exhaustive statement of Consumer, Redemption, PixVerse, or Marketplace
   behavior.
 - The product-owner Rave Governance Agent source dated 2026-08-21 is vendored
@@ -46,7 +49,102 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   rewards on early redemption, lock period, redemption wait time, and partial
   redemption support.
 
+### V9 Owner-Directed Semantic Reversal (2026-09-16)
+
+- The owner directive dated 2026-09-16 explicitly changes Consumer behavior:
+
+  > 消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint
+
+  Its source is the owner-supplied
+  `consumer-no-refund-owner-directive-20260916.md`; this quotation records its
+  authority durably. This is an intentional semantic reversal, not retrieval
+  wording cleanup. It overrides conflicting Consumer claims in V7/V8 and the
+  preserved 2026-08-19 golden source. It applies to all Consumer-type Agents,
+  including the current Model Max and PixVerse brands, without hardcoding
+  current Agent IDs or branding into generic corpus content.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R18`: source set
+  `marketplace-qna-bilingual-2026-09-16-v9` updates bilingual documents 13-16
+  and their generated corpus, Golden Queries, review evidence, chat cases,
+  manifest hashes, and reviewed seed counts. Document 03 changes only if it
+  promises Consumer refundability. Documents 04/07/08/10/11/12/17 retain their
+  Trading/Governance Refund/Redeem semantics without modification.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R19`: document 15 replaces all Consumer
+  Refund mechanism Q&As with one clear no-Refund Q&A using the owner's exact
+  Chinese wording and a faithful English translation. Remove eligibility,
+  amount, Pending-to-Claimable flow, count-limit, grey Refund-button,
+  code-versus-Refund choice, and refund-value-based principal-protection
+  explanations. Retain smart-contract custody, `My Shares` display semantics,
+  masked-address Mint/code activity records, and page-state-based
+  `Paused by owner` explanations for Mint/operations; do not invent pause
+  specifics. If a brand stops honoring benefits, unredeemed-share assets remain
+  held by the contract, and use of issued codes depends on brand fulfillment.
+  Do not promise principal recovery or introduce an alternative exit mechanism.
+- `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R20`: document 14 says remaining shares
+  continue to be held by the user after partial code redemption. Consumed
+  shares cannot be restored. Preserve the active `去兑换` flow, quantity and
+  threshold requirements, `去消费` jump, failure recording/retry/support, and
+  no-auto-redemption behavior. Document 13 removes all refundability selling
+  points and instead tells the user to review all Agent information before
+  Mint; its non-investment/no-APY framing does not rely on a refund value.
+  Document 16's partnership-termination answer distinguishes contract custody
+  of unredeemed-share assets from PixVerse fulfillment/terms for issued codes;
+  code-to-wallet mapping and account requirements remain unchanged.
+- Rename the bilingual document-15 files to
+  `15_资金安全与界面状态.md` and `15_Fund-Safety-and-UI-States.md`.
+  The shorter titles reflect the retained custody/UI topics and avoid
+  advertising an unavailable Refund mechanism. Update source paths, filename
+  metadata, builder references, and manifest entries consistently while
+  preserving logical document order/identity.
+- The verbatim Consumer source fixture, adapter, regression harness, and eight
+  existing intake blockers remain unchanged. V9 does not add per-case
+  exclusions, annotations, or substitute ideal answers. The affected source
+  cases are recorded below as OUTDATED pending a new owner golden batch;
+  43-case deterministic scores against the old batch are stale until that
+  refresh and cannot establish V9 answer correctness.
+
+### OUTDATED Consumer Golden Cases Pending New Owner Batch
+
+Question numbers below follow each part's original source order, including the
+eight existing intake-blocker gaps. These 17 supplied ideal answers conflict
+with the 2026-09-16 directive; each is **OUTDATED** pending a replacement owner
+golden batch. This list is documentation only and does not alter case IDs,
+emission, scoring rules, or the hash-pinned fixture.
+
+| Source part / question | Supplied question | Superseded claim |
+| --- | --- | --- |
+| Redemption Q01 | 这个 agent 是做什么的？ | Refund of principal if the user no longer wants the benefits |
+| Redemption Q02 | 和直接在【品牌方】官网买有什么区别？ | Funds can be taken back at any time before code redemption |
+| Redemption Q07 | 最少要 mint 多少？ | Below-threshold shares may be redeemed for funds |
+| Redemption Q15 | 我可以只兑换一部分吗？ | Remaining shares can later be Refunded |
+| Redemption Q22 | 怎么把钱拿回来？ | Unredeemed shares return the corresponding principal |
+| Redemption Q23 | 所有份额都能赎回吗？ | Unredeemed shares are eligible for Refund |
+| Redemption Q26 | 赎回需要等吗？ | Refund application proceeds through Pending and Claimable to collection |
+| Redemption Q27 | 赎回有次数限制吗？ | Refund may be requested multiple times without a count limit |
+| Redemption Q32 | 如果【品牌方】倒闭了会怎样？ | Brand failure leaves Refund unaffected |
+| Redemption Q33 | 份额可以转给别人或在交易所卖掉吗？ | Refund is the current Moss exit route |
+| Redemption Q37 | 一共要付哪些费用？ | A Consumer Refund operation charges a Refund fee |
+| Redemption Q42 | 显示 Paused by owner 是什么意思？ | Owner pause includes an available Consumer Refund operation |
+| Redemption Q43 | 我可以一边拿兑换码一边把钱退回来吗？ | The user can choose between code redemption and Refund |
+| Redemption Q45 | 这是保本的吗？ | Principal-protection framing is based on actual Refund value minus fees |
+| Redemption Q47 | 出问题找谁？ | Support guidance presents Consumer Refund as an available operation |
+| PixVerse Q08 | 这比直接在 PixVerse 官网买便宜吗？ | Refundable principal before code redemption is a purchase advantage |
+| PixVerse Q16 | PixVerse 停止支持这个合作了怎么办？ | Partnership termination leaves Refund unaffected |
+
+Redemption Q24 (`赎回之后已经拿到的兑换码还能用吗？`) and Q25
+(`赎回要收费吗？`) already have empty answers and remain among the same eight
+intake blockers; their Refund premises also require owner refresh, but there
+is no supplied ideal answer to rewrite or newly exclude. Redemption Q41
+(`为什么按钮是灰的？`) does not name Refund in either the supplied question or
+answer, so it is not counted as a conflicting ideal answer. This does not
+preserve the separately authored Refund-button Q&A in corpus document 15,
+which V9 removes.
+
 ### Behavior
+
+R1-R17 retain the existing harness and historical V7/V8 contracts. In
+particular, preserved Refund fee dynamic rules and source fact groups are
+historical regression behavior; they do not override current Consumer product
+truth in R18-R20.
 
 - `SPEC-CONSUMER-GOLDEN-ANSWERS-001-R1`: every emitted case applies only to
   Agent type `consumer`. A run against any other Agent type is
@@ -247,6 +345,9 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
 
 ## Implementation Plan
 
+Steps 1-14 record the historical V7/V8 implementation. The V9 work is scoped
+by the 2026-09-16 reversal above, which supersedes conflicting refund claims.
+
 1. Add RED tests for the bare-colon source quirk, eight explicit exclusion
    blockers and CLI status, placeholder extraction, PixVerse brand scope,
    existing-workflow ingestion, and absent Consumer dynamic truth.
@@ -296,8 +397,27 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
     HNSW index from migrated and fresh schemas, cover mixed-dimension
     knowledge-base isolation, and document failed-import cleanup before the V8
     retry.
+15. Add meaningful RED corpus/seed regressions for Consumer no-Refund behavior,
+    preserved code flow and custody/UI topics, faithful bilingual mirrors, and
+    protected non-Consumer content; leave the historical golden fixture and
+    regression harness unchanged.
+16. Revise bilingual 13-16, rename document 15, replace obsolete Refund-mechanism
+    Golden Queries/chat cases with realistic no-Refund coverage, and rebuild
+    corpus, Golden Queries, review evidence, and chat cases for V9. Recompute
+    production chunks and hashes and refresh the runbook's Reviewed Seed table.
+17. Run the fixture builder, Golden Query audit, focused Marketplace/Promptfoo/
+    Consumer/Rave tests, full pytest, spec contract, and diff check; attempt the
+    spec-registry gate and record any environment blocker. No upload,
+    deployment, commit, or push is in scope.
 
 ## Closeout Evidence
+
+### Historical V7/V8 Evidence
+
+The evidence below describes the previously implemented seed versions. It does
+not validate the Consumer Refund claims superseded on 2026-09-16; in
+particular, the reported 43-case deterministic scores are historical and stale
+for V9 until the owner refreshes the golden batch.
 
 - The source adapter emits 58 Chinese rows: 40 generic Redemption cases and 18
   PixVerse cases. Stable IDs retain original per-section ordering, including
@@ -358,3 +478,70 @@ workflow_class: HARNESS-SPEC-FIRST-FEATURE
   `git diff --check`. The spec-registry check was attempted but could not fetch
   `harnessctl` because sandbox DNS could not resolve `proxy.golang.org`. No live
   replay, upload, deployment, or product/runtime acceptance is claimed.
+
+### V9 Closeout (2026-09-16)
+
+- Approved scope and exact owner wording were recorded before corpus
+  implementation. Work remains uncommitted on `feat/consumer-golden-answers`
+  at `7dfa463`; the user's pre-existing `CLAUDE.md` deletion is preserved.
+  No commits, pushes, uploads, deployment, or provider-backed evaluation ran.
+- V9 contains 34 bilingual documents, 336 Golden Queries and review rows
+  (168 per language), 34 representative chat cases, and 268 structural anchors.
+  The production chunker emits **305 chunks** at size 400 / overlap 80, down
+  from V8's 313. All six manifest hashes verify, and all four generated JSONL
+  files exactly match deterministic builder output.
+- Document 15 is renamed as specified above; each language now has 11 Q&As
+  rather than 18. The builder discovers filenames from the source directory,
+  so regenerated `source_path`, `filename`, answer-line evidence, and
+  hash-pinned corpus consistently use the new names. Logical document IDs and
+  source URIs remain unchanged; question IDs follow the new section order.
+- All 26 source files outside documents 13-16 are byte-identical to HEAD,
+  including document 03, which contains no Consumer refundability claim.
+  Consumer/Rave verbatim fixtures, adapters, and regression scoring remain
+  unchanged. The 17 OUTDATED ideal answers and two existing empty-answer
+  Refund blockers are documented above; old 43-case scores remain stale.
+
+| Bilingual document | Previous claim | V9 wording / retained boundary |
+| --- | --- | --- |
+| 13 Consumer Agent / Mint | Unused shares can Refund; shares derive value from Refund | Check all Agent page information before deciding to Mint; benefits, non-investment, and no-APY framing retained |
+| 14 Code creation / use | Remaining shares can Refund; consumed shares cannot Refund | Remaining shares continue to be held; consumed shares cannot be restored; all other code-flow steps unchanged |
+| 15 Fund safety / UI | Refund eligibility, amount, states, count, grey button, exit, and principal-protection explanations | One exact owner no-Refund answer; custody, shares display, masked activities, page-state pause, and brand-fulfillment boundary retained |
+| 16 PixVerse partnership | Unredeemed principal remains in contract when partnership ends | Unredeemed-share assets remain held by the contract; code use depends on PixVerse fulfillment/terms, with no recovery promise |
+
+| Verification | Result |
+| --- | --- |
+| RED: `pytest -q tests/test_marketplace_qna_eval.py -k v9` | Four intended failures before implementation: duplicated Refund mechanisms and the old chat contract rejecting the owner answer |
+| `.venv/bin/python -m tests.rag_eval.marketplace_qna_fixture_builder --write` | Passed; 34 / 336 / 336 / 34 rows |
+| `.venv/bin/python -m tests.rag_eval.marketplace_qna_golden_query_audit --output /private/tmp/consumer-v9-golden-query-audit.json` | Passed; no coverage/evidence gaps |
+| Focused pytest: `tests/test_marketplace_qna_eval.py tests/test_rag_promptfoo_eval.py tests/test_consumer_golden_source.py tests/test_rave_governance_golden_source.py` | 77 passed, including all four RED-to-GREEN regressions |
+| `.venv/bin/python -m pytest -q --junitxml=/private/tmp/consumer-v9-full-pytest.xml` | 762 passed, 1 skipped; no errors or failures |
+| `pytest -q tests/test_marketplace_qna_workflow.py` after the final Makefile help-count update | 6 passed; only help text changed, no recipes or deployment behavior |
+| `SPEC_CONTRACT_ARTIFACT_DIR=/private/tmp/consumer-v9-spec-contract scripts/check_spec_contract.sh` | Passed; 29 legacy specs and 29 legacy plans |
+| `git diff --check` | Passed |
+| `HARNESS_ARTIFACT_DIR=/private/tmp/consumer-v9-spec-registry scripts/check_spec_registry.sh` | Attempted; blocked fetching pinned harnessctl v0.3.0 because sandbox DNS could not resolve `proxy.golang.org` |
+| Independent diff review | Source semantics, 17-case conflict list, fixture preservation, and hashes verified; stale Makefile help counts corrected to 336 |
+
+Changed-file inventory (excluding the user's untouched `CLAUDE.md` deletion):
+
+- `tests/rag_eval/marketplace_qna_sources/zh-CN/13_Consumer-Agent-与-Mint.md`
+  and `en/13_Consumer-Agent-and-Mint.md`.
+- `tests/rag_eval/marketplace_qna_sources/zh-CN/14_兑换码生成与使用.md`
+  and `en/14_Redemption-Code-Creation-and-Use.md`.
+- `tests/rag_eval/marketplace_qna_sources/zh-CN/15_Refund-资金安全与界面状态.md`
+  → `15_资金安全与界面状态.md`; English
+  `en/15_Refund-Fund-Safety-and-UI-States.md`
+  → `15_Fund-Safety-and-UI-States.md`.
+- `tests/rag_eval/marketplace_qna_sources/zh-CN/16_PixVerse-品牌与合作边界.md`
+  and `en/16_PixVerse-Brand-and-Partnership-Boundaries.md`.
+- Under `tests/rag_eval/`: `marketplace_qna_fixture_builder.py`,
+  `marketplace_qna_case_definitions.jsonl`, `marketplace_qna_corpus.jsonl`,
+  `marketplace_qna_golden_queries.jsonl`,
+  `marketplace_qna_golden_query_review.jsonl`, `marketplace_qna_chat_cases.jsonl`,
+  `marketplace_qna_coverage_contract.json`,
+  `marketplace_qna_acceptance_evidence_contract.json`,
+  `marketplace_qna_golden_query_audit.py`,
+  `marketplace_qna_rag_seed_manifest.json`.
+- `tests/test_marketplace_qna_eval.py`, `tests/test_marketplace_qna_workflow.py`,
+  `docs/MARKETPLACE_QNA_RAG_INGESTION_RUNBOOK.md`,
+  `docs/MARKETPLACE_QNA_GOLDEN_QUERIES_REVIEW.md`, `Makefile` (help counts only),
+  and this specification.

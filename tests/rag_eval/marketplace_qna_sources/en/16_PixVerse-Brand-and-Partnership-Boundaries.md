@@ -40,7 +40,7 @@ A redemption code is used inside a PixVerse account. Obtain the usage entry poin
 
 **Q: If the PixVerse partnership ends, how do unredeemed-fund safety and issued-code usability differ?**
 
-Principal corresponding to unredeemed shares remains in the contract. An issued code still depends on PixVerse honoring its applicable benefit terms.
+Assets corresponding to unredeemed shares remain held by the contract. Use of generated redemption codes depends on PixVerse honoring the applicable benefit terms.
 
 **Q: Where do I confirm the PixVerse benefit, usage entry point, and any enterprise plan?**
 

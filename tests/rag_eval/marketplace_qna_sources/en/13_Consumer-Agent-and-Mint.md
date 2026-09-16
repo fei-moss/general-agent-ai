@@ -4,11 +4,11 @@ This `consumer` document covers first-time onboarding and Mint mechanics. Agent-
 
 **Q: What does a Consumer or Redemption Agent do?**
 
-A Consumer Agent lets a user Mint standard shares for brand benefits, then choose code redemption or Consumer Agent Refund for shares not used for a code.
+A Consumer Agent lets a user Mint standard shares to redeem brand benefits. Please check all Agent information on the page before deciding whether to Mint.
 
 **Q: How is obtaining brand benefits here different from buying directly from the brand?**
 
-A direct purchase delivers the benefit immediately; a Consumer Agent first gives the user shares, followed by benefit redemption or Refund. For principal custody, see Refund, Fund Safety, and UI States.
+A direct purchase delivers the benefit immediately; a Consumer Agent first gives the user shares, followed by user-initiated benefit redemption. Please check all Agent information on the page before deciding whether to Mint. For principal custody, see Fund Safety and UI States.
 
 **Q: Is a Consumer Agent an investment product, and does it have APY?**
 
@@ -20,7 +20,7 @@ No. Consumer Agent shares are standard ERC-20 tokens, not NFTs. They are divisib
 
 **Q: What gives a share its value?**
 
-Its value comes from the benefit it can redeem and its current Refund value while unused. It does not represent equity in the brand, company valuation, or an expectation of appreciation.
+Its value comes from the benefit it can redeem. It does not represent equity in the brand, company valuation, or an expectation of appreciation.
 
 **Q: What is the first-time onboarding path from wallet connection to My Shares?**
 

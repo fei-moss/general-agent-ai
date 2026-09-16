@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The current V8 seed (`marketplace-qna-rag-seed-v8`) contains 17 Chinese and 17 English Marketplace QnA Markdown files. It covers 350 source questions with one same-language semantic retrieval case per question and 34 representative end-to-end chat cases. V8 retains the V7 corpus and adds one bilingual Rave Governance Agent pair containing only owner-approved Rave-specific facts. Generic governance, custody, Mint/Redeem, and immutability mechanics remain owned by documents 04/10/11/12; current fees, voting entry, proposal deadline, contract identity, network, and the four owner-pending redemption fields remain outside fixed answers.
+This review is the human-readable evidence for `SPEC-RAG-EVAL-002`. The current V9 seed (`marketplace-qna-rag-seed-v9`, source set `marketplace-qna-bilingual-2026-09-16-v9`) contains 17 Chinese and 17 English Marketplace QnA Markdown files. It covers 336 source questions with one same-language semantic retrieval case per question and 34 representative end-to-end chat cases. V9 applies the 2026-09-16 owner directive: 「消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint」. The Consumer corpus is brand-independent; the bilingual Rave pair added in V8 and all non-Consumer Refund/Redeem semantics remain unchanged. Generic governance, custody, Mint/Redeem, and immutability mechanics remain owned by documents 04/10/11/12; current fees, voting entry, proposal deadline, contract identity, network, and the four owner-pending Rave redemption fields remain outside fixed answers.
 
 Machine-readable authorities:
 
@@ -14,14 +14,14 @@ Machine-readable authorities:
 
 ## Review Conclusion
 
-The fixture family has complete source-question coverage: 34 documents, 350 Golden Queries, 350 review rows, and 34 chat cases. Chinese and English each contribute 175 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
+The fixture family has complete source-question coverage: 34 documents, 336 Golden Queries, 336 review rows, and 34 chat cases. Chinese and English each contribute 168 retrieval cases. Every case points to exactly one expected source document and a source answer line range.
 
 The current acceptance target is deliberately strict:
 
-- local Promptfoo: 350/350 top-5, zero degraded, Top-1 at least 80%;
-- DockerHost `/rag/query`: 350/350 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
+- local Promptfoo: 336/336 top-5, zero degraded, Top-1 at least 80%;
+- DockerHost `/rag/query`: 336/336 top-5 with the same language filter, zero degraded, Top-1 at least 80%;
 - live chat: 34/34 terminal `SUCCEEDED`, server-default knowledge base, RAG start/finish evidence, all required fact groups, no forbidden claims;
-- persistent ingestion: 34 documents, 34 successful jobs, 313 chunks, zero failed jobs, exact source-hash equality at embedding dimension 1536.
+- persistent ingestion: 34 documents, 34 successful jobs, 305 chunks, zero failed jobs, exact source-hash equality at embedding dimension 1536.
 
 ## Corpus Quality Finding
 
@@ -61,11 +61,11 @@ V2 now states the layer distinction, explicitly rejects official endorsement or 
 | `marketplace_qna_zh_cn_12` | 12 | `marketplace_qna_zh_cn_12_q01`, `marketplace_qna_zh_cn_12_q02`, `marketplace_qna_zh_cn_12_q03`, `marketplace_qna_zh_cn_12_q04`, `marketplace_qna_zh_cn_12_q05`, `marketplace_qna_zh_cn_12_q06`, `marketplace_qna_zh_cn_12_q07`, `marketplace_qna_zh_cn_12_q08`, `marketplace_qna_zh_cn_12_q09`, `marketplace_qna_zh_cn_12_q10`, `marketplace_qna_zh_cn_12_q11`, `marketplace_qna_zh_cn_12_q12` |
 | `marketplace_qna_en_13` | 12 | `marketplace_qna_en_13_q01`, `marketplace_qna_en_13_q02`, `marketplace_qna_en_13_q03`, `marketplace_qna_en_13_q04`, `marketplace_qna_en_13_q05`, `marketplace_qna_en_13_q06`, `marketplace_qna_en_13_q07`, `marketplace_qna_en_13_q08`, `marketplace_qna_en_13_q09`, `marketplace_qna_en_13_q10`, `marketplace_qna_en_13_q11`, `marketplace_qna_en_13_q12` |
 | `marketplace_qna_en_14` | 8 | `marketplace_qna_en_14_q01`, `marketplace_qna_en_14_q02`, `marketplace_qna_en_14_q03`, `marketplace_qna_en_14_q04`, `marketplace_qna_en_14_q05`, `marketplace_qna_en_14_q06`, `marketplace_qna_en_14_q07`, `marketplace_qna_en_14_q08` |
-| `marketplace_qna_en_15` | 18 | `marketplace_qna_en_15_q01`, `marketplace_qna_en_15_q02`, `marketplace_qna_en_15_q03`, `marketplace_qna_en_15_q04`, `marketplace_qna_en_15_q05`, `marketplace_qna_en_15_q06`, `marketplace_qna_en_15_q07`, `marketplace_qna_en_15_q08`, `marketplace_qna_en_15_q09`, `marketplace_qna_en_15_q10`, `marketplace_qna_en_15_q11`, `marketplace_qna_en_15_q12`, `marketplace_qna_en_15_q13`, `marketplace_qna_en_15_q14`, `marketplace_qna_en_15_q15`, `marketplace_qna_en_15_q16`, `marketplace_qna_en_15_q17`, `marketplace_qna_en_15_q18` |
+| `marketplace_qna_en_15` | 11 | `marketplace_qna_en_15_q01`, `marketplace_qna_en_15_q02`, `marketplace_qna_en_15_q03`, `marketplace_qna_en_15_q04`, `marketplace_qna_en_15_q05`, `marketplace_qna_en_15_q06`, `marketplace_qna_en_15_q07`, `marketplace_qna_en_15_q08`, `marketplace_qna_en_15_q09`, `marketplace_qna_en_15_q10`, `marketplace_qna_en_15_q11` |
 | `marketplace_qna_en_16` | 11 | `marketplace_qna_en_16_q01`, `marketplace_qna_en_16_q02`, `marketplace_qna_en_16_q03`, `marketplace_qna_en_16_q04`, `marketplace_qna_en_16_q05`, `marketplace_qna_en_16_q06`, `marketplace_qna_en_16_q07`, `marketplace_qna_en_16_q08`, `marketplace_qna_en_16_q09`, `marketplace_qna_en_16_q10`, `marketplace_qna_en_16_q11` |
 | `marketplace_qna_zh_cn_13` | 12 | `marketplace_qna_zh_cn_13_q01`, `marketplace_qna_zh_cn_13_q02`, `marketplace_qna_zh_cn_13_q03`, `marketplace_qna_zh_cn_13_q04`, `marketplace_qna_zh_cn_13_q05`, `marketplace_qna_zh_cn_13_q06`, `marketplace_qna_zh_cn_13_q07`, `marketplace_qna_zh_cn_13_q08`, `marketplace_qna_zh_cn_13_q09`, `marketplace_qna_zh_cn_13_q10`, `marketplace_qna_zh_cn_13_q11`, `marketplace_qna_zh_cn_13_q12` |
 | `marketplace_qna_zh_cn_14` | 8 | `marketplace_qna_zh_cn_14_q01`, `marketplace_qna_zh_cn_14_q02`, `marketplace_qna_zh_cn_14_q03`, `marketplace_qna_zh_cn_14_q04`, `marketplace_qna_zh_cn_14_q05`, `marketplace_qna_zh_cn_14_q06`, `marketplace_qna_zh_cn_14_q07`, `marketplace_qna_zh_cn_14_q08` |
-| `marketplace_qna_zh_cn_15` | 18 | `marketplace_qna_zh_cn_15_q01`, `marketplace_qna_zh_cn_15_q02`, `marketplace_qna_zh_cn_15_q03`, `marketplace_qna_zh_cn_15_q04`, `marketplace_qna_zh_cn_15_q05`, `marketplace_qna_zh_cn_15_q06`, `marketplace_qna_zh_cn_15_q07`, `marketplace_qna_zh_cn_15_q08`, `marketplace_qna_zh_cn_15_q09`, `marketplace_qna_zh_cn_15_q10`, `marketplace_qna_zh_cn_15_q11`, `marketplace_qna_zh_cn_15_q12`, `marketplace_qna_zh_cn_15_q13`, `marketplace_qna_zh_cn_15_q14`, `marketplace_qna_zh_cn_15_q15`, `marketplace_qna_zh_cn_15_q16`, `marketplace_qna_zh_cn_15_q17`, `marketplace_qna_zh_cn_15_q18` |
+| `marketplace_qna_zh_cn_15` | 11 | `marketplace_qna_zh_cn_15_q01`, `marketplace_qna_zh_cn_15_q02`, `marketplace_qna_zh_cn_15_q03`, `marketplace_qna_zh_cn_15_q04`, `marketplace_qna_zh_cn_15_q05`, `marketplace_qna_zh_cn_15_q06`, `marketplace_qna_zh_cn_15_q07`, `marketplace_qna_zh_cn_15_q08`, `marketplace_qna_zh_cn_15_q09`, `marketplace_qna_zh_cn_15_q10`, `marketplace_qna_zh_cn_15_q11` |
 | `marketplace_qna_zh_cn_16` | 11 | `marketplace_qna_zh_cn_16_q01`, `marketplace_qna_zh_cn_16_q02`, `marketplace_qna_zh_cn_16_q03`, `marketplace_qna_zh_cn_16_q04`, `marketplace_qna_zh_cn_16_q05`, `marketplace_qna_zh_cn_16_q06`, `marketplace_qna_zh_cn_16_q07`, `marketplace_qna_zh_cn_16_q08`, `marketplace_qna_zh_cn_16_q09`, `marketplace_qna_zh_cn_16_q10`, `marketplace_qna_zh_cn_16_q11` |
 | `marketplace_qna_en_17` | 17 | `marketplace_qna_en_17_q01`, `marketplace_qna_en_17_q02`, `marketplace_qna_en_17_q03`, `marketplace_qna_en_17_q04`, `marketplace_qna_en_17_q05`, `marketplace_qna_en_17_q06`, `marketplace_qna_en_17_q07`, `marketplace_qna_en_17_q08`, `marketplace_qna_en_17_q09`, `marketplace_qna_en_17_q10`, `marketplace_qna_en_17_q11`, `marketplace_qna_en_17_q12`, `marketplace_qna_en_17_q13`, `marketplace_qna_en_17_q14`, `marketplace_qna_en_17_q15`, `marketplace_qna_en_17_q16`, `marketplace_qna_en_17_q17` |
 | `marketplace_qna_zh_cn_17` | 17 | `marketplace_qna_zh_cn_17_q01`, `marketplace_qna_zh_cn_17_q02`, `marketplace_qna_zh_cn_17_q03`, `marketplace_qna_zh_cn_17_q04`, `marketplace_qna_zh_cn_17_q05`, `marketplace_qna_zh_cn_17_q06`, `marketplace_qna_zh_cn_17_q07`, `marketplace_qna_zh_cn_17_q08`, `marketplace_qna_zh_cn_17_q09`, `marketplace_qna_zh_cn_17_q10`, `marketplace_qna_zh_cn_17_q11`, `marketplace_qna_zh_cn_17_q12`, `marketplace_qna_zh_cn_17_q13`, `marketplace_qna_zh_cn_17_q14`, `marketplace_qna_zh_cn_17_q15`, `marketplace_qna_zh_cn_17_q16`, `marketplace_qna_zh_cn_17_q17` |
@@ -73,14 +73,20 @@ V2 now states the layer distinction, explicitly rejects official endorsement or 
 ## Evaluation Notes
 
 - The Chinese and English documents mirror the same subjects. Same-language metadata filtering is part of the intended retrieval contract and prevents equivalent translations from competing for rank.
-- The Golden Query audit emits a 282-row structural-anchor map for every bilingual query targeting documents 02, 06, 08, and 10-17. Each row records `query id -> expected document -> matching Q&A section heading -> answer lines`, providing the per-query anchor audit for the deterministic retrieval-disambiguation pass.
-- The final convergence pass is trim-first: repeated Governance and Consumer concepts are condensed across documents 12-16, document 14 contains no `My Shares` balance-display language, and bilingual q15_q13 remains assigned to document 15. The en_08_q04 and zh_cn_11_q19 source answers are unchanged pending an owner decision on embedding-drift waivers.
-- V8 preserves that trim-first rule. Rave queries always name Rave, RaveDAO, or vRAVE; generic governance queries remain assigned to documents 10/12, and the four unspecified Rave redemption topics remain explicit owner-pending boundaries rather than invented answers.
+- The Golden Query audit emits a 268-row structural-anchor map for every bilingual query targeting documents 02, 06, 08, and 10-17. Each row records `query id -> expected document -> matching Q&A section heading -> answer lines`, providing the per-query anchor audit for the deterministic retrieval-disambiguation pass.
+- V9 keeps document 14 focused on code redemption and document 15 focused on the no-Refund answer, custody, balances, and UI states. Document 15 is renamed to `15_资金安全与界面状态.md` / `15_Fund-Safety-and-UI-States.md` and contains 11 Q&As per language, replacing the former 18-question Refund-mechanism inventory. Documents 13 and 16 remove refundability promises without adding an alternative exit mechanism. The en_08_q04 and zh_cn_11_q19 source answers are unchanged pending an owner decision on embedding-drift waivers.
+- The V8 Rave boundaries remain in force for V9: Rave queries always name Rave, RaveDAO, or vRAVE; generic governance queries remain assigned to documents 10/12, and the four unspecified Rave redemption topics remain explicit owner-pending boundaries rather than invented answers.
 - Chat fact checks use OR alternatives inside a required fact group and require every group. This accepts normal paraphrases without accepting missing concepts.
 - The share-sale chat cases explicitly request both branches: DEX trading when a pair exists and Redeem when it does not. This removes model-composition ambiguity while preserving the source question's meaning.
 - Live evidence stores only bounded answer previews and redacts runtime admin, Marketplace user, wallet, and bearer values.
 
 ## Acceptance Evidence
+
+Historical V7/V8 evaluation results do not establish V9 acceptance. The
+vendored 2026-08-19 Consumer golden batch and regression harness remain
+unchanged; the 43-case deterministic scores are stale until the owner refreshes
+the golden batch. The affected question numbers are recorded as OUTDATED in
+`specs/consumer_golden_answers/spec.md`.
 
 Final acceptance is determined by:
 

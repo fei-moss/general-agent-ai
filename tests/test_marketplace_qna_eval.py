@@ -32,7 +32,7 @@ def test_marketplace_qna_sources_have_expected_shape():
     assert len(bundle.sources) == 34
     assert sum(source.language == "zh-CN" for source in bundle.sources) == 17
     assert sum(source.language == "en" for source in bundle.sources) == 17
-    assert sum(len(source.questions) for source in bundle.sources) == 350
+    assert sum(len(source.questions) for source in bundle.sources) == 336
     assert {len(source.questions) for source in bundle.sources if source.order == 4} == {16}
 
 
@@ -84,7 +84,6 @@ def test_marketplace_qna_v7_contains_bilingual_consumer_mechanisms_without_dynam
     for stable_zh_fact in (
         "标准 ERC-20",
         "不是投资产品",
-        "Pending",
         "Claimable",
         "Paused by owner",
         "榜单会更新，以最新为准",
@@ -96,7 +95,6 @@ def test_marketplace_qna_v7_contains_bilingual_consumer_mechanisms_without_dynam
     for stable_en_fact in (
         "standard ERC-20",
         "not an investment product",
-        "Pending",
         "Claimable",
         "Paused by owner",
         "Rankings change; always use the latest available ranking",
@@ -105,11 +103,7 @@ def test_marketplace_qna_v7_contains_bilingual_consumer_mechanisms_without_dynam
         "Replicate",
     ):
         assert stable_en_fact in en
-    for owner_pending_summary in (
-        "未经批准的兑换码找回、转让和有效期问题保持待产品 owner 输入",
-        "尚无答案的费用、额外收益和持有时长问题保持待产品 owner 输入",
-    ):
-        assert owner_pending_summary in zh
+    assert "未经批准的兑换码找回、转让和有效期问题保持待产品 owner 输入" in zh
     assert "待产品 owner 输入" in zh
     assert "current Agent page" in en
     assert re.search(r"\b0x[a-fA-F0-9]{40}\b", combined) is None
@@ -195,6 +189,62 @@ def test_marketplace_qna_v8_contains_only_rave_specific_facts_and_keeps_shared_g
     ]
 
 
+@pytest.mark.parametrize(
+    ("language", "owner_answer"),
+    [
+        ("zh_cn", "消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint"),
+        ("en", "Consumer Agents do not support Refund. Please check all Agent information on the page before deciding whether to Mint."),
+    ],
+)
+def test_marketplace_qna_v9_consumer_refund_policy_is_one_lean_owner_answer(language, owner_answer):
+    from tests.rag_eval.marketplace_qna_fixture_builder import build_fixture_bundle
+
+    sources = {source.id: source for source in build_fixture_bundle().sources}
+    fund_safety = sources[f"marketplace_qna_{language}_15"]
+    refund_questions = [q for q in fund_safety.questions if "refund" in q.question.casefold()]
+
+    assert len(refund_questions) == 1
+    assert refund_questions[0].answer == owner_answer
+    assert "Refund" not in fund_safety.filename
+    assert "Pending" not in fund_safety.text
+    assert "Claimable" not in fund_safety.text
+    assert len(fund_safety.questions) == 11
+    assert "Paused by owner" in fund_safety.text
+    assert "My Shares" in fund_safety.text
+    for order in (13, 14, 16):
+        assert "refund" not in sources[f"marketplace_qna_{language}_{order}"].text.casefold()
+
+
+@pytest.mark.parametrize(
+    ("language", "owner_answer", "old_answer"),
+    [
+        (
+            "zh_cn",
+            "消费类不支持Refund，请检查页面上的所有 Agent 信息之后再决定是否Mint",
+            "仍由用户持有、尚未兑换成码的份额可以 Refund。请检查页面上的所有 Agent 信息之后再决定是否Mint。",
+        ),
+        (
+            "en",
+            "Consumer Agents do not support Refund. Please check all Agent information on the page before deciding whether to Mint.",
+            "Shares still held by the user and not yet redeemed for a code qualify for Refund. Please check all Agent information on the page before deciding whether to Mint.",
+        ),
+    ],
+)
+def test_marketplace_qna_v9_refund_chat_case_accepts_owner_policy_and_rejects_old_eligibility(language, owner_answer, old_answer):
+    from tests.rag_eval.marketplace_qna_live_eval import evaluate_answer
+
+    case = next(
+        row for row in _read_jsonl(EVAL_DIR / "marketplace_qna_chat_cases.jsonl")
+        if row["document_id"] == f"marketplace_qna_{language}_15"
+    )
+    arguments = {
+        "required_fact_groups": case["required_fact_groups"],
+        "forbidden_claims": case["forbidden_claims"],
+    }
+    assert evaluate_answer(owner_answer, **arguments)["passed"] is True
+    assert evaluate_answer(old_answer, **arguments)["passed"] is False
+
+
 def test_marketplace_qna_v8_embedding_contract_is_1536():
     acceptance = json.loads(
         (EVAL_DIR / "marketplace_qna_acceptance_evidence_contract.json").read_text(
@@ -221,7 +271,7 @@ def test_marketplace_qna_v8_embedding_contract_is_1536():
     assert "EMBEDDING_DIM=1536" in env_example
     assert "301/316" in runbook and "80.4%" in runbook
     assert "measured at 256 dimensions" in runbook
-    assert "must be re-baselined at 1536 dimensions" in runbook
+    assert "336-case evaluation at 1536 dimensions before promotion" in runbook
 
 
 def test_marketplace_qna_round_two_structural_anchors_partition_confused_topics():
@@ -279,10 +329,10 @@ def test_marketplace_qna_round_two_structural_anchors_partition_confused_topics(
     assert "after tokenization and fundraising, are strategy and parameters no longer freely adjustable" in sources[
         "marketplace_qna_en_06"
     ].casefold()
-    assert cases["marketplace_qna_zh_cn_15_q06"].query.startswith(
+    assert cases["marketplace_qna_zh_cn_15_q02"].query.startswith(
         "Consumer Agent 里用户 Mint 的本金"
     )
-    assert cases["marketplace_qna_en_15_q06"].query.startswith(
+    assert cases["marketplace_qna_en_15_q02"].query.startswith(
         "In a Consumer Agent, who holds the principal"
     )
     assert "我的份额余额不含已换码部分" in sources["marketplace_qna_zh_cn_15"]
@@ -381,8 +431,8 @@ def test_marketplace_qna_final_trim_removes_neighbor_attractors_without_losing_o
     )
     assert "My Shares balance excludes shares already converted into codes" in en_15
     assert "我的份额余额不含已换码部分" in zh_15
-    assert cases["marketplace_qna_en_15_q13"].document_id == "marketplace_qna_en_15"
-    assert cases["marketplace_qna_zh_cn_15_q13"].document_id == "marketplace_qna_zh_cn_15"
+    assert cases["marketplace_qna_en_15_q09"].document_id == "marketplace_qna_en_15"
+    assert cases["marketplace_qna_zh_cn_15_q09"].document_id == "marketplace_qna_zh_cn_15"
     for attractor in ("逐笔", "单独领取", "批量", "多笔"):
         assert attractor not in zh_15
         assert attractor not in sources["marketplace_qna_zh_cn_16"]
@@ -437,8 +487,8 @@ def test_marketplace_qna_case_definitions_cover_every_question_with_semantic_par
         for question in source.questions
     }
 
-    assert len(cases) == 350
-    assert Counter(case.language for case in cases.values()) == {"zh-CN": 175, "en": 175}
+    assert len(cases) == 336
+    assert Counter(case.language for case in cases.values()) == {"zh-CN": 168, "en": 168}
     assert set(cases) == set(source_questions)
     assert all(case.query.strip() for case in cases.values())
     assert all(
@@ -480,8 +530,8 @@ def test_marketplace_qna_generated_fixture_rows_are_complete_and_traceable():
     rows = build_fixture_rows()
 
     assert len(rows.corpus) == 34
-    assert len(rows.golden_queries) == 350
-    assert len(rows.review_evidence) == 350
+    assert len(rows.golden_queries) == 336
+    assert len(rows.review_evidence) == 336
     assert len(rows.chat_cases) == 34
     assert {row["id"] for row in rows.corpus} == {
         row["relevant_doc_ids"][0] for row in rows.golden_queries
@@ -508,7 +558,7 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
 
     assert coverage["contract_id"] == "SPEC-RAG-EVAL-002-MARKETPLACE-QNA-COVERAGE"
     assert coverage["required_document_count"] == 34
-    assert coverage["required_query_count"] == 350
+    assert coverage["required_query_count"] == 336
     assert coverage["required_chat_case_count"] == 34
     assert len(coverage["topic_groups"]) == 34
     assert {group["language"] for group in coverage["topic_groups"]} == {"zh-CN", "en"}
@@ -517,10 +567,10 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
     assert acceptance["thresholds"] == {
         "source_documents": 34,
-        "golden_queries": 350,
+        "golden_queries": 336,
         "chat_cases": 34,
-        "promptfoo_required_passes": 350,
-        "live_required_passes": 350,
+        "promptfoo_required_passes": 336,
+        "live_required_passes": 336,
         "minimum_top1_rate": 0.8,
         "maximum_degraded_cases": 0,
         "maximum_failed_ingestion_jobs": 0,
@@ -535,7 +585,7 @@ def test_marketplace_qna_coverage_and_acceptance_contracts_match_fixtures():
     }
 
 
-def test_marketplace_qna_v8_expected_chunk_count_matches_production_chunking():
+def test_marketplace_qna_v9_expected_chunk_count_matches_production_chunking():
     from app.rag.chunker import chunk_text
 
     acceptance = json.loads(
@@ -579,7 +629,7 @@ def test_marketplace_qna_seed_manifest_hashes_every_reviewed_fixture():
             assert entry["row_count"] == len(_read_jsonl(path))
 
 
-def test_marketplace_qna_v8_seed_is_explicitly_versioned():
+def test_marketplace_qna_v9_seed_is_explicitly_versioned():
     from tests.rag_eval.marketplace_qna_fixture_builder import CORPUS_VERSION
 
     manifest = json.loads(
@@ -591,10 +641,10 @@ def test_marketplace_qna_v8_seed_is_explicitly_versioned():
         )
     )
 
-    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-08-21-v8"
-    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v8"
+    assert CORPUS_VERSION == "marketplace-qna-bilingual-2026-09-16-v9"
+    assert manifest["manifest_id"] == "marketplace-qna-rag-seed-v9"
     assert manifest["source_set"] == CORPUS_VERSION
-    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V8"
+    assert manifest["knowledge_base"]["name"] == "Moss Agent Marketplace QnA V9"
     assert manifest["knowledge_base"]["source_root_uri"] == "urn:moss:marketplace-qna:"
     assert acceptance["ingestion"]["knowledge_base_name"] == manifest["knowledge_base"]["name"]
 
@@ -621,7 +671,7 @@ def test_marketplace_qna_import_payloads_match_rag_document_schema():
         assert parsed.mime_type == "text/markdown"
         assert parsed.source_uri.startswith("urn:moss:marketplace-qna:")
         assert parsed.metadata["sha256"]
-        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-08-21-v8"
+        assert parsed.metadata["source_set"] == "marketplace-qna-bilingual-2026-09-16-v9"
 
 
 def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_settings():
@@ -630,10 +680,10 @@ def test_marketplace_qna_promptfoo_adapter_and_config_use_production_retrieval_s
     cases = generate_tests()
     config = (EVAL_DIR / "marketplace_qna_promptfooconfig.yaml").read_text(encoding="utf-8")
 
-    assert len(cases) == 350
+    assert len(cases) == 336
     assert all(case["vars"]["max_rank"] == 5 for case in cases)
     assert all(case["vars"]["top_k"] == 5 for case in cases)
-    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 175, "en": 175}
+    assert Counter(case["vars"]["language"] for case in cases) == {"zh-CN": 168, "en": 168}
     assert all(case["assert"] == [{"type": "python", "value": "file://assert_retrieval.py"}] for case in cases)
     for expected in (
         'corpus_path: "marketplace_qna_corpus.jsonl"',
@@ -656,10 +706,10 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
     assert report["status"] == "passed"
     assert report["counts"] == {
         "source_documents": 34,
-        "golden_queries": 350,
-        "review_rows": 350,
+        "golden_queries": 336,
+        "review_rows": 336,
         "chat_cases": 34,
-        "source_questions": 350,
+        "source_questions": 336,
     }
     assert report["gaps"] == {
         "missing_query_ids": [],
@@ -680,7 +730,7 @@ def test_marketplace_qna_golden_query_audit_reports_full_coverage():
     }
 
     assert set(anchors) == set(expected_questions)
-    assert len(anchors) == 282
+    assert len(anchors) == 268
     for query_id, (source, question) in expected_questions.items():
         anchor = anchors[query_id]
         assert anchor["expected_doc_id"] == source.id
@@ -967,7 +1017,7 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
             "relevant_doc_ids": ["doc"],
             "tags": ["en"],
         }
-        for index in range(350)
+        for index in range(336)
     ]
     monkeypatch.setattr(live_eval, "_read_jsonl", lambda _path: cases)
     monkeypatch.setattr(
@@ -990,10 +1040,10 @@ def test_marketplace_qna_live_retrieval_status_uses_complete_fixture_size(monkey
 
     assert report["status"] == "passed"
     assert report["counts"] == {
-        "total": 350,
-        "passed": 350,
+        "total": 336,
+        "passed": 336,
         "failed": 0,
-        "top1": 350,
+        "top1": 336,
         "degraded": 0,
     }
 
@@ -1080,10 +1130,10 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
             "status": "passed",
             "counts": {
                 "source_documents": 34,
-                "golden_queries": 350,
-                "review_rows": 350,
+                "golden_queries": 336,
+                "review_rows": 336,
                 "chat_cases": 34,
-                "source_questions": 350,
+                "source_questions": 336,
             },
             "errors": [],
         },
@@ -1115,7 +1165,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         "promptfoo",
         {
             "results": {
-                "stats": {"successes": 350, "failures": 0, "errors": 0},
+                "stats": {"successes": 336, "failures": 0, "errors": 0},
                 "results": [
                     {
                         "response": {
@@ -1127,7 +1177,7 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
                             "vars": {"relevant_doc_ids": f"doc{index}"}
                         },
                     }
-                    for index in range(350)
+                    for index in range(336)
                 ],
             }
         },
@@ -1137,16 +1187,16 @@ def _write_marketplace_acceptance_evidence(root: Path) -> None:
         {
             "status": "passed",
             "counts": {
-                "total": 350,
-                "passed": 350,
+                "total": 336,
+                "passed": 336,
                 "failed": 0,
-                "top1": 280,
+                "top1": 269,
                 "degraded": 0,
             },
-            "top1_rate": 280 / 350,
+            "top1_rate": 269 / 336,
             "results": [
                 {"case_id": f"q{index}", "passed": True, "matched_rank": 1}
-                for index in range(350)
+                for index in range(336)
             ],
         },
     )

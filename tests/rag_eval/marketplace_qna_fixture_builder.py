@@ -11,7 +11,7 @@ from typing import Any
 
 SOURCE_ROOT = Path(__file__).parent / "marketplace_qna_sources"
 CASE_DEFINITIONS_PATH = Path(__file__).parent / "marketplace_qna_case_definitions.jsonl"
-CORPUS_VERSION = "marketplace-qna-bilingual-2026-08-21-v8"
+CORPUS_VERSION = "marketplace-qna-bilingual-2026-09-16-v9"
 GENERATED_PATHS = {
     "corpus": Path(__file__).parent / "marketplace_qna_corpus.jsonl",
     "golden_queries": Path(__file__).parent / "marketplace_qna_golden_queries.jsonl",
@@ -33,7 +33,7 @@ EXPECTED_QUESTION_COUNTS = (
     12,
     12,
     8,
-    18,
+    11,
     11,
     17,
 )
@@ -90,8 +90,8 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Consumer Agent",),
         ("benefits supplied by the brand", "brand benefits"),
         ("shares",),
-        ("redeem a code", "redemption code"),
-        ("Refund", "recover their current principal value"),
+        ("check all Agent information", "review all Agent information"),
+        ("before deciding whether to Mint", "before Minting"),
     ),
     "marketplace_qna_en_14": (
         ("Redeem",),
@@ -99,9 +99,9 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("generates a code",),
     ),
     "marketplace_qna_en_15": (
-        ("still held", "held by the user"),
-        ("not yet redeemed", "unredeemed"),
-        ("Refund",),
+        ("do not support Refund", "Refund is not supported", "no Refund support"),
+        ("check all Agent information", "review all Agent information"),
+        ("before deciding whether to Mint", "before Minting"),
     ),
     "marketplace_qna_en_16": (
         ("AI video generation company",),
@@ -159,8 +159,8 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Consumer Agent",),
         ("品牌方", "品牌权益"),
         ("标准份额", "份额"),
-        ("兑换码",),
-        ("Refund", "取回当时对应的本金价值"),
+        ("检查页面上的所有 Agent 信息",),
+        ("决定是否Mint", "决定是否 Mint"),
     ),
     "marketplace_qna_zh_cn_14": (
         ("去兑换",),
@@ -168,9 +168,9 @@ CHAT_REQUIRED_FACT_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("生成兑换码",),
     ),
     "marketplace_qna_zh_cn_15": (
-        ("仍由用户持有", "用户持有"),
-        ("尚未兑换", "未兑换"),
-        ("Refund",),
+        ("消费类不支持Refund", "消费类不支持 Refund", "Consumer Agent 不支持 Refund"),
+        ("检查页面上的所有 Agent 信息",),
+        ("决定是否Mint", "决定是否 Mint"),
     ),
     "marketplace_qna_zh_cn_16": (
         ("AI 视频生成公司",),

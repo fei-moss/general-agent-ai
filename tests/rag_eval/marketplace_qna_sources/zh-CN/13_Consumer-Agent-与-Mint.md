@@ -4,11 +4,11 @@
 
 **Q：Consumer / Redemption Agent 是做什么的？**
 
-Consumer Agent 让用户 Mint 标准份额以兑换品牌权益；未换码份额也可选择 Consumer Agent Refund。
+Consumer Agent 让用户 Mint 标准份额以兑换品牌权益；请检查页面上的所有 Agent 信息之后再决定是否Mint。
 
 **Q：通过这里获得品牌权益，和直接向品牌方购买有什么区别？**
 
-直接购买会立即取得权益；Consumer Agent 先让用户获得份额，再选择兑换权益或 Refund。本金托管见《Refund、资金安全与界面状态》。
+直接购买会立即取得权益；Consumer Agent 先让用户获得份额，再主动兑换权益。请检查页面上的所有 Agent 信息之后再决定是否Mint。本金托管见《资金安全与界面状态》。
 
 **Q：Consumer Agent 是投资产品吗？有 APY 吗？**
 
@@ -20,7 +20,7 @@ Consumer Agent 让用户 Mint 标准份额以兑换品牌权益；未换码份�
 
 **Q：份额本身值什么？**
 
-价值来自可兑换的权益，以及未使用时的当前 Refund 价值。它不代表品牌公司的股权、估值或升值预期。
+价值来自可兑换的权益。它不代表品牌公司的股权、估值或升值预期。
 
 **Q：第一次使用时，从连接钱包到 My Shares 的上手路径是什么？**
 
